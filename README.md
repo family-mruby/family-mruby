@@ -6,7 +6,7 @@
 
 A development platform that enables mruby development and execution directly on microcontrollers. It features audio and graphics capabilities and is designed to run on ESP32.
 
-For more details, please refer to the following blog post (Japanese):
+For more details, please refer to the following blog post :
 [Family mruby OS - FreeRTOS-based microRuby Multi-VM Architecture](https://blog.silentworlds.info/family-mruby-os-freertosbesunomicrorubymarutivmgou-xiang-2/)
 
 ### Demo Video
