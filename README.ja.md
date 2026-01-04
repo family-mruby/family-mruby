@@ -6,6 +6,13 @@
 
 マイコン単体でmrubyの開発、実行が可能な開発プラットフォームです。オーディオ・グラフィックス機能を備え、ESP32で動作するように設計されています。
 
+詳細については、以下のブログ記事をご覧ください:
+[Family mruby OSーFreeRTOSベースのmicroRubyマルチVM構想](https://blog.silentworlds.info/family-mruby-os-freertosbesunomicrorubymarutivmgou-xiang/)
+
+### デモ動画
+
+[![Family mruby Demo](https://img.youtube.com/vi/DA_VuB2W5sU/0.jpg)](https://www.youtube.com/watch?v=DA_VuB2W5sU)
+
 
 ## プロジェクトの構成
 
