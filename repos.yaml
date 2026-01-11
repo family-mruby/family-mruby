@@ -1,0 +1,10 @@
+repositories:
+  fmruby-core:
+    type: git
+    url: git@github.com:family-mruby/fmruby-core.git
+    version: main
+
+  fmruby-graphics-audio:
+    type: git
+    url: git@github.com:family-mruby/fmruby-graphics-audio.git
+    version: main

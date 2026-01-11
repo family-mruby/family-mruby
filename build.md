@@ -9,7 +9,7 @@ pip3 install vcstool colcon-common-extensions
 
 build
 
-vcs import src < repos.yaml
+vcs import --recursive src < repos.yaml
 
 ```
 source $HOME/vcs_colcon_installation/bin/activate
