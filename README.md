@@ -11,8 +11,9 @@ For more details, please refer to the following blog post :
 
 ### Demo Video
 
-[![Family mruby Demo](https://img.youtube.com/vi/cJsHcUooq20/0.jpg)](https://www.youtube.com/watch?v=cJsHcUooq20)
+[![Family mruby Demo](doc/demo4.gif)](https://www.youtube.com/watch?v=Wa_3XtLF-6U)
 
+[YouTube](https://www.youtube.com/watch?v=Wa_3XtLF-6U)
 
 ## Project Components
 
