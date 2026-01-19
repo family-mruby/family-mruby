@@ -39,6 +39,8 @@ KiCADの設計データが含まれています。
 
 [GitHub Repository](https://github.com/family-mruby/narya-board)
 
+![Family mruby Demo](doc/narya_board_dev1.JPG)
+
 ## ドキュメント
 
 ### family-mruby-doc

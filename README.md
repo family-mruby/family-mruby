@@ -38,6 +38,8 @@ Contains KiCAD design data.
 
 [GitHub Repository](https://github.com/family-mruby/narya-board)
 
+![Family mruby Demo](doc/narya_board_dev1.JPG)
+
 ## Documentation
 
 ### family-mruby-doc
