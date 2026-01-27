@@ -160,3 +160,95 @@ task :clean do
     puts "Cancelled"
   end
 end
+
+# Build tasks - execute rake task in each repository
+namespace :build do
+  desc "Execute 'rake build:linux' in each repository"
+  task :linux do
+    repos = load_repos
+    results = []
+
+    repos.keys.each do |name|
+      if Dir.exist?(name)
+        puts "\n" + "=" * 60
+        puts "Building #{name} for Linux..."
+        puts "=" * 60
+
+        Dir.chdir(name) do
+          if File.exist?('Rakefile')
+            begin
+              sh "rake build:linux"
+              puts "✓ #{name} built successfully"
+              results << true
+            rescue => e
+              puts "✗ #{name} build failed: #{e.message}"
+              results << false
+            end
+          else
+            puts "⊘ #{name} has no Rakefile, skipping..."
+            results << nil
+          end
+        end
+      else
+        puts "✗ #{name} directory not found, skipping..."
+        results << false
+      end
+    end
+
+    success_count = results.count(true)
+    fail_count = results.count(false)
+    skip_count = results.count(nil)
+
+    puts "\n" + "=" * 60
+    puts "Build Summary: #{success_count} succeeded, #{fail_count} failed, #{skip_count} skipped"
+    puts "=" * 60
+  end
+end
+
+# Generic task runner - execute any rake task in each repository
+desc "Execute a rake task in each repository (usage: rake run_task[task_name])"
+task :run_task, [:task_name] do |t, args|
+  unless args[:task_name]
+    puts "Error: Please specify a task name (e.g., rake run_task[build:linux])"
+    exit 1
+  end
+
+  repos = load_repos
+  task_name = args[:task_name]
+  results = []
+
+  repos.keys.each do |name|
+    if Dir.exist?(name)
+      puts "\n" + "=" * 60
+      puts "Running '#{task_name}' in #{name}..."
+      puts "=" * 60
+
+      Dir.chdir(name) do
+        if File.exist?('Rakefile')
+          begin
+            sh "rake #{task_name}"
+            puts "✓ #{name} completed successfully"
+            results << true
+          rescue => e
+            puts "✗ #{name} failed: #{e.message}"
+            results << false
+          end
+        else
+          puts "⊘ #{name} has no Rakefile, skipping..."
+          results << nil
+        end
+      end
+    else
+      puts "✗ #{name} directory not found, skipping..."
+      results << false
+    end
+  end
+
+  success_count = results.count(true)
+  fail_count = results.count(false)
+  skip_count = results.count(nil)
+
+  puts "\n" + "=" * 60
+  puts "Summary: #{success_count} succeeded, #{fail_count} failed, #{skip_count} skipped"
+  puts "=" * 60
+end
