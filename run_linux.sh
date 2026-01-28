@@ -51,7 +51,7 @@ if [ ! -S /tmp/fmrb_socket ]; then
     fi
 
     # Start graphics-audio service in background
-    fmruby-graphics-audio/build/fmruby-graphics-audio.elf &
+    fmruby-graphics-audio/build/fmruby-graphics-audio.elf > /tmp/fmrb_graphics_audio.log 2>&1 &
     HOST_PID=$!
 
     # Wait for socket creation with retry
