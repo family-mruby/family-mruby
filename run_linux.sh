@@ -83,23 +83,41 @@ fi
 cleanup() {
     echo ""
     echo "Cleaning up..."
-    if [ ! -z "$DOCKER_PID" ]; then
-        echo "Stopping Docker container..."
-        docker stop $DOCKER_CONTAINER_NAME 2>/dev/null
-        wait $DOCKER_PID 2>/dev/null
+
+    # Stop Docker container if running
+    if [ ! -z "$DOCKER_CONTAINER_NAME" ]; then
+        if docker ps -q -f name=$DOCKER_CONTAINER_NAME 2>/dev/null | grep -q .; then
+            echo "Stopping Docker container..."
+            docker stop $DOCKER_CONTAINER_NAME 2>/dev/null || true
+            docker rm -f $DOCKER_CONTAINER_NAME 2>/dev/null || true
+        fi
     fi
+
+    # Stop graphics-audio host process
     if [ ! -z "$HOST_PID" ]; then
-        echo "Stopping host process..."
-        kill $HOST_PID 2>/dev/null
-        wait $HOST_PID 2>/dev/null
-        rm -f /tmp/fmrb_socket
+        if kill -0 $HOST_PID 2>/dev/null; then
+            echo "Stopping fmruby-graphics-audio service..."
+            kill -TERM $HOST_PID 2>/dev/null || true
+            sleep 0.5
+            kill -KILL $HOST_PID 2>/dev/null || true
+            wait $HOST_PID 2>/dev/null || true
+        fi
+        rm -f /tmp/fmrb_socket /tmp/fmrb_input_socket
     fi
+
+    # Stop socat
     if [ ! -z "$SOCAT_PID" ]; then
-        echo "Stopping socat..."
-        kill $SOCAT_PID 2>/dev/null
-        wait $SOCAT_PID 2>/dev/null
+        if kill -0 $SOCAT_PID 2>/dev/null; then
+            echo "Stopping socat..."
+            kill -TERM $SOCAT_PID 2>/dev/null || true
+            sleep 0.5
+            kill -KILL $SOCAT_PID 2>/dev/null || true
+            wait $SOCAT_PID 2>/dev/null || true
+        fi
         rm -f /tmp/fmrb_uart_core /tmp/fmrb_uart_host /tmp/socat.log
     fi
+
+    echo "Cleanup complete"
 }
 trap cleanup EXIT INT TERM
 
@@ -127,16 +145,18 @@ if [ "$1" = "gdb" ]; then
         -v /tmp:/tmp \
         -v /dev:/dev \
         -e FMRB_FS_PROXY_UART=${UART_CORE} \
+        -w /project/fmruby-core \
         $DOCKER_IMAGE \
-        bash -c "cd /project && gdb -ex run build/fmruby-core.elf"
+        bash -c "gdb -ex run build/fmruby-core.elf"
 else
     docker run --rm --name $DOCKER_CONTAINER_NAME --user $(id -u):$(id -g) \
         -v $PWD:/project \
         -v /tmp:/tmp \
         -v /dev:/dev \
         -e FMRB_FS_PROXY_UART=${UART_CORE} \
+        -w /project/fmruby-core \
         $DOCKER_IMAGE \
-        /project/build/fmruby-core.elf
+        build/fmruby-core.elf
     DOCKER_PID=$!
     wait $DOCKER_PID
 fi
