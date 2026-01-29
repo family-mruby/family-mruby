@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  fmruby-graphics-audio:
+    image: esp32_build_container:v5.5.1
+    container_name: fmruby_graphics_audio
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - HOME=/tmp
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /mnt/wslg:/mnt/wslg
+      - ./fmruby-graphics-audio:/project
+    working_dir: /project
+    stdin_open: true
+    tty: true
+    command: ./build/fmruby-graphics-audio.elf
