@@ -1,18 +1,37 @@
-version: '3.8'
-
 services:
   fmruby-graphics-audio:
-    image: esp32_build_container:v5.5.1
+    image: ghcr.io/family-mruby/fmruby-esp32-build:latest
     container_name: fmruby_graphics_audio
     user: "${UID:-1000}:${GID:-1000}"
     environment:
       - DISPLAY=${DISPLAY:-:0}
       - HOME=/tmp
+      - GIT_CONFIG_PARAMETERS=safe.directory=/opt/esp/idf
+      - PULSE_SERVER=unix:/mnt/wslg/PulseServer
+      - SDL_AUDIODRIVER=pulseaudio
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - /mnt/wslg:/mnt/wslg
       - ./fmruby-graphics-audio:/project
+      - fmruby-sockets:/tmp  # 共有ソケット用のボリューム
     working_dir: /project
-    stdin_open: true
-    tty: true
     command: ./build/fmruby-graphics-audio.elf
+
+  fmruby-core:
+    image: ghcr.io/family-mruby/fmruby-esp32-build:latest
+    container_name: fmruby_core
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - HOME=/tmp
+      - GIT_CONFIG_PARAMETERS=safe.directory=/opt/esp/idf
+    volumes:
+      - ./fmruby-core:/project
+      - fmruby-sockets:/tmp  # 共有ソケット用のボリューム
+    working_dir: /project
+    depends_on:
+      - fmruby-graphics-audio
+    command: sh -c "sleep 2 && ./build/fmruby-core.elf"
+
+volumes:
+  fmruby-sockets:
+
