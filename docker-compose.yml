@@ -16,6 +16,7 @@ services:
       - fmruby-sockets:/tmp  # 共有ソケット用のボリューム
     working_dir: /project
     command: ./build/fmruby-graphics-audio.elf
+    #gdb -ex run ./build/fmruby-graphics-audio.elf
 
   fmruby-core:
     image: ghcr.io/family-mruby/fmruby-esp32-build:latest
@@ -31,6 +32,7 @@ services:
     depends_on:
       - fmruby-graphics-audio
     command: sh -c "sleep 2 && ./build/fmruby-core.elf"
+    #gdb -ex run ./build/fmruby-core.elf
 
 volumes:
   fmruby-sockets:

@@ -49,5 +49,44 @@ Comprehensive documentation including usage instructions and design information 
 
 [https://family-mruby.github.io](https://family-mruby.github.io)
 
+## Quick Start
+
+### Setup
+
+First, initialize git submodules:
+
+```bash
+git submodule update --init --recursive
+```
+
+### Building
+
+Build both fmruby-core (ESP32-S3) and fmruby-graphics-audio (ESP32):
+
+```bash
+# Build fmruby-core for ESP32-S3
+cd fmruby-core && rake build:esp32
+
+# Build fmruby-graphics-audio for ESP32
+cd fmruby-graphics-audio && rake build:esp32
+```
+
+For development and testing on Linux (SDL2):
+
+```bash
+# Build Linux simulation version
+cd fmruby-core && rake build:linux
+cd fmruby-graphics-audio && rake build:linux
+```
+
+### Testing with Docker Compose
+
+You can test the system integration using Docker Compose:
+
+```bash
+docker compose up
+```
+
+This will launch both fmruby-core and fmruby-graphics-audio in Linux simulation mode, allowing you to test the complete system without hardware.
 
 
