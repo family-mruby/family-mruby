@@ -52,12 +52,20 @@ Family mrubyの使い方、設計情報を含む総合ドキュメントです�
 
 ## クイックスタート
 
+### セットアップ
+
+初回のみ、fmruby-core と fmruby-graphics-audio を取得します：
+
+```bash
+rake fetch
+```
+
 ### ビルド
 
 fmruby-core (ESP32-S3) と fmruby-graphics-audio (ESP32) の両方をビルドします：
 
 ```bash
-build:esp32
+rake build:esp32
 ```
 
 開発・テスト用のLinuxビルド（SDL2）：

@@ -51,6 +51,14 @@ Comprehensive documentation including usage instructions and design information 
 
 ## Quick Start
 
+### Setup
+
+First time only, fetch fmruby-core and fmruby-graphics-audio :
+
+```bash
+rake fetch
+```
+
 ### Building
 
 Build both fmruby-core (ESP32-S3) and fmruby-graphics-audio (ESP32):
