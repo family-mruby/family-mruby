@@ -76,12 +76,8 @@ rake build:linux
 
 ### SDL2を使ったDocker Composeでのテスト
 
-Docker Composeを使用してシステム統合テストができます：
+Docker Composeを使用してLinux上でのテストができます：
 
 ```bash
 docker compose up
 ```
-
-これにより、ハードウェアなしで完全なシステムをLinuxシミュレーションモードでテストできます。
-
-

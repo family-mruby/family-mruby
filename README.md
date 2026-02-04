@@ -81,4 +81,4 @@ You can test the system integration using Docker Compose:
 docker compose up
 ```
 
-This will launch both fmruby-core and fmruby-graphics-audio in Linux simulation mode, allowing you to test the complete system without hardware.
+This will launch both fmruby-core and fmruby-graphics-audio in Linux simulation mode, allowing you to test the system without hardware.
