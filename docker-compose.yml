@@ -15,8 +15,8 @@ services:
       - ./fmruby-graphics-audio:/project
       - fmruby-sockets:/tmp  # 共有ソケット用のボリューム
     working_dir: /project
-    command: ./build/fmruby-graphics-audio.elf
-    #gdb -ex run ./build/fmruby-graphics-audio.elf
+    #command: ./build/fmruby-graphics-audio.elf
+    command: gdb -ex run ./build/fmruby-graphics-audio.elf
 
   fmruby-core:
     image: ghcr.io/family-mruby/fmruby-esp32-build:latest

@@ -47,12 +47,6 @@ def fetch_repository(name, info, version = nil)
   end
 end
 
-# Default task
-desc "Show available tasks"
-task :default do
-  sh "rake -T"
-end
-
 # Fetch all repositories with default branch from .repos
 desc "Fetch all repositories (using version from .repos)"
 task :fetch, [:branch] do |t, args|
@@ -99,25 +93,6 @@ rule /^fetch:/ do |t|
   puts "\n✓ All repositories fetched successfully!"
 end
 
-# Fetch specific repository
-desc "Fetch a specific repository (usage: rake fetch_repo[repo_name,branch])"
-task :fetch_repo, [:name, :branch] do |t, args|
-  repos = load_repos
-
-  unless args[:name]
-    puts "Available repositories:"
-    repos.keys.each { |name| puts "  - #{name}" }
-    exit 0
-  end
-
-  unless repos[args[:name]]
-    puts "Error: Repository '#{args[:name]}' not found in #{REPOS_FILE}"
-    exit 1
-  end
-
-  fetch_repository(args[:name], repos[args[:name]], args[:branch])
-end
-
 # Show status
 desc "Show status of all repositories"
 task :status do
@@ -142,7 +117,7 @@ end
 
 # Clean up
 desc "Remove all cloned repositories"
-task :clean do
+task :clean_repos do
   repos = load_repos
 
   print "Are you sure you want to remove all repositories? (y/N): "
@@ -161,66 +136,16 @@ task :clean do
   end
 end
 
-# Build tasks - execute rake task in each repository
-namespace :build do
-  desc "Execute 'rake build:linux' in each repository"
-  task :linux do
-    repos = load_repos
-    results = []
-
-    repos.keys.each do |name|
-      if Dir.exist?(name)
-        puts "\n" + "=" * 60
-        puts "Building #{name} for Linux..."
-        puts "=" * 60
-
-        Dir.chdir(name) do
-          if File.exist?('Rakefile')
-            begin
-              sh "rake build:linux"
-              puts "✓ #{name} built successfully"
-              results << true
-            rescue => e
-              puts "✗ #{name} build failed: #{e.message}"
-              results << false
-            end
-          else
-            puts "⊘ #{name} has no Rakefile, skipping..."
-            results << nil
-          end
-        end
-      else
-        puts "✗ #{name} directory not found, skipping..."
-        results << false
-      end
-    end
-
-    success_count = results.count(true)
-    fail_count = results.count(false)
-    skip_count = results.count(nil)
-
-    puts "\n" + "=" * 60
-    puts "Build Summary: #{success_count} succeeded, #{fail_count} failed, #{skip_count} skipped"
-    puts "=" * 60
-  end
-end
-
-# Generic task runner - execute any rake task in each repository
-desc "Execute a rake task in each repository (usage: rake run_task[task_name])"
-task :run_task, [:task_name] do |t, args|
-  unless args[:task_name]
-    puts "Error: Please specify a task name (e.g., rake run_task[build:linux])"
-    exit 1
-  end
-
+# Helper method to execute task in all repositories
+def execute_task_in_repos(task_name, description = nil)
   repos = load_repos
-  task_name = args[:task_name]
   results = []
 
   repos.keys.each do |name|
     if Dir.exist?(name)
+      action = description || "Running '#{task_name}' in"
       puts "\n" + "=" * 60
-      puts "Running '#{task_name}' in #{name}..."
+      puts "#{action} #{name}..."
       puts "=" * 60
 
       Dir.chdir(name) do
@@ -244,6 +169,7 @@ task :run_task, [:task_name] do |t, args|
     end
   end
 
+  # Print summary
   success_count = results.count(true)
   fail_count = results.count(false)
   skip_count = results.count(nil)
@@ -252,3 +178,36 @@ task :run_task, [:task_name] do |t, args|
   puts "Summary: #{success_count} succeeded, #{fail_count} failed, #{skip_count} skipped"
   puts "=" * 60
 end
+
+desc "Execute 'rake clean' in each repository"
+task :clean do
+  execute_task_in_repos("clean", "Cleaning repos")
+end
+
+desc "Execute 'rake clean_all' in each repository"
+task :clean do
+  execute_task_in_repos("clean_all", "Cleaning all in repos")
+end
+
+# Build tasks - execute rake task in each repository
+namespace :build do
+  desc "Execute 'rake build:linux' in each repository"
+  task :linux do
+    execute_task_in_repos("build:linux", "Building for Linux")
+  end
+
+  desc "Execute 'rake build:esp32' in each repository"
+  task :esp32 do
+    execute_task_in_repos("build:esp32", "Building for ESP32")
+  end
+end
+
+# # Generic task runner - execute any rake task in each repository
+# desc "Execute a rake task in each repository (usage: rake run_task[task_name])"
+# task :run_task, [:task_name] do |t, args|
+#   unless args[:task_name]
+#     puts "Error: Please specify a task name (e.g., rake run_task[build:linux])"
+#     exit 1
+#   end
+#   execute_task_in_repos(args[:task_name])
+# end
