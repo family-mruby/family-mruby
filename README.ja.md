@@ -52,35 +52,21 @@ Family mrubyの使い方、設計情報を含む総合ドキュメントです�
 
 ## クイックスタート
 
-### セットアップ
-
-まず、gitサブモジュールを初期化します：
-
-```bash
-git submodule update --init --recursive
-```
-
 ### ビルド
 
 fmruby-core (ESP32-S3) と fmruby-graphics-audio (ESP32) の両方をビルドします：
 
 ```bash
-# fmruby-core (ESP32-S3) をビルド
-cd fmruby-core && rake build:esp32
-
-# fmruby-graphics-audio (ESP32) をビルド
-cd fmruby-graphics-audio && rake build:esp32
+build:esp32
 ```
 
 開発・テスト用のLinuxビルド（SDL2）：
 
 ```bash
-# Linuxシミュレーション版をビルド
-cd fmruby-core && rake build:linux
-cd fmruby-graphics-audio && rake build:linux
+rake build:linux
 ```
 
-### Docker Composeでのテスト
+### SDL2を使ったDocker Composeでのテスト
 
 Docker Composeを使用してシステム統合テストができます：
 
