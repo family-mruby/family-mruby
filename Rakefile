@@ -185,7 +185,7 @@ task :clean do
 end
 
 desc "Execute 'rake clean_all' in each repository"
-task :clean do
+task :clean_all do
   execute_task_in_repos("clean_all", "Cleaning all in repos")
 end
 
