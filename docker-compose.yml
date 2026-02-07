@@ -3,6 +3,8 @@ services:
     image: ghcr.io/family-mruby/fmruby-esp32-build:latest
     container_name: fmruby_graphics_audio
     user: "${UID:-1000}:${GID:-1000}"
+    init: true
+    stop_grace_period: 2s
     environment:
       - DISPLAY=${DISPLAY:-:0}
       - HOME=/tmp
@@ -13,7 +15,7 @@ services:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - /mnt/wslg:/mnt/wslg
       - ./fmruby-graphics-audio:/project
-      - fmruby-sockets:/tmp  
+      - fmruby-sockets:/tmp
     working_dir: /project
     command: sh -c "./build/fmruby-graphics-audio.elf"
     #command: gdb -ex run -ex "thread apply all bt" -ex "set confirm off" -ex quit ./build/fmruby-graphics-audio.elf
@@ -23,6 +25,7 @@ services:
     image: ghcr.io/family-mruby/fmruby-esp32-build:latest
     container_name: fmruby_core
     user: "${UID:-1000}:${GID:-1000}"
+    init: true
     environment:
       - HOME=/tmp
       - GIT_CONFIG_PARAMETERS=safe.directory=/opt/esp/idf
