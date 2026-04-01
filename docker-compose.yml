@@ -36,6 +36,7 @@ services:
     depends_on:
       - fmruby-graphics-audio
     command: sh -c "sleep 2 && ./build/fmruby-core.elf"
+    #command: sh -c "sleep 2 && gdb -batch -ex run -ex 'bt full' -ex 'info registers' -ex 'thread apply all bt' ./build/fmruby-core.elf"
     #command: sh -c "sleep 2 && gdb -ex run ./build/fmruby-core.elf"
 
 volumes:
