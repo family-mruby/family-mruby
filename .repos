@@ -7,7 +7,7 @@ repositories:
     type: git
     url: https://github.com/family-mruby/fmruby-graphics-audio.git
     version: develop
-  nsf2fmsq
+  fmrb-audio-tools:
     type: git
-    url: https://github.com/family-mruby/nsf2fmsq.git
+    url: https://github.com/family-mruby/fmrb-audio-tools.git
     version: main
