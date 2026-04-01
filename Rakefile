@@ -137,11 +137,17 @@ task :clean_repos do
 end
 
 # Helper method to execute task in all repositories
-def execute_task_in_repos(task_name, description = nil)
+def execute_task_in_repos(task_name, description = nil, exclude: [])
   repos = load_repos
   results = []
 
   repos.keys.each do |name|
+    if exclude.include?(name)
+      puts "\n⊘ #{name} excluded, skipping..."
+      results << nil
+      next
+    end
+
     if Dir.exist?(name)
       action = description || "Running '#{task_name}' in"
       puts "\n" + "=" * 60
@@ -196,9 +202,9 @@ namespace :build do
     execute_task_in_repos("build:linux", "Building for Linux")
   end
 
-  desc "Execute 'rake build:esp32' in each repository"
+  desc "Execute 'rake build:esp32' in each repository (excluding fmrb-audio-tools)"
   task :esp32 do
-    execute_task_in_repos("build:esp32", "Building for ESP32")
+    execute_task_in_repos("build:esp32", "Building for ESP32", exclude: ["fmrb-audio-tools"])
   end
 end
 
