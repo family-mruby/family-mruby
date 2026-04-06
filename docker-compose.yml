@@ -9,13 +9,14 @@ services:
       - DISPLAY=${DISPLAY:-:0}
       - HOME=/tmp
       - GIT_CONFIG_PARAMETERS=safe.directory=/opt/esp/idf
-      - PULSE_SERVER=unix:/mnt/wslg/PulseServer
+      - PULSE_SERVER=unix:/mnt/wslg/runtime-dir/pulse/native
+      - XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir
       - SDL_AUDIODRIVER=pulseaudio
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - /mnt/wslg:/mnt/wslg
       - ./fmruby-graphics-audio:/project
-      - fmruby-sockets:/tmp
+      - fmruby-sockets:/var/run/fmrb
     working_dir: /project
     command: sh -c "./build/fmruby-graphics-audio.elf"
     #command: gdb -ex run -ex "thread apply all bt" -ex "set confirm off" -ex quit ./build/fmruby-graphics-audio.elf
@@ -31,14 +32,19 @@ services:
       - GIT_CONFIG_PARAMETERS=safe.directory=/opt/esp/idf
     volumes:
       - ./fmruby-core:/project
-      - fmruby-sockets:/tmp
+      - fmruby-sockets:/var/run/fmrb
     working_dir: /project
     depends_on:
       - fmruby-graphics-audio
-    command: sh -c "sleep 2 && ./build/fmruby-core.elf"
+    command: sh -c "sleep 3 && ./build/fmruby-core.elf"
     #command: sh -c "sleep 2 && gdb -batch -ex run -ex 'bt full' -ex 'info registers' -ex 'thread apply all bt' ./build/fmruby-core.elf"
     #command: sh -c "sleep 2 && gdb -ex run ./build/fmruby-core.elf"
 
 volumes:
   fmruby-sockets:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: uid=${UID:-1000},gid=${GID:-1000},mode=1777
 
