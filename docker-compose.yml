@@ -1,4 +1,32 @@
 services:
+  # SDL2 display process (separate from FreeRTOS to avoid SIGALRM conflicts)
+  sdl2-display:
+    build:
+      context: ./fmruby-graphics-audio
+      dockerfile: sdl2-display/Dockerfile
+    container_name: fmruby_sdl2_display
+    user: "${UID:-1000}:${GID:-1000}"
+    init: true
+    stop_grace_period: 2s
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - SDL_VIDEODRIVER=x11
+      - SDL_AUDIODRIVER=pulseaudio
+      - PULSE_SERVER=unix:/mnt/wslg/runtime-dir/pulse/native
+      - PULSE_LATENCY_MSEC=20
+      - XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /mnt/wslg:/mnt/wslg
+      - fmruby-sockets:/var/run/fmrb
+    ipc: host
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /proc/1/status"]
+      interval: 1s
+      timeout: 3s
+      retries: 10
+      start_period: 1s
+
   fmruby-graphics-audio:
     image: ghcr.io/family-mruby/fmruby-esp32-build:latest
     container_name: fmruby_graphics_audio
@@ -6,21 +34,17 @@ services:
     init: true
     stop_grace_period: 2s
     environment:
-      - DISPLAY=${DISPLAY:-:0}
       - HOME=/tmp
       - GIT_CONFIG_PARAMETERS=safe.directory=/opt/esp/idf
-      - PULSE_SERVER=unix:/mnt/wslg/runtime-dir/pulse/native
-      - XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir
-      - SDL_AUDIODRIVER=pulseaudio
     volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - /mnt/wslg:/mnt/wslg
       - ./fmruby-graphics-audio:/project
       - fmruby-sockets:/var/run/fmrb
+    ipc: host
     working_dir: /project
+    depends_on:
+      sdl2-display:
+        condition: service_healthy
     command: sh -c "./build/fmruby-graphics-audio.elf"
-    #command: gdb -ex run -ex "thread apply all bt" -ex "set confirm off" -ex quit ./build/fmruby-graphics-audio.elf
-    #command: gdb -ex run ./build/fmruby-graphics-audio.elf
     healthcheck:
       test: ["CMD-SHELL", "test -S /var/run/fmrb/fmrb_socket && test -S /var/run/fmrb/fmrb_input_socket"]
       interval: 1s
@@ -44,8 +68,6 @@ services:
       fmruby-graphics-audio:
         condition: service_healthy
     command: sh -c "./build/fmruby-core.elf"
-    #command: sh -c "gdb -batch -ex run -ex 'bt full' -ex 'info registers' -ex 'thread apply all bt' ./build/fmruby-core.elf"
-    #command: sh -c "b -ex run ./build/fmruby-core.elf"
 
 volumes:
   fmruby-sockets:
@@ -54,4 +76,3 @@ volumes:
       type: tmpfs
       device: tmpfs
       o: uid=${UID:-1000},gid=${GID:-1000},mode=1777
-
