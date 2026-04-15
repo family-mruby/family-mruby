@@ -73,12 +73,33 @@ For development and testing on Linux (SDL2):
 rake build:linux
 ```
 
-### Testing with Docker Compose using SDL2
+### Try with Docker (VNC Desktop)
 
-You can test the system integration using Docker Compose:
+You can try Family mruby OS without any hardware or build environment. A pre-built Docker image provides a VNC desktop with all binaries included.
+
+```bash
+docker run --rm -p 6080:6080 ghcr.io/family-mruby/fmruby-desktop:latest
+```
+
+Then open http://localhost:6080/vnc.html in your browser. The Family mruby OS desktop will appear in the VNC viewer.
+
+This works on macOS (Apple Silicon / Intel), Linux, and Windows (WSL2). No VNC client is required -- everything runs in the browser via noVNC.
+
+> Note: Audio is not supported in the VNC environment.
+
+### Building and Testing Locally with Docker Compose
+
+If you want to build from source and test with SDL2 display, first build the Linux binaries:
+
+```bash
+rake fetch        # First time only
+rake build:linux
+```
+
+Then launch the simulation environment with Docker Compose:
 
 ```bash
 docker compose up
 ```
 
-This will launch both fmruby-core and fmruby-graphics-audio in Linux simulation mode, allowing you to test the system without hardware.
+This will launch sdl2-display, fmruby-graphics-audio, and fmruby-core in Linux simulation mode using the locally built binaries. Requires X11 display forwarding (WSL2 or Linux desktop).

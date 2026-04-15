@@ -74,10 +74,33 @@ rake build:esp32
 rake build:linux
 ```
 
-### SDL2を使ったDocker Composeでのテスト
+### Dockerで試す (VNC デスクトップ)
 
-Docker Composeを使用してLinux上でのテストができます：
+ハードウェアやビルド環境なしで Family mruby OS を試すことができます。ビルド済みのDockerイメージにはすべてのバイナリが含まれており、VNCデスクトップとして提供されます。
+
+```bash
+docker run --rm -p 6080:6080 ghcr.io/family-mruby/fmruby-desktop:latest
+```
+
+ブラウザで http://localhost:6080/vnc.html を開くと、VNCビューア上にFamily mruby OSのデスクトップが表示されます。
+
+macOS (Apple Silicon / Intel)、Linux、Windows (WSL2) で動作します。VNCクライアントは不要です -- noVNCによりブラウザだけで利用できます。
+
+> 注意: VNC環境では音声は対応していません。
+
+### ローカルビルドとDocker Composeでのテスト
+
+ソースからビルドしてSDL2表示でテストする場合は、まずLinuxバイナリをビルドします：
+
+```bash
+rake fetch        # 初回のみ
+rake build:linux
+```
+
+ビルド後、Docker Composeでシミュレーション環境を起動します：
 
 ```bash
 docker compose up
 ```
+
+sdl2-display、fmruby-graphics-audio、fmruby-core がLinuxシミュレーションモードで起動し、ローカルビルドしたバイナリを使用します。X11ディスプレイ転送が必要です (WSL2またはLinuxデスクトップ環境)。

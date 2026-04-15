@@ -1,0 +1,76 @@
+name: Build and Push VNC Desktop Image
+
+on:
+  push:
+    paths:
+      - 'Dockerfile.vnc'
+      - 'vnc/**'
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/fmruby-desktop
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.vnc
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}-${{ matrix.suffix }}
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        run: |
+          docker manifest create ${{ env.IMAGE_NAME }}:latest \
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}-amd64 \
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}-arm64
+          docker manifest push ${{ env.IMAGE_NAME }}:latest
+
+          docker manifest create ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}-amd64 \
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}-arm64
+          docker manifest push ${{ env.IMAGE_NAME }}:${{ github.sha }}
