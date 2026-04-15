@@ -1,0 +1,11 @@
+# Exclude git metadata and unnecessary files from Docker build context
+.git
+.github
+.claude
+.codex
+.vscode
+sandbox
+doc
+lib
+*.md
+LICENSE
