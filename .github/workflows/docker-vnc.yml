@@ -30,8 +30,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      - name: Fetch sub-repositories
+        run: |
+          sudo apt-get update && sudo apt-get install -y ruby
+          rake fetch
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
