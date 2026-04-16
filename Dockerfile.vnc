@@ -8,18 +8,30 @@
 #   Open http://localhost:6080 in browser
 # =============================================================================
 
+ARG GA_REPO=https://github.com/family-mruby/fmruby-graphics-audio.git
+ARG GA_BRANCH=main
+ARG CORE_REPO=https://github.com/family-mruby/fmruby-core.git
+ARG CORE_BRANCH=main
+
 # ---------------------------------------------------------------------------
 # Stage 1: Build fmruby-graphics-audio.elf (Linux target)
 # ---------------------------------------------------------------------------
 FROM espressif/idf:v5.5.1 AS builder-ga
+
+ARG GA_REPO
+ARG GA_BRANCH
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ruby libsdl2-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Clone with submodules (use HTTPS to avoid SSH key issues in CI)
+WORKDIR /build
+RUN git config --global url."https://github.com/".insteadOf "git@github.com:" && \
+    git clone --recursive --branch ${GA_BRANCH} ${GA_REPO} fmruby-graphics-audio
+
 WORKDIR /build/fmruby-graphics-audio
-COPY fmruby-graphics-audio/ .
 
 # Apply patches and build
 RUN bash -c '\
@@ -34,13 +46,20 @@ RUN bash -c '\
 # ---------------------------------------------------------------------------
 FROM espressif/idf:v5.5.1 AS builder-core
 
+ARG CORE_REPO
+ARG CORE_BRANCH
+
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ruby libsdl2-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Clone with submodules (use HTTPS to avoid SSH key issues in CI)
+WORKDIR /build
+RUN git config --global url."https://github.com/".insteadOf "git@github.com:" && \
+    git clone --recursive --branch ${CORE_BRANCH} ${CORE_REPO} fmruby-core
+
 WORKDIR /build/fmruby-core
-COPY fmruby-core/ .
 
 # Setup (copy mrbgems, patches) and build
 RUN bash -c '\
@@ -52,7 +71,7 @@ RUN bash -c '\
     idf.py --preview -DSDKCONFIG_DEFAULTS="config/sdkconfig.defaults.linux" -DCMAKE_BUILD_TYPE=Debug build'
 
 # ---------------------------------------------------------------------------
-# Stage 3: Build sdl2-display
+# Stage 3: Build sdl2-display (reuse headers from builder-ga)
 # ---------------------------------------------------------------------------
 FROM ubuntu:24.04 AS builder-sdl2
 
@@ -62,9 +81,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-COPY fmruby-graphics-audio/main/common/shm_display.h /build/include/
-COPY fmruby-graphics-audio/main/include/fmrb_hid_event.h /build/include/
-COPY fmruby-graphics-audio/sdl2-display/main.c /build/
+COPY --from=builder-ga /build/fmruby-graphics-audio/main/common/shm_display.h /build/include/
+COPY --from=builder-ga /build/fmruby-graphics-audio/main/include/fmrb_hid_event.h /build/include/
+COPY --from=builder-ga /build/fmruby-graphics-audio/sdl2-display/main.c /build/
 
 RUN gcc -Wall -Wextra -O2 \
     $(sdl2-config --cflags) \
