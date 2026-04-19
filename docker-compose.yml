@@ -10,14 +10,16 @@ services:
     stop_grace_period: 2s
     environment:
       - DISPLAY=${DISPLAY:-:0}
+      - XAUTHORITY=/tmp/.Xauthority
       - SDL_VIDEODRIVER=x11
       - SDL_AUDIODRIVER=pulseaudio
-      - PULSE_SERVER=unix:/mnt/wslg/runtime-dir/pulse/native
+      - PULSE_SERVER=unix:/run/user/${UID:-1000}/pulse/native
       - PULSE_LATENCY_MSEC=20
-      - XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir
+      - XDG_RUNTIME_DIR=/run/user/${UID:-1000}
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - /mnt/wslg:/mnt/wslg
+      - ${XAUTHORITY}:/tmp/.Xauthority:ro
+      - /run/user/${UID:-1000}:/run/user/${UID:-1000}
       - fmruby-sockets:/var/run/fmrb
     ipc: host
     healthcheck:
