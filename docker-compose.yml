@@ -12,12 +12,9 @@ services:
       - DISPLAY=${DISPLAY:-:0}
       - SDL_VIDEODRIVER=x11
       - SDL_AUDIODRIVER=pulseaudio
-      - PULSE_SERVER=unix:/mnt/wslg/runtime-dir/pulse/native
       - PULSE_LATENCY_MSEC=20
-      - XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - /mnt/wslg:/mnt/wslg
       - fmruby-sockets:/var/run/fmrb
     ipc: host
     healthcheck:

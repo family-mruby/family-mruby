@@ -38,7 +38,7 @@ Contains KiCAD design data.
 
 [GitHub Repository](https://github.com/family-mruby/narya-board)
 
-![Family mruby Demo](doc/narya_board_dev1.JPG)
+![Family mruby Demo](doc/narya_board_dev_r3.jpg)
 
 ## Documentation
 
@@ -96,10 +96,16 @@ rake fetch        # First time only
 rake build:linux
 ```
 
-Then launch the simulation environment with Docker Compose:
+Then set up your environment and launch the simulation with Docker Compose:
 
 ```bash
+cp .env.example .env    # First time only. Select WSL (default) or Ubuntu inside .env
 docker compose up
 ```
+
+`.env` selects which override file to apply via `COMPOSE_FILE`:
+
+- `docker-compose.yml:docker-compose.wsl.yml` — WSL2 + WSLg (default)
+- `docker-compose.yml:docker-compose.ubuntu.yml` — native Ubuntu desktop (uses `XAUTHORITY` and `/run/user/$UID`)
 
 This will launch sdl2-display, fmruby-graphics-audio, and fmruby-core in Linux simulation mode using the locally built binaries. Requires X11 display forwarding (WSL2 or Linux desktop).

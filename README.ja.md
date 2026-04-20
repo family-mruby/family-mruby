@@ -39,7 +39,7 @@ KiCADの設計データが含まれています。
 
 [GitHub Repository](https://github.com/family-mruby/narya-board)
 
-![Family mruby Demo](doc/narya_board_dev1.JPG)
+![Family mruby Demo](doc/narya_board_dev_r3.jpg)
 
 ## ドキュメント
 
@@ -97,10 +97,16 @@ rake fetch        # 初回のみ
 rake build:linux
 ```
 
-ビルド後、Docker Composeでシミュレーション環境を起動します：
+ビルド後、使用する環境を `.env` で選択し、Docker Composeでシミュレーション環境を起動します：
 
 ```bash
+cp .env.example .env    # 初回のみ。WSL (デフォルト) か Ubuntu かを .env で選択
 docker compose up
 ```
+
+`.env` では `COMPOSE_FILE` によってオーバーライドファイルを切り替えます：
+
+- `docker-compose.yml:docker-compose.wsl.yml` — WSL2 + WSLg（デフォルト）
+- `docker-compose.yml:docker-compose.ubuntu.yml` — Ubuntuネイティブデスクトップ（`XAUTHORITY` と `/run/user/$UID` を使用）
 
 sdl2-display、fmruby-graphics-audio、fmruby-core がLinuxシミュレーションモードで起動し、ローカルビルドしたバイナリを使用します。X11ディスプレイ転送が必要です (WSL2またはLinuxデスクトップ環境)。
