@@ -71,6 +71,18 @@ Family mrubyの使い方、設計情報を含む総合ドキュメントです�
 
 ## 開発方法
 
+### 前提パッケージ (Ubuntu / Debian)
+
+利用する機能に応じて、必要なパッケージをインストールします：
+
+```bash
+# 基本ツール (rake fetch / build:linux / build:esp32 で必要)
+sudo apt install git ruby-rake build-essential cmake
+
+# rake build:tools (fmrb-audio-tools) を使う場合
+sudo apt install pkg-config libsdl2-dev
+```
+
 ### セットアップ
 
 初回のみ、fmruby-core と fmruby-graphics-audio を取得します：

@@ -197,14 +197,19 @@ end
 
 # Build tasks - execute rake task in each repository
 namespace :build do
-  desc "Execute 'rake build:linux' in each repository"
+  desc "Execute 'rake build:linux' in each repository (excluding fmrb-audio-tools)"
   task :linux do
-    execute_task_in_repos("build:linux", "Building for Linux")
+    execute_task_in_repos("build:linux", "Building for Linux", exclude: ["fmrb-audio-tools"])
   end
 
   desc "Execute 'rake build:esp32' in each repository (excluding fmrb-audio-tools)"
   task :esp32 do
     execute_task_in_repos("build:esp32", "Building for ESP32", exclude: ["fmrb-audio-tools"])
+  end
+
+  desc "Build audio tools (fmrb-audio-tools only)"
+  task :tools do
+    execute_task_in_repos("build:linux", "Building audio tools", exclude: ["fmruby-core", "fmruby-graphics-audio"])
   end
 end
 

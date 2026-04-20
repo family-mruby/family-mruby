@@ -69,6 +69,18 @@ Comprehensive documentation including usage instructions and design information 
 
 ## Development
 
+### Prerequisites (Ubuntu / Debian)
+
+Install the packages you need based on what you plan to run:
+
+```bash
+# Base tools (required for rake fetch / build:linux / build:esp32)
+sudo apt install git ruby-rake build-essential cmake
+
+# For rake build:tools (fmrb-audio-tools)
+sudo apt install pkg-config libsdl2-dev
+```
+
 ### Setup
 
 First time only, fetch fmruby-core and fmruby-graphics-audio:
