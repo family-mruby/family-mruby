@@ -2,12 +2,8 @@ name: Build and Push VNC Desktop Image
 
 on:
   push:
-    paths:
-      - 'Dockerfile.vnc'
-      - 'vnc/**'
-      - '.repos'
-    branches: [main, develop]
-  workflow_dispatch:
+    tags:
+      - '[0-9]*'
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/fmruby-desktop
@@ -32,6 +28,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set image tag
+        id: tag
+        run: echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -46,15 +46,35 @@ jobs:
           file: ./Dockerfile.vnc
           platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}-${{ matrix.suffix }}
+          tags: ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.version }}-${{ matrix.suffix }}
 
   manifest:
     needs: build
     runs-on: ubuntu-24.04
     permissions:
+      contents: read
       packages: write
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set image tag
+        id: tag
+        run: echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Check if latest tag
+        id: check_latest
+        run: |
+          LATEST=$(git tag -l '[0-9]*' | sort -V | tail -n1)
+          if [ "${{ github.ref_name }}" = "${LATEST}" ]; then
+            echo "is_latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_latest=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -63,15 +83,20 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create and push multi-arch manifest
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
         run: |
-          docker manifest create ${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}-amd64 \
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}-arm64
-          docker manifest push ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker manifest create ${{ env.IMAGE_NAME }}:${VERSION} \
+            ${{ env.IMAGE_NAME }}:${VERSION}-amd64 \
+            ${{ env.IMAGE_NAME }}:${VERSION}-arm64
+          docker manifest push ${{ env.IMAGE_NAME }}:${VERSION}
 
-          if [ "${{ github.ref }}" = "refs/heads/develop" ]; then
-            docker manifest create ${{ env.IMAGE_NAME }}:develop \
-              ${{ env.IMAGE_NAME }}:${{ github.sha }}-amd64 \
-              ${{ env.IMAGE_NAME }}:${{ github.sha }}-arm64
-            docker manifest push ${{ env.IMAGE_NAME }}:develop
-          fi
+      - name: Update latest tag
+        if: steps.check_latest.outputs.is_latest == 'true'
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          docker manifest create ${{ env.IMAGE_NAME }}:latest \
+            ${{ env.IMAGE_NAME }}:${VERSION}-amd64 \
+            ${{ env.IMAGE_NAME }}:${VERSION}-arm64
+          docker manifest push ${{ env.IMAGE_NAME }}:latest
