@@ -8,3 +8,4 @@ sandbox/
 flash/home/music/
 tmp/
 .env
+.codex
