@@ -11,9 +11,29 @@
 
 ### デモ動画
 
-[![Family mruby Demo](doc/demo4.gif)](https://www.youtube.com/watch?v=Wa_3XtLF-6U)
+[![Family mruby Demo](doc/demo5.gif)](https://www.youtube.com/watch?v=9vkRaOoxJJI)
 
-[YouTube](https://www.youtube.com/watch?v=Wa_3XtLF-6U)
+[LongバージョンはYouTubeで](https://www.youtube.com/watch?v=9vkRaOoxJJI)
+
+## 動作を簡単に試す方法
+
+### VNC デスクトップをDockerで動かして試す
+
+![Family mruby on VNC](doc/vnc.png)
+
+
+ハードウェアやビルド環境なしで Family mruby OS を試すことができます。ビルド済みのDockerイメージにはすべてのバイナリが含まれており、VNCデスクトップとして提供されます。
+
+```bash
+docker run --rm -p 6080:6080 ghcr.io/family-mruby/fmruby-desktop:latest
+```
+
+ブラウザで http://localhost:6080/vnc.html を開くと、VNCビューア上にFamily mruby OSのデスクトップが表示されます。
+
+Linux、Windows (WSL2) での動作を確認しています。VNCクライアントは不要です -- noVNCによりブラウザだけで利用できます。
+ARM64のイメージも準備しているので、Macでも動作すると思いますが、未検証です。
+
+> 注意: VNC環境では音声は対応していません。
 
 
 ## プロジェクトの構成
@@ -50,7 +70,7 @@ Family mrubyの使い方、設計情報を含む総合ドキュメントです�
 
 [https://family-mruby.github.io](https://family-mruby.github.io)
 
-## クイックスタート
+## 開発方法
 
 ### セットアップ
 
@@ -74,21 +94,7 @@ rake build:esp32
 rake build:linux
 ```
 
-### Dockerで試す (VNC デスクトップ)
-
-ハードウェアやビルド環境なしで Family mruby OS を試すことができます。ビルド済みのDockerイメージにはすべてのバイナリが含まれており、VNCデスクトップとして提供されます。
-
-```bash
-docker run --rm -p 6080:6080 ghcr.io/family-mruby/fmruby-desktop:latest
-```
-
-ブラウザで http://localhost:6080/vnc.html を開くと、VNCビューア上にFamily mruby OSのデスクトップが表示されます。
-
-macOS (Apple Silicon / Intel)、Linux、Windows (WSL2) で動作します。VNCクライアントは不要です -- noVNCによりブラウザだけで利用できます。
-
-> 注意: VNC環境では音声は対応していません。
-
-### ローカルビルドとDocker Composeでのテスト
+### 実機レスでのテスト
 
 ソースからビルドしてSDL2表示でテストする場合は、まずLinuxバイナリをビルドします：
 
@@ -109,4 +115,4 @@ docker compose up
 - `docker-compose.yml:docker-compose.wsl.yml` — WSL2 + WSLg（デフォルト）
 - `docker-compose.yml:docker-compose.ubuntu.yml` — Ubuntuネイティブデスクトップ（`XAUTHORITY` と `/run/user/$UID` を使用）
 
-sdl2-display、fmruby-graphics-audio、fmruby-core がLinuxシミュレーションモードで起動し、ローカルビルドしたバイナリを使用します。X11ディスプレイ転送が必要です (WSL2またはLinuxデスクトップ環境)。
+sdl2-display、fmruby-graphics-audio、fmruby-core がLinuxシミュレーションモードで起動し、ローカルビルドしたバイナリを使用します。
