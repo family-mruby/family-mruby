@@ -113,3 +113,9 @@ docker compose up
 - `docker-compose.yml:docker-compose.ubuntu.yml` — native Ubuntu desktop (uses `XAUTHORITY` and `/run/user/$UID`)
 
 This will launch sdl2-display, fmruby-graphics-audio, and fmruby-core in Linux simulation mode using the locally built binaries.
+
+## Disclaimer
+
+- This software is under active development. Some applications may not launch, and unexpected errors may occur.
+- This software is intended for hobby use and is not designed for safety-critical applications.
+- This software is distributed under the GNU General Public License v3. It is provided with NO WARRANTY. See [LICENSE](LICENSE) for details.

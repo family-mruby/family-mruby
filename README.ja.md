@@ -35,7 +35,6 @@ ARM64のイメージも準備しているので、Macでも動作すると思い
 
 > 注意: VNC環境では音声は対応していません。
 
-
 ## プロジェクトの構成
 
 ### fmrb-core
@@ -116,3 +115,9 @@ docker compose up
 - `docker-compose.yml:docker-compose.ubuntu.yml` — Ubuntuネイティブデスクトップ（`XAUTHORITY` と `/run/user/$UID` を使用）
 
 sdl2-display、fmruby-graphics-audio、fmruby-core がLinuxシミュレーションモードで起動し、ローカルビルドしたバイナリを使用します。
+
+## 注意事項
+
+- 開発中のため、起動しないアプリケーションや、想定しないエラーが発生する可能性があります。
+- あくまでホビー用途を想定しており、安全性が求められる用途での使用は想定していません。
+- 本ソフトウェアは GNU General Public License v3 の下で配布されています。無保証（NO WARRANTY）で提供されます。詳細は [LICENSE](LICENSE) をご覧ください。
