@@ -64,7 +64,14 @@ jobs:
           echo "Publishing firmware ${VER}"
 
       - name: Fetch source repos pinned in .repos
-        run: rake fetch
+        run: |
+          # Some submodules (e.g. fmruby-graphics-audio's LovyanGFX) use
+          # git@github.com: URLs. The runner has no SSH key for those public
+          # repos, so rewrite to HTTPS only while rake fetch runs and unset
+          # right after, leaving SSH intact for the installer-repo deploy key.
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          rake fetch
+          git config --global --unset url."https://github.com/".insteadOf
 
       - name: Resolve ESP-IDF image tag from fmruby-core/.env
         id: idf
