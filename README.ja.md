@@ -15,6 +15,14 @@
 
 [LongバージョンはYouTubeで](https://www.youtube.com/watch?v=9vkRaOoxJJI)
 
+## ドキュメント
+
+### family-mruby-doc
+
+Family mrubyの使い方、設計情報のドキュメントです。
+
+[https://family-mruby.github.io/ja](https://family-mruby.github.io/ja)
+
 ## 動作を簡単に試す方法
 
 ### VNC デスクトップをDockerで動かして試す
@@ -59,15 +67,6 @@ KiCADの設計データが含まれています。
 [GitHub Repository](https://github.com/family-mruby/narya-board)
 
 ![Family mruby Demo](doc/narya_board_dev_r3.jpg)
-
-## ドキュメント
-
-### family-mruby-doc
-
-Family mrubyの使い方、設計情報を含む総合ドキュメントです。
-（準備中です）
-
-[https://family-mruby.github.io](https://family-mruby.github.io)
 
 ## 開発方法
 

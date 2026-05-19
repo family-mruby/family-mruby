@@ -15,6 +15,14 @@ For more details, please refer to the following blog post:
 
 [Long version on YouTube](https://www.youtube.com/watch?v=9vkRaOoxJJI)
 
+## Documentation
+
+### family-mruby-doc
+
+Comprehensive documentation including usage instructions and design information for Family mruby.
+
+[https://family-mruby.github.io](https://family-mruby.github.io)
+
 ## Quick Way to Try It Out
 
 ### Try with Docker VNC Desktop
@@ -57,15 +65,6 @@ Contains KiCAD design data.
 [GitHub Repository](https://github.com/family-mruby/narya-board)
 
 ![Family mruby Demo](doc/narya_board_dev_r3.jpg)
-
-## Documentation
-
-### family-mruby-doc
-
-Comprehensive documentation including usage instructions and design information for Family mruby.
-(Under preparation)
-
-[https://family-mruby.github.io](https://family-mruby.github.io)
 
 ## Development
 
