@@ -125,6 +125,11 @@ clamp で `Invalid position` の raise は消えたが、以下の条件では�
 monitor 単独 / mruby.app 単独では安定動作するため、**複数タスクの並行実行時の
 コンテキスト切替タイミング**が関係していると思われる。
 
+> **続報 (2026-06-02):** コード精査により真因をほぼ特定。詳細は
+> [mruby_tick_task_investigation.md](mruby_tick_task_investigation.md) を参照。
+> 要点: 下記「static scheduler 状態の共有」仮説は既に解消済み (state は VM 単位に分離済み)。
+> 真因は `mrb_tick()` が別 FreeRTOS タスクから VM 実行スレッドと**並行**実行されること。
+
 ### 原因切り分け結果 (2026-04-18)
 
 `mruby_tick_task` (FreeRTOS タスク、`lib/replace/picoruby-machine/ports/esp32/machine.c`)
