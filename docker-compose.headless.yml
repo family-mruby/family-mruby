@@ -1,0 +1,13 @@
+# Headless override for agent/CI verification: run the SDL2 display process
+# with dummy video/audio drivers so no window is opened and no X server is
+# needed. The screen is still composed into /dev/shm/fmrb_display and can be
+# captured with tools/fmrb_screenshot.py.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.headless.yml up -d
+#
+# or use tools/dev_run_check.sh which wraps the whole cycle.
+services:
+  sdl2-display:
+    environment:
+      - SDL_VIDEODRIVER=dummy
+      - SDL_AUDIODRIVER=dummy
