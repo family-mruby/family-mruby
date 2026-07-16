@@ -1,0 +1,117 @@
+{
+  "name": "fmrb-debug",
+  "displayName": "Family mruby Debug",
+  "description": "Debug PicoRuby VMs running on Family mruby over the fmrb_debugd protocol (Phase 2: TCP / Linux sim).",
+  "version": "0.0.1",
+  "publisher": "family-mruby",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Debuggers"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onDebugResolve:fmrb"
+  ],
+  "contributes": {
+    "debuggers": [
+      {
+        "type": "fmrb",
+        "label": "Family mruby (PicoRuby VM)",
+        "languages": [
+          "ruby"
+        ],
+        "configurationAttributes": {
+          "attach": {
+            "required": [
+              "app"
+            ],
+            "properties": {
+              "host": {
+                "type": "string",
+                "description": "fmrb_debugd host.",
+                "default": "localhost"
+              },
+              "port": {
+                "type": "number",
+                "description": "fmrb_debugd TCP port.",
+                "default": 5555
+              },
+              "app": {
+                "type": [
+                  "string",
+                  "number"
+                ],
+                "description": "Target app: name (from `ps`) or numeric pid."
+              },
+              "pythonPath": {
+                "type": "string",
+                "description": "Python interpreter used to run the DAP adapter.",
+                "default": "python3"
+              },
+              "adapterPath": {
+                "type": "string",
+                "description": "Path to fmrb_dap_adapter.py (defaults to the sibling fmruby-core checkout)."
+              },
+              "pathMappings": {
+                "type": "array",
+                "description": "Device path <-> local workspace path mappings for standalone app files.",
+                "default": [
+                  {
+                    "device": "/app/",
+                    "local": "${workspaceFolder}/fmruby-core/flash/app/"
+                  }
+                ]
+              },
+              "projectMappings": {
+                "type": "array",
+                "description": "Device path <-> local mappings for combined-file segment sources.",
+                "default": [
+                  {
+                    "device": "/project/",
+                    "local": "${workspaceFolder}/fmruby-core/"
+                  }
+                ]
+              },
+              "combinedMaps": {
+                "type": "array",
+                "description": "Dirs/globs holding *_combined.map.json (combined-line <-> original file:line).",
+                "default": [
+                  "${workspaceFolder}/fmruby-core/main/prebuild_scripts/*/mrb"
+                ]
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "fmrb",
+            "request": "attach",
+            "name": "fmrb: attach to app",
+            "host": "localhost",
+            "port": 5555,
+            "app": "Kamon"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Family mruby: Attach",
+            "description": "Attach to a running PicoRuby VM via fmrb_debugd.",
+            "body": {
+              "type": "fmrb",
+              "request": "attach",
+              "name": "fmrb: attach to ${1:app}",
+              "host": "localhost",
+              "port": 5555,
+              "app": "${1:app}"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
