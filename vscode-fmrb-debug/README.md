@@ -56,7 +56,7 @@ the Linux simulation (`localhost:5555`).
 
 ## Status
 
-Phase 2 (TCP). The adapter (`fmruby-core/tools/debug/fmrb_dap_adapter.py`) is
-verified headless by `fmruby-core/tools/debug/test_phase2.py`. The VSCode UI
+Phase 2 (TCP). The adapter (`fmruby-core/tool/debug/fmrb_dap_adapter.py`) is
+verified headless by `fmruby-core/tool/debug/test_phase2.py`. The VSCode UI
 flow (F5, breakpoint gutter, variables pane, stepping) requires manual
 verification on a machine with the VSCode GUI.

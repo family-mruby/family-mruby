@@ -1,7 +1,7 @@
 // Minimal VSCode extension for the Family mruby remote debugger.
 //
 // It registers debug type "fmrb" and launches the Python DAP adapter
-// (fmruby-core/tools/debug/fmrb_dap_adapter.py) as an external process,
+// (fmruby-core/tool/debug/fmrb_dap_adapter.py) as an external process,
 // bridging VSCode's DAP to fmrb_debugd over TCP.
 //
 // extensionKind is ["ui"] so that under Remote-WSL the extension (and the
@@ -24,7 +24,7 @@ function activate(context) {
           context.extensionPath,
           "..",
           "fmruby-core",
-          "tools",
+          "tool",
           "debug",
           "fmrb_dap_adapter.py"
         );
