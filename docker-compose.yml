@@ -61,6 +61,11 @@ services:
       - ./fmruby-core:/project
       - fmruby-sockets:/var/run/fmrb
     working_dir: /project
+    # Remote debugger (doc/vm_remote_debug_*): expose the debugd TCP port so a
+    # host-side client (Python test client / VSCode DAP adapter) can connect.
+    # WSL2 -> Windows localhost forwarding makes it reachable as localhost:5555.
+    ports:
+      - "5555:5555"
     depends_on:
       fmruby-graphics-audio:
         condition: service_healthy
