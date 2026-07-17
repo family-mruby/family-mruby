@@ -47,8 +47,20 @@ SPECIAL_KEYS = {
 }
 for i in range(1, 13):
     SPECIAL_KEYS[f"f{i}"] = (58 + i - 1, 0)
-# shifted ascii -> base key name on JP/US-common digits row is layout dependent;
-# keep it simple: letters only for shift synthesis in text mode.
+
+# Punctuation: US scancode + unshifted ascii keycode (SDL reports the
+# unshifted sym; the receiver applies its own layout).
+PUNCT = {
+    "-": 45, "=": 46, "[": 47, "]": 48, "\\": 49, ";": 51, "'": 52,
+    "`": 53, ",": 54, ".": 55, "/": 56,
+}
+# shifted char -> base char (US layout)
+SHIFTED = {
+    "_": "-", "+": "=", "{": "[", "}": "]", "|": "\\", ":": ";",
+    '"': "'", "~": "`", "<": ",", ">": ".", "?": "/",
+    "!": "1", "@": "2", "#": "3", "$": "4", "%": "5",
+    "^": "6", "&": "7", "*": "8", "(": "9", ")": "0",
+}
 
 KMOD_SHIFT = 0x01
 
@@ -71,6 +83,8 @@ def key_lookup(name):
             return 39, ord("0"), mod
         if "1" <= c <= "9":
             return 30 + ord(c) - ord("1"), ord(c), mod
+        if c in PUNCT:
+            return PUNCT[c], ord(c), mod
     raise SystemExit(f"unknown key: {name}")
 
 
@@ -134,6 +148,8 @@ def parse_commands(argv):
                 mod = 0
                 if c.isupper():
                     name = c.lower(); mod = KMOD_SHIFT
+                elif c in SHIFTED:
+                    name = SHIFTED[c]; mod = KMOD_SHIFT
                 elif c == " ":
                     name = "space"
                 sc, kc, m = key_lookup(name)
