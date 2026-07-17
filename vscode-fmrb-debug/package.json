@@ -4,6 +4,10 @@
   "description": "Debug PicoRuby VMs running on Family mruby over the fmrb_debugd protocol (Phase 2: TCP / Linux sim).",
   "version": "0.0.1",
   "publisher": "family-mruby",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/family-mruby/family-mruby.git"
+  },
   "engines": {
     "vscode": "^1.70.0"
   },
@@ -11,13 +15,20 @@
     "Debuggers"
   ],
   "extensionKind": [
+    "workspace",
     "ui"
   ],
   "main": "./extension.js",
   "activationEvents": [
-    "onDebugResolve:fmrb"
+    "onDebugResolve:fmrb",
+    "onDebugDynamicConfigurations:fmrb"
   ],
   "contributes": {
+    "breakpoints": [
+      {
+        "language": "ruby"
+      }
+    ],
     "debuggers": [
       {
         "type": "fmrb",
@@ -27,9 +38,6 @@
         ],
         "configurationAttributes": {
           "attach": {
-            "required": [
-              "app"
-            ],
             "properties": {
               "host": {
                 "type": "string",
@@ -46,7 +54,7 @@
                   "string",
                   "number"
                 ],
-                "description": "Target app: name (from `ps`) or numeric pid."
+                "description": "Target app: name (from `ps`) or numeric pid. Omit to pick from a list of running apps at attach time."
               },
               "pythonPath": {
                 "type": "string",

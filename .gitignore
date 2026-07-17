@@ -9,3 +9,5 @@ flash/home/music/
 tmp/
 .env
 .codex
+.rake_tasks~
+*.vsix 
