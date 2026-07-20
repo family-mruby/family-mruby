@@ -2,7 +2,12 @@
 
 Family mruby 上で動作中の PicoRuby VM を VSCode からデバッグする拡張。
 デバイス側は fmruby-core の `fmrb_debugd` (doc/vm_remote_debug_* 参照)。
-Phase 2 時点のトランスポートは TCP (`localhost:5555`、Linux シミュレーション)。
+トランスポートは 2 種類:
+
+- **TCP** (`"transport": "tcp"`、既定) — Linux シミュレーション
+  (`localhost:5555`)。以下の手順 1-4。
+- **BLE** (`"transport": "ble"`) — ESP32 実機を BLE debug GATT サービス経由で
+  デバッグする。[実機を BLE でデバッグする](#実機を-ble-でデバッグする) 参照。
 
 ## 仕組み (最初に読む)
 
@@ -108,6 +113,67 @@ VSCode ウィンドウ (`family-mruby` か `fmruby-core` を開いているも�
 
 (`app` を省略するとアプリ選択 UI、名前か pid を書くと直接アタッチ。)
 
+## 実機を BLE でデバッグする
+
+アタッチの考え方は同じで、デバイス上の debugd に TCP ではなく BLE debug GATT
+サービス経由で接続する。検証対象は ESP32-S3 ("Retro")。
+
+### どこで何が動くか
+
+**WSL2 からは Bluetooth にアクセスできない**。そのため拡張は
+`extensionKind: ["ui"]` を宣言しており、Remote-WSL 利用時は拡張とそれが起動する
+Python アダプタの両方が **Windows 側**で動く。ワークスペースは `\\wsl$\...` の
+UNC パス越しになるが、Windows の Python はこのパスのスクリプト実行とファイル
+読み込みが可能。TCP デバッグも WSL2 の localhost フォワードでそのまま動く。
+
+### 準備 (初回のみ)
+
+1. **Windows 側**の Python に依存パッケージを入れる (WSL 側ではない):
+   ```
+   pip install bleak msgpack
+   ```
+2. Bluetooth が ON で、基板が他のホストと接続中でないことを確認する
+   (デバイスは同時 1 接続のみ)。
+3. デバイス名を起動ログの `BLE device name:` 行から調べる
+   (例: `Family-mruby-c4823e`)。末尾は MAC 下位 3 バイト。
+
+### launch.json
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "fmrb",
+      "request": "attach",
+      "name": "fmrb: attach over BLE",
+      "transport": "ble",
+      "deviceName": "Family-mruby-c4823e",
+      "app": "Kamon",
+      "pythonPath": "py"
+    }
+  ]
+}
+```
+
+- `deviceName` は省略可。省略時はスキャンし、`Family-mruby-*` が 1 台だけなら
+  接続する (複数台/0 台なら候補を含むエラーになる)。MAC アドレス指定も可能で、
+  その場合スキャンを省略するのでスキャンが不安定な環境で有効。
+- `pythonPath` の既定 `python3` は Windows には無いことが多い。`"py"` か
+  フルパス (例:
+  `"C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\python.exe"`)
+  を指定する。
+
+あとは手順 4 と同じ。基板でアプリを起動してからアタッチする。
+
+### 注意・制限
+
+- 切断 (電波断・VSCode 終了を含む) するとデバイス側が全 VM を自動 detach するので、
+  基板がパークしたまま取り残されることはない。
+- 自動再接続は無い。切れたらデバッグセッションを開始し直す。
+- 接続直後の最初のコマンドは数回リトライする。デバイス側が debugd の
+  トランスポート登録を終える前に届いたフレームは仕様上捨てられるため。
+
 ## 拡張自体を開発するとき (F5) — 通常は不要
 
 `vscode-fmrb-debug/` を VSCode で開いて F5 すると Extension Development
@@ -148,8 +214,21 @@ TCP 切断を検知して debugd が全 VM を自動 detach するので、ス�
   いるか、連結アプリの場合は直近ビルドで `*_combined.map.json` が再生成
   されているかを確認する。
 
+BLE 固有:
+
+- `bleak` が見つからない: WSL 側の Python に入れてしまっているか、
+  `pythonPath` が別のインタプリタを指している。
+- 「no Family-mruby-* device found」: Bluetooth OFF、基板の電源断、または
+  他のホストが接続を掴んだまま。デバイス名か MAC を明示指定して試す。
+- 接続はできるが全コマンドがタイムアウトする: 起動ログに
+  `debugd task started` が出ているか確認する。
+- `\\wsl$` の UNC パスからのアダプタ起動が不安定な場合は、
+  `fmruby-core/tool/debug/` を Windows 側のローカルフォルダにコピーし、
+  `adapterPath` でそちらを指す。
+
 ## ステータス
 
-Phase 2 (TCP)。アダプタ (`fmruby-core/tool/debug/fmrb_dap_adapter.py`) は
-`test_phase2.py` でヘッドレス検証済み。VSCode GUI 操作 (F5、BP ガター、
-変数ペイン、ステップ) の確認は GUI のあるマシンでの手動確認が必要。
+TCP (Linux シミュレーション) と BLE (ESP32-S3) の両トランスポートを実装済み。
+アダプタ (`fmruby-core/tool/debug/fmrb_dap_adapter.py`) は `test_phase2.py` で
+ヘッドレス検証済み、BLE のフレームコーデックはデバイス側 C 実装とバイト単位で
+突き合わせ済み。VSCode GUI 操作と BLE 実機 E2E は手動確認が必要。

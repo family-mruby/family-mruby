@@ -1,8 +1,8 @@
 {
   "name": "fmrb-debug",
   "displayName": "Family mruby Debug",
-  "description": "Debug PicoRuby VMs running on Family mruby over the fmrb_debugd protocol (Phase 2: TCP / Linux sim).",
-  "version": "0.0.1",
+  "description": "Debug PicoRuby VMs running on Family mruby over the fmrb_debugd protocol (TCP for the Linux simulation, BLE for ESP32 hardware).",
+  "version": "0.0.2",
   "publisher": "family-mruby",
   "repository": {
     "type": "git",
@@ -15,7 +15,6 @@
     "Debuggers"
   ],
   "extensionKind": [
-    "workspace",
     "ui"
   ],
   "main": "./extension.js",
@@ -39,15 +38,28 @@
         "configurationAttributes": {
           "attach": {
             "properties": {
+              "transport": {
+                "type": "string",
+                "enum": [
+                  "tcp",
+                  "ble"
+                ],
+                "description": "How to reach the debugger daemon: 'tcp' for the Linux simulation, 'ble' for ESP32 hardware.",
+                "default": "tcp"
+              },
               "host": {
                 "type": "string",
-                "description": "fmrb_debugd host.",
+                "description": "transport 'tcp': fmrb_debugd host.",
                 "default": "localhost"
               },
               "port": {
                 "type": "number",
-                "description": "fmrb_debugd TCP port.",
+                "description": "transport 'tcp': fmrb_debugd port.",
                 "default": 5555
+              },
+              "deviceName": {
+                "type": "string",
+                "description": "transport 'ble': device name, e.g. 'Family-mruby-c4823e' (see the 'BLE device name:' line in the boot log). Omit to scan for a single Family-mruby-* device."
               },
               "app": {
                 "type": [
@@ -116,6 +128,18 @@
               "host": "localhost",
               "port": 5555,
               "app": "${1:app}"
+            }
+          },
+          {
+            "label": "Family mruby: Attach over BLE",
+            "description": "Attach to a PicoRuby VM on ESP32 hardware over the BLE debug service.",
+            "body": {
+              "type": "fmrb",
+              "request": "attach",
+              "name": "fmrb: attach over BLE",
+              "transport": "ble",
+              "deviceName": "${1:Family-mruby-xxxxxx}",
+              "app": "${2:app}"
             }
           }
         ]
