@@ -2,7 +2,7 @@
   "name": "fmrb-debug",
   "displayName": "Family mruby Debug",
   "description": "Debug PicoRuby VMs running on Family mruby over the fmrb_debugd protocol (TCP for the Linux simulation, BLE for ESP32 hardware).",
-  "version": "0.0.2",
+  "version": "0.0.7",
   "publisher": "family-mruby",
   "repository": {
     "type": "git",
@@ -70,8 +70,7 @@
               },
               "pythonPath": {
                 "type": "string",
-                "description": "Python interpreter used to run the DAP adapter.",
-                "default": "python3"
+                "description": "Python interpreter used to run the DAP adapter. Defaults to 'py' on Windows (UI host), 'python3' elsewhere."
               },
               "adapterPath": {
                 "type": "string",

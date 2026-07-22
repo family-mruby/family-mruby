@@ -140,11 +140,22 @@ debugging still works from there thanks to WSL2's localhost forwarding.
    ```
 2. Make sure Bluetooth is on and the board is not already connected to another
    host (the device accepts one connection at a time).
-3. Find the device name from the boot log — look for the `BLE device name:`
-   line, e.g. `Family-mruby-c4823e`. The name always ends with the low three
-   bytes of the MAC.
+### Attach (no launch.json needed)
 
-### launch.json
+1. Launch the app you want to debug on the board.
+2. Open the Run and Debug panel and start
+   **"fmrb: attach over BLE (pick app)"** from the configuration dropdown.
+   The extension scans for a `Family-mruby-*` device, connects, and shows a
+   QuickPick of the running VMs — select the app and you are attached.
+3. Breakpoints, stepping and disconnect work exactly as in step 4 above.
+
+`pythonPath` defaults to `py` on Windows (the UI host) and `python3`
+elsewhere; set it explicitly only if you need a specific interpreter.
+
+### Pinning a launch.json (optional)
+
+If you always debug the same board/app, a fixed configuration skips the
+picker:
 
 ```json
 {
@@ -156,8 +167,7 @@ debugging still works from there thanks to WSL2's localhost forwarding.
       "name": "fmrb: attach over BLE",
       "transport": "ble",
       "deviceName": "Family-mruby-c4823e",
-      "app": "Kamon",
-      "pythonPath": "py"
+      "app": "Kamon"
     }
   ]
 }
@@ -166,12 +176,8 @@ debugging still works from there thanks to WSL2's localhost forwarding.
 - `deviceName` may be omitted: the adapter then scans and connects if exactly
   one `Family-mruby-*` device is visible (it reports the candidates otherwise).
   A MAC address works too and skips the scan, which helps if scanning is
-  unreliable.
-- `pythonPath` defaults to `python3`, which often does not exist on Windows.
-  Use `"py"` or a full path such as
-  `"C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\python.exe"`.
-
-Then launch the app on the board and attach exactly as in step 4.
+  unreliable. The name is printed in the boot log (`BLE device name:` line) and
+  always ends with the low three bytes of the MAC.
 
 ### Notes and limits
 

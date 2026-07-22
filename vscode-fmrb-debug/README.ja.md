@@ -134,10 +134,22 @@ UNC パス越しになるが、Windows の Python はこのパスのスクリプ
    ```
 2. Bluetooth が ON で、基板が他のホストと接続中でないことを確認する
    (デバイスは同時 1 接続のみ)。
-3. デバイス名を起動ログの `BLE device name:` 行から調べる
-   (例: `Family-mruby-c4823e`)。末尾は MAC 下位 3 バイト。
 
-### launch.json
+### アタッチする (launch.json 不要)
+
+1. 基板でデバッグしたいアプリを起動する。
+2. Run and Debug パネルの構成ドロップダウンから
+   **"fmrb: attach over BLE (pick app)"** を選んで開始する。
+   拡張が `Family-mruby-*` デバイスをスキャンして接続し、動作中の VM 一覧が
+   QuickPick で出るので、アプリを選べばアタッチ完了。
+3. ブレークポイント・ステップ実行・切断は手順 4 と同じ。
+
+`pythonPath` の既定は Windows (UI ホスト) では `py`、それ以外では `python3`。
+特定のインタプリタを使いたい場合のみ明示する。
+
+### launch.json に固定する (任意)
+
+毎回同じ基板・同じアプリなら、固定構成で選択 UI をスキップできる:
 
 ```json
 {
@@ -149,8 +161,7 @@ UNC パス越しになるが、Windows の Python はこのパスのスクリプ
       "name": "fmrb: attach over BLE",
       "transport": "ble",
       "deviceName": "Family-mruby-c4823e",
-      "app": "Kamon",
-      "pythonPath": "py"
+      "app": "Kamon"
     }
   ]
 }
@@ -158,13 +169,8 @@ UNC パス越しになるが、Windows の Python はこのパスのスクリプ
 
 - `deviceName` は省略可。省略時はスキャンし、`Family-mruby-*` が 1 台だけなら
   接続する (複数台/0 台なら候補を含むエラーになる)。MAC アドレス指定も可能で、
-  その場合スキャンを省略するのでスキャンが不安定な環境で有効。
-- `pythonPath` の既定 `python3` は Windows には無いことが多い。`"py"` か
-  フルパス (例:
-  `"C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\python.exe"`)
-  を指定する。
-
-あとは手順 4 と同じ。基板でアプリを起動してからアタッチする。
+  その場合スキャンを省略するのでスキャンが不安定な環境で有効。デバイス名は
+  起動ログの `BLE device name:` 行に出る (末尾は MAC 下位 3 バイト)。
 
 ### 注意・制限
 
