@@ -62,15 +62,31 @@ SHIFTED = {
     "^": "6", "&": "7", "*": "8", "(": "9", ")": "0",
 }
 
-KMOD_SHIFT = 0x01
+# Modifier byte values as the Linux sim input path expects them: sdl2-display
+# forwards SDL keysym.mod (low byte) and usb_task_linux.c maps SHIFT/CTRL to the
+# canonical FMRB_KEYMAP_MOD layout. NOTE: SDL's ALT bit is 0x100, truncated to
+# the low byte before it reaches the sim, so alt+ is UNRECOVERABLE in the Linux
+# sim (it works on real HW via USB HID). Use mouse clicks for Alt-only menus.
+KMOD_SHIFT = 0x01   # SDL KMOD_LSHIFT
+KMOD_CTRL  = 0x40   # SDL KMOD_LCTRL
+KMOD_ALT   = 0x00   # unrecoverable in the sim (see note above)
 
 
 def key_lookup(name):
-    """Return (scancode, keycode, modifier) for a key name."""
+    """Return (scancode, keycode, modifier) for a key name.
+
+    Accepts stackable modifier prefixes: shift+, ctrl+, alt+ (e.g. ctrl+s,
+    alt+d, shift+f11)."""
     mod = 0
-    if name.startswith("shift+"):
-        mod = KMOD_SHIFT
-        name = name[len("shift+"):]
+    while True:
+        if name.startswith("shift+"):
+            mod |= KMOD_SHIFT; name = name[len("shift+"):]
+        elif name.startswith("ctrl+"):
+            mod |= KMOD_CTRL; name = name[len("ctrl+"):]
+        elif name.startswith("alt+"):
+            mod |= KMOD_ALT; name = name[len("alt+"):]
+        else:
+            break
     name = name.lower()
     if name in SPECIAL_KEYS:
         sc, kc = SPECIAL_KEYS[name]
