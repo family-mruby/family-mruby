@@ -1,0 +1,12 @@
+services:
+  fmruby-desktop:
+    build:
+      context: .
+      dockerfile: Dockerfile.vnc
+    container_name: fmruby_desktop
+    ports:
+      - "6080:6080"   # noVNC (browser)
+      - "5901:5901"   # VNC direct
+    # Shared memory needed for sdl2-display <-> fmruby-graphics-audio IPC
+    shm_size: "256m"
+    restart: unless-stopped

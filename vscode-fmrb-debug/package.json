@@ -1,0 +1,148 @@
+{
+  "name": "fmrb-debug",
+  "displayName": "Family mruby Debug",
+  "description": "Debug PicoRuby VMs running on Family mruby over the fmrb_debugd protocol (TCP for the Linux simulation, BLE for ESP32 hardware).",
+  "version": "0.0.7",
+  "publisher": "family-mruby",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/family-mruby/family-mruby.git"
+  },
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Debuggers"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onDebugResolve:fmrb",
+    "onDebugDynamicConfigurations:fmrb"
+  ],
+  "contributes": {
+    "breakpoints": [
+      {
+        "language": "ruby"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "fmrb",
+        "label": "Family mruby (PicoRuby VM)",
+        "languages": [
+          "ruby"
+        ],
+        "configurationAttributes": {
+          "attach": {
+            "properties": {
+              "transport": {
+                "type": "string",
+                "enum": [
+                  "tcp",
+                  "ble"
+                ],
+                "description": "How to reach the debugger daemon: 'tcp' for the Linux simulation, 'ble' for ESP32 hardware.",
+                "default": "tcp"
+              },
+              "host": {
+                "type": "string",
+                "description": "transport 'tcp': fmrb_debugd host.",
+                "default": "localhost"
+              },
+              "port": {
+                "type": "number",
+                "description": "transport 'tcp': fmrb_debugd port.",
+                "default": 5555
+              },
+              "deviceName": {
+                "type": "string",
+                "description": "transport 'ble': device name, e.g. 'Family-mruby-c4823e' (see the 'BLE device name:' line in the boot log). Omit to scan for a single Family-mruby-* device."
+              },
+              "app": {
+                "type": [
+                  "string",
+                  "number"
+                ],
+                "description": "Target app: name (from `ps`) or numeric pid. Omit to pick from a list of running apps at attach time."
+              },
+              "pythonPath": {
+                "type": "string",
+                "description": "Python interpreter used to run the DAP adapter. Defaults to 'py' on Windows (UI host), 'python3' elsewhere."
+              },
+              "adapterPath": {
+                "type": "string",
+                "description": "Path to fmrb_dap_adapter.py (defaults to the sibling fmruby-core checkout)."
+              },
+              "pathMappings": {
+                "type": "array",
+                "description": "Device path <-> local workspace path mappings for standalone app files.",
+                "default": [
+                  {
+                    "device": "/app/",
+                    "local": "${workspaceFolder}/fmruby-core/flash/app/"
+                  }
+                ]
+              },
+              "projectMappings": {
+                "type": "array",
+                "description": "Device path <-> local mappings for combined-file segment sources.",
+                "default": [
+                  {
+                    "device": "/project/",
+                    "local": "${workspaceFolder}/fmruby-core/"
+                  }
+                ]
+              },
+              "combinedMaps": {
+                "type": "array",
+                "description": "Dirs/globs holding *_combined.map.json (combined-line <-> original file:line).",
+                "default": [
+                  "${workspaceFolder}/fmruby-core/main/prebuild_scripts/*/mrb"
+                ]
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "fmrb",
+            "request": "attach",
+            "name": "fmrb: attach to app",
+            "host": "localhost",
+            "port": 5555,
+            "app": "Kamon"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Family mruby: Attach",
+            "description": "Attach to a running PicoRuby VM via fmrb_debugd.",
+            "body": {
+              "type": "fmrb",
+              "request": "attach",
+              "name": "fmrb: attach to ${1:app}",
+              "host": "localhost",
+              "port": 5555,
+              "app": "${1:app}"
+            }
+          },
+          {
+            "label": "Family mruby: Attach over BLE",
+            "description": "Attach to a PicoRuby VM on ESP32 hardware over the BLE debug service.",
+            "body": {
+              "type": "fmrb",
+              "request": "attach",
+              "name": "fmrb: attach over BLE",
+              "transport": "ble",
+              "deviceName": "${1:Family-mruby-xxxxxx}",
+              "app": "${2:app}"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

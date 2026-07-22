@@ -1,0 +1,164 @@
+# =============================================================================
+# Family mruby - VNC Desktop Docker Image
+# Multi-stage build: ESP-IDF build -> Ubuntu VNC Desktop with pre-built binaries
+#
+# Usage:
+#   docker build -f Dockerfile.vnc -t fmruby-vnc .
+#   docker run --rm -p 6080:6080 fmruby-vnc
+#   Open http://localhost:6080 in browser
+# =============================================================================
+
+ARG GA_REPO=https://github.com/family-mruby/fmruby-graphics-audio.git
+ARG GA_BRANCH=main
+ARG CORE_REPO=https://github.com/family-mruby/fmruby-core.git
+ARG CORE_BRANCH=main
+
+# ---------------------------------------------------------------------------
+# Stage 1: Build fmruby-graphics-audio.elf (Linux target)
+# ---------------------------------------------------------------------------
+FROM espressif/idf:v5.5.1 AS builder-ga
+
+ARG GA_REPO
+ARG GA_BRANCH
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ruby libsdl2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone with submodules (use HTTPS to avoid SSH key issues in CI)
+WORKDIR /build
+RUN git config --global url."https://github.com/".insteadOf "git@github.com:" && \
+    git clone --recursive --branch ${GA_BRANCH} ${GA_REPO} fmruby-graphics-audio
+
+WORKDIR /build/fmruby-graphics-audio
+
+# Apply patches and build
+RUN bash -c '\
+    source /opt/esp/idf/export.sh && \
+    rake apply_patches && \
+    export IDF_TARGET=linux && \
+    idf.py --preview set-target linux && \
+    idf.py --preview -DCMAKE_BUILD_TYPE=Debug build'
+
+# ---------------------------------------------------------------------------
+# Stage 2: Build fmruby-core.elf (Linux target)
+# ---------------------------------------------------------------------------
+FROM espressif/idf:v5.5.1 AS builder-core
+
+ARG CORE_REPO
+ARG CORE_BRANCH
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ruby libsdl2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone with submodules (use HTTPS to avoid SSH key issues in CI)
+WORKDIR /build
+RUN git config --global url."https://github.com/".insteadOf "git@github.com:" && \
+    git clone --recursive --branch ${CORE_BRANCH} ${CORE_REPO} fmruby-core
+
+WORKDIR /build/fmruby-core
+
+# Setup (copy mrbgems, patches) and build
+RUN bash -c '\
+    source /opt/esp/idf/export.sh && \
+    rake setup && \
+    cp config/system_conf_linux.toml flash/etc/system_conf.toml && \
+    export IDF_TARGET=linux && \
+    idf.py --preview -DSDKCONFIG_DEFAULTS="config/sdkconfig.defaults.linux" set-target linux && \
+    idf.py --preview -DSDKCONFIG_DEFAULTS="config/sdkconfig.defaults.linux" -DCMAKE_BUILD_TYPE=Debug build'
+
+# ---------------------------------------------------------------------------
+# Stage 3: Build sdl2-display (reuse headers from builder-ga)
+# ---------------------------------------------------------------------------
+FROM ubuntu:24.04 AS builder-sdl2
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential libsdl2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY --from=builder-ga /build/fmruby-graphics-audio/main/common/shm_display.h /build/include/
+COPY --from=builder-ga /build/fmruby-graphics-audio/main/include/fmrb_hid_event.h /build/include/
+COPY --from=builder-ga /build/fmruby-graphics-audio/sdl2-display/main.c /build/
+
+RUN gcc -Wall -Wextra -O2 \
+    $(sdl2-config --cflags) \
+    -I/build/include \
+    -o sdl2-display main.c \
+    $(sdl2-config --libs) -lrt -lpthread
+
+# ---------------------------------------------------------------------------
+# Stage 4: Runtime - Ubuntu Desktop with VNC + noVNC
+# ---------------------------------------------------------------------------
+FROM ubuntu:24.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=en_US.UTF-8
+
+# Install desktop environment, VNC, noVNC, and SDL2 runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Desktop
+    xfce4 xfce4-terminal dbus-x11 \
+    # VNC
+    tigervnc-standalone-server tigervnc-common \
+    # noVNC (browser access)
+    novnc websockify \
+    # SDL2 runtime
+    libsdl2-2.0-0 \
+    # Utilities
+    supervisor procps net-tools xterm \
+    # Fonts
+    fonts-noto-cjk \
+    # Locale
+    locales \
+    && rm -rf /var/lib/apt/lists/* \
+    && locale-gen en_US.UTF-8
+
+# Create non-root user (handle pre-existing UID/GID in base image)
+RUN groupadd -f -g 1000 fmruby || true && \
+    useradd -m -u 1000 -g 1000 -s /bin/bash fmruby 2>/dev/null || \
+    usermod -l fmruby -d /home/fmruby -m $(getent passwd 1000 | cut -d: -f1) 2>/dev/null || true
+
+# VNC configuration (no auth - local dev use)
+RUN mkdir -p /home/fmruby/.vnc && \
+    chown -R fmruby:fmruby /home/fmruby/.vnc
+
+# Create runtime directories
+RUN mkdir -p /var/run/fmrb && chmod 1777 /var/run/fmrb && \
+    mkdir -p /opt/fmruby/bin && \
+    mkdir -p /opt/fmruby/flash
+
+# Copy built binaries from build stages
+COPY --from=builder-ga /build/fmruby-graphics-audio/build/fmruby-graphics-audio.elf /opt/fmruby/bin/
+COPY --from=builder-core /build/fmruby-core/build/fmruby-core.elf /opt/fmruby/bin/
+COPY --from=builder-sdl2 /build/sdl2-display /opt/fmruby/bin/
+
+# Copy flash filesystems (each process has its own flash/)
+COPY --from=builder-core /build/fmruby-core/flash/ /opt/fmruby/core/flash/
+COPY --from=builder-ga /build/fmruby-graphics-audio/flash/ /opt/fmruby/ga/flash/
+
+# Make binaries executable and flash writable by fmruby user
+RUN chmod +x /opt/fmruby/bin/* && \
+    chown -R fmruby:1000 /opt/fmruby/core/flash && \
+    chown -R fmruby:1000 /opt/fmruby/ga/flash
+
+# Copy startup scripts
+COPY vnc/entrypoint.sh /opt/fmruby/entrypoint.sh
+COPY vnc/supervisord.conf /etc/supervisor/conf.d/fmruby.conf
+COPY vnc/start-fmruby.sh /opt/fmruby/start-fmruby.sh
+RUN chmod +x /opt/fmruby/entrypoint.sh /opt/fmruby/start-fmruby.sh
+
+# VNC xstartup
+RUN printf '#!/bin/sh\nunset SESSION_MANAGER\nexec startxfce4\n' \
+    > /home/fmruby/.vnc/xstartup && \
+    chmod +x /home/fmruby/.vnc/xstartup && \
+    chown -R fmruby:fmruby /home/fmruby
+
+# Ports: 5901=VNC, 6080=noVNC (browser)
+EXPOSE 5901 6080
+
+ENTRYPOINT ["/opt/fmruby/entrypoint.sh"]

@@ -1,0 +1,7 @@
+services:
+  sdl2-display:
+    environment:
+      - PULSE_SERVER=unix:/mnt/wslg/runtime-dir/pulse/native
+      - XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir
+    volumes:
+      - /mnt/wslg:/mnt/wslg

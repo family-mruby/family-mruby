@@ -1,1 +1,14 @@
 src/
+fmruby-core/
+fmruby-graphics-audio/
+fmrb-audio-tools/
+sandbox/
+.vscode/
+.claude/
+.codex/
+flash/home/music/
+tmp/
+.env
+.codex
+.rake_tasks~
+*.vsix

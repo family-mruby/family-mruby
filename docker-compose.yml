@@ -1,0 +1,80 @@
+services:
+  # SDL2 display process (separate from FreeRTOS to avoid SIGALRM conflicts)
+  sdl2-display:
+    build:
+      context: ./fmruby-graphics-audio
+      dockerfile: sdl2-display/Dockerfile
+    container_name: fmruby_sdl2_display
+    user: "${UID:-1000}:${GID:-1000}"
+    init: true
+    stop_grace_period: 2s
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - SDL_VIDEODRIVER=x11
+      - SDL_AUDIODRIVER=pulseaudio
+      - PULSE_LATENCY_MSEC=20
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - fmruby-sockets:/var/run/fmrb
+    ipc: host
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /proc/1/status"]
+      interval: 1s
+      timeout: 3s
+      retries: 10
+      start_period: 1s
+
+  fmruby-graphics-audio:
+    image: ghcr.io/family-mruby/fmruby-esp32-build:latest
+    container_name: fmruby_graphics_audio
+    user: "${UID:-1000}:${GID:-1000}"
+    init: true
+    stop_grace_period: 2s
+    environment:
+      - HOME=/tmp
+      - GIT_CONFIG_PARAMETERS=safe.directory=/opt/esp/idf
+    volumes:
+      - ./fmruby-graphics-audio:/project
+      - fmruby-sockets:/var/run/fmrb
+    ipc: host
+    working_dir: /project
+    depends_on:
+      sdl2-display:
+        condition: service_healthy
+    command: sh -c "./build/fmruby-graphics-audio.elf"
+    healthcheck:
+      test: ["CMD-SHELL", "test -S /var/run/fmrb/fmrb_socket && test -S /var/run/fmrb/fmrb_input_socket"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+      start_period: 1s
+
+  fmruby-core:
+    image: ghcr.io/family-mruby/fmruby-esp32-build:latest
+    container_name: fmruby_core
+    user: "${UID:-1000}:${GID:-1000}"
+    init: true
+    environment:
+      - HOME=/tmp
+      - GIT_CONFIG_PARAMETERS=safe.directory=/opt/esp/idf
+    volumes:
+      - ./fmruby-core:/project
+      - fmruby-sockets:/var/run/fmrb
+    working_dir: /project
+    # Remote debugger (doc/vm_remote_debug_*): expose the debugd TCP port so a
+    # host-side client (Python test client / VSCode DAP adapter) can connect.
+    # WSL2 -> Windows localhost forwarding makes it reachable as localhost:5555.
+    ports:
+      - "5555:5555"
+    depends_on:
+      fmruby-graphics-audio:
+        condition: service_healthy
+    command: sh -c "./build/fmruby-core.elf"
+
+volumes:
+  fmruby-sockets:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: uid=${UID:-1000},gid=${GID:-1000},mode=1777

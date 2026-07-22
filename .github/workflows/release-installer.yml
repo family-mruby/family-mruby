@@ -1,0 +1,168 @@
+name: Release Firmware to Installer
+
+# Builds both ESP32 firmwares (fmruby-core, fmruby-graphics-audio) on a
+# semver-style tag push and stages them into the family-mruby-installer repo.
+#
+# Build environment matches local development and the per-repo CI:
+#   - Uses the prebuilt ghcr.io/family-mruby/fmruby-esp32-build image
+#   - ESP-IDF version is taken from fmruby-core/.env (ESP_IDF_VERSION=...)
+#   - rake build:esp32 inside each sub-repo runs docker run on that image
+#
+# The source revisions used for the build are pinned in `.repos` (each
+# repository has its own `version` field), so update `.repos` and commit
+# before tagging this repo to control which sub-repo refs go into the release.
+#
+# Required secret: INSTALLER_DEPLOY_KEY
+#   - SSH private key matching a Deploy Key (write-enabled) on the
+#     family-mruby/family-mruby-installer repository.
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to publish (e.g. 0.2.0)'
+        required: true
+        type: string
+
+env:
+  INSTALLER_REPO: family-mruby/family-mruby-installer
+  ESP32_BUILD_IMAGE: ghcr.io/family-mruby/fmruby-esp32-build
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Install release dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq openssh-client
+
+      - name: Checkout family-mruby
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+
+      - name: Determine release version
+        id: ver
+        run: |
+          VER="${{ github.event.inputs.version || github.ref_name }}"
+          if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '$VER' is not in MAJOR.MINOR.PATCH form"
+            exit 1
+          fi
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "Publishing firmware ${VER}"
+
+      - name: Fetch source repos pinned in .repos
+        run: |
+          # Some submodules (e.g. fmruby-graphics-audio's LovyanGFX) use
+          # git@github.com: URLs. The runner has no SSH key for those public
+          # repos, so rewrite to HTTPS only while rake fetch runs and unset
+          # right after, leaving SSH intact for the installer-repo deploy key.
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          rake fetch
+          git config --global --unset url."https://github.com/".insteadOf
+
+      - name: Resolve ESP-IDF image tag from fmruby-core/.env
+        id: idf
+        run: |
+          ESP_IDF_VERSION=$(grep '^ESP_IDF_VERSION=' fmruby-core/.env | cut -d= -f2 | tr -d '[:space:]')
+          if [[ -z "$ESP_IDF_VERSION" ]]; then
+            echo "::error::Could not read ESP_IDF_VERSION from fmruby-core/.env"
+            exit 1
+          fi
+          echo "version=${ESP_IDF_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Build image: ${ESP32_BUILD_IMAGE}:${ESP_IDF_VERSION}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and tag esp32-build image
+        env:
+          IDF_VER: ${{ steps.idf.outputs.version }}
+        run: |
+          docker pull "${ESP32_BUILD_IMAGE}:${IDF_VER}"
+          # Rakefile defaults to :latest, so retag the pinned version as :latest
+          # to keep both sub-repos using the exact same image we just pulled.
+          docker tag "${ESP32_BUILD_IMAGE}:${IDF_VER}" "${ESP32_BUILD_IMAGE}:latest"
+
+      - name: Build fmruby-core (ESP32-S3)
+        working-directory: fmruby-core
+        run: rake build:esp32
+
+      - name: Build fmruby-graphics-audio (ESP32 / WROVER)
+        working-directory: fmruby-graphics-audio
+        run: rake build:esp32
+
+      - name: Setup SSH for installer repo
+        env:
+          DEPLOY_KEY: ${{ secrets.INSTALLER_DEPLOY_KEY }}
+        run: |
+          if [[ -z "$DEPLOY_KEY" ]]; then
+            echo "::error::INSTALLER_DEPLOY_KEY secret is not set"
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Clone installer repo
+        run: |
+          git clone "git@github.com:${INSTALLER_REPO}.git" installer
+          cd installer
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Stage firmware into installer
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          cd installer
+          FMRUBY_CORE_BUILD="$GITHUB_WORKSPACE/fmruby-core/build" \
+          FMRUBY_GFX_BUILD="$GITHUB_WORKSPACE/fmruby-graphics-audio/build" \
+          bash scripts/stage-firmware.sh "$VER"
+
+      - name: Update versions.json
+        working-directory: installer
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          jq --arg ver "$VER" --arg date "$TODAY" '
+            .default = $ver
+            | if (.versions | map(.tag) | index($ver)) then
+                .
+              else
+                .versions |= ([{tag: $ver, released: $date}] + .)
+              end
+          ' versions.json > versions.json.tmp
+          mv versions.json.tmp versions.json
+          cat versions.json
+
+      - name: Commit and push
+        working-directory: installer
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          git add "firmware/${VER}" versions.json
+          if git diff --staged --quiet; then
+            echo "No changes to commit (firmware ${VER} already published)"
+            exit 0
+          fi
+          git commit -m "Release firmware ${VER} from family-mruby tag"
+          git push origin HEAD:main
