@@ -1,3 +1,6 @@
+# Pin the build image to a version tag, never :latest -- two machines on the same
+# commit have already ended up with different IDF and toolchain versions that way.
+# Keep this in sync with ESP_IDF_VERSION in fmruby-core/Rakefile.
 services:
   # SDL2 display process (separate from FreeRTOS to avoid SIGALRM conflicts)
   sdl2-display:
@@ -25,7 +28,7 @@ services:
       start_period: 1s
 
   fmruby-graphics-audio:
-    image: ghcr.io/family-mruby/fmruby-esp32-build:latest
+    image: ghcr.io/family-mruby/fmruby-esp32-build:v5.5.4
     container_name: fmruby_graphics_audio
     user: "${UID:-1000}:${GID:-1000}"
     init: true
@@ -50,7 +53,7 @@ services:
       start_period: 1s
 
   fmruby-core:
-    image: ghcr.io/family-mruby/fmruby-esp32-build:latest
+    image: ghcr.io/family-mruby/fmruby-esp32-build:v5.5.4
     container_name: fmruby_core
     user: "${UID:-1000}:${GID:-1000}"
     init: true
