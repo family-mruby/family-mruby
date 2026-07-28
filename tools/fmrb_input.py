@@ -20,9 +20,14 @@ Usage (commands run in sequence, left to right):
                                         # tab space backspace up down left right f1-f12
   fmrb_input.py key shift+NAME          # with shift modifier
   fmrb_input.py text "STRING"           # type a string (ascii)
+  fmrb_input.py --layout jp ...          # keyboard layout for text/key
+                                        # (default: keyboard_layout from
+                                        #  config/system_conf_linux.toml)
   fmrb_input.py sleep MS                # pause between commands
   Multiple commands: fmrb_input.py click 30 220 sleep 500 key enter
 """
+import os
+import re
 import struct
 import subprocess
 import sys
@@ -48,19 +53,73 @@ SPECIAL_KEYS = {
 for i in range(1, 13):
     SPECIAL_KEYS[f"f{i}"] = (58 + i - 1, 0)
 
-# Punctuation: US scancode + unshifted ascii keycode (SDL reports the
-# unshifted sym; the receiver applies its own layout).
-PUNCT = {
-    "-": 45, "=": 46, "[": 47, "]": 48, "\\": 49, ";": 51, "'": 52,
-    "`": 53, ",": 54, ".": 55, "/": 56,
+# Character to key mapping. The device converts scancode + shift to a character
+# with the table in fmruby-core/main/drivers/usb/fmrb_keymap.c, honouring
+# keyboard_layout from system_conf. This tool reads that same table and inverts
+# it, so `text` types what the device will actually see -- with the layout
+# hard coded to US, "PRINT \"X\"" arrived as PRINT *X* on a jp configured
+# system (B3.5 report #26).
+HERE = os.path.dirname(os.path.abspath(__file__))
+KEYMAP_C = os.path.join(HERE, "..", "fmruby-core", "main", "drivers", "usb", "fmrb_keymap.c")
+SYSTEM_CONF = os.path.join(HERE, "..", "fmruby-core", "config", "system_conf_linux.toml")
+
+_CHAR_LITERAL = {
+    "'\\n'": "\n", "'\\t'": "\t", "'\\b'": "\b", "'\\\\'": "\\", "'\\''": "'",
 }
-# shifted char -> base char (US layout)
-SHIFTED = {
-    "_": "-", "+": "=", "{": "[", "}": "]", "|": "\\", ":": ";",
-    '"': "'", "~": "`", "<": ",", ">": ".", "?": "/",
-    "!": "1", "@": "2", "#": "3", "$": "4", "%": "5",
-    "^": "6", "&": "7", "*": "8", "(": "9", ")": "0",
-}
+
+
+def _literal(text):
+    """One C char literal from the keymap table -> the character, or None."""
+    text = text.strip()
+    if text == "0":
+        return None
+    if text in _CHAR_LITERAL:
+        return _CHAR_LITERAL[text]
+    if len(text) == 3 and text[0] == "'" and text[2] == "'":
+        return text[1]
+    return None
+
+
+def load_keymap(layout):
+    """{char: (scancode, needs_shift)} for "us" or "jp", from the firmware table."""
+    try:
+        source = open(KEYMAP_C, encoding="utf-8").read()
+    except OSError:
+        return {}
+    marker = "static const keymap_entry_t %s_keymap[] = {" % layout
+    start = source.find(marker)
+    if start < 0:
+        return {}
+    body = source[start + len(marker):source.find("};", start)]
+    table = {}
+    for line in body.split("\n"):
+        m = re.match(r"\s*\[(\d+)\]\s*=\s*\{(.+?),(.+?)\}", line)
+        if not m:
+            continue
+        scancode = int(m.group(1))
+        plain = _literal(m.group(2))
+        shifted = _literal(m.group(3))
+        if plain is not None and plain not in table:
+            table[plain] = (scancode, False)
+        if shifted is not None and shifted != plain and shifted not in table:
+            table[shifted] = (scancode, True)
+    return table
+
+
+def configured_layout():
+    """keyboard_layout from the simulation system config, "us" when unset."""
+    try:
+        for line in open(SYSTEM_CONF, encoding="utf-8"):
+            m = re.match(r'\s*keyboard_layout\s*=\s*"([a-z]+)"', line)
+            if m:
+                return m.group(1)
+    except OSError:
+        pass
+    return "us"
+
+
+LAYOUT = configured_layout()
+CHAR_KEYS = load_keymap(LAYOUT)
 
 # Modifier byte values as the Linux sim input path expects them: sdl2-display
 # forwards SDL keysym.mod (low byte) and usb_task_linux.c maps SHIFT/CTRL to the
@@ -92,16 +151,28 @@ def key_lookup(name):
         sc, kc = SPECIAL_KEYS[name]
         return sc, kc, mod
     if len(name) == 1:
-        c = name[0]
-        if "a" <= c <= "z":
-            return 4 + ord(c) - ord("a"), ord(c), mod
-        if c == "0":
-            return 39, ord("0"), mod
-        if "1" <= c <= "9":
-            return 30 + ord(c) - ord("1"), ord(c), mod
-        if c in PUNCT:
-            return PUNCT[c], ord(c), mod
+        sc, shift = char_key(name[0])
+        if sc is not None:
+            return sc, ord(name[0]), mod | (KMOD_SHIFT if shift else 0)
     raise SystemExit(f"unknown key: {name}")
+
+
+def char_key(ch):
+    """(scancode, needs_shift) for a character under the active layout."""
+    if ch in CHAR_KEYS:
+        return CHAR_KEYS[ch]
+    # Fallback for a checkout without the firmware source: ASCII letters and
+    # digits sit at the same scancodes in every layout.
+    low = ch.lower()
+    if "a" <= low <= "z":
+        return 4 + ord(low) - ord("a"), ch.isupper()
+    if ch == "0":
+        return 39, False
+    if "1" <= ch <= "9":
+        return 30 + ord(ch) - ord("1"), False
+    if ch == " ":
+        return 44, False
+    return None, False
 
 
 def pkt(ev_type, payload):
@@ -122,6 +193,12 @@ def ev_key(ev_type, scancode, keycode, modifier):
 
 def parse_commands(argv):
     """Return a list of (delay_before_ms, packet_bytes)."""
+    global LAYOUT, CHAR_KEYS
+    if "--layout" in argv:
+        at = argv.index("--layout")
+        LAYOUT = argv[at + 1]
+        CHAR_KEYS = load_keymap(LAYOUT)
+        del argv[at:at + 2]
     out = []
     i = 0
 
@@ -160,18 +237,17 @@ def parse_commands(argv):
             out.append((KEY_DELAY_MS, ev_key(EV_KEY_UP, sc, kc, mod)))
         elif cmd == "text":
             for c in take(1)[0]:
-                name = c
-                mod = 0
-                if c.isupper():
-                    name = c.lower(); mod = KMOD_SHIFT
-                elif c in SHIFTED:
-                    name = SHIFTED[c]; mod = KMOD_SHIFT
-                elif c == " ":
-                    name = "space"
-                sc, kc, m = key_lookup(name)
-                out.append((max(pending_sleep, KEY_DELAY_MS), ev_key(EV_KEY_DOWN, sc, kc, mod | m)))
+                sc, shift = char_key(c)
+                if sc is None:
+                    raise SystemExit(
+                        "cannot type %r with the %s layout" % (c, LAYOUT))
+                mod = KMOD_SHIFT if shift else 0
+                # keycode carries the unshifted symbol, as SDL reports it; the
+                # device derives the character from scancode + modifier.
+                kc = ord(c.lower()) if c.isalpha() else ord(c)
+                out.append((max(pending_sleep, KEY_DELAY_MS), ev_key(EV_KEY_DOWN, sc, kc, mod)))
                 pending_sleep = 0
-                out.append((KEY_DELAY_MS, ev_key(EV_KEY_UP, sc, kc, mod | m)))
+                out.append((KEY_DELAY_MS, ev_key(EV_KEY_UP, sc, kc, mod)))
         else:
             raise SystemExit(f"unknown command: {cmd}")
         i += 1
