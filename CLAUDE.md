@@ -45,18 +45,22 @@ python3 tools/fmrb_screenshot.py [--wait 秒] 出力.png
 ## 入力注入 (合成マウス/キーボードイベント)
 
 ```
-python3 tools/fmrb_input.py <コマンド列>
+ruby tools/fmrb_input.rb <コマンド列>
 ```
 
 - コマンド: `move X Y` / `click X Y [--button N]` / `down X Y` / `up X Y` /
   `key NAME` (a-z 0-9 enter esc tab space backspace up down left right f1-f12) /
   `key shift+NAME` / `text "STRING"` / `sleep MS`。左から順に実行される。
 - 座標はフレームバッファ座標 (320x240)。ウィンドウ拡大率とは無関係。
+- `text` / `key` の文字→キー変換はファームウェアの変換表
+  (fmruby-core/main/drivers/usb/fmrb_keymap.c) を読んで逆引きし、配列は
+  config/system_conf_linux.toml の `keyboard_layout` に追従する
+  (`--layout us|jp` で上書き)。記号を打つときはこれが効く。
 - 例: メニューを開いて Launcher を選択 → アイコンをダブルクリックで起動:
   ```
-  python3 tools/fmrb_input.py click 20 5 sleep 500 click 15 17
-  python3 tools/fmrb_input.py click 30 55 sleep 120 click 30 55   # ダブルクリック
-  python3 tools/fmrb_input.py text "help" key enter
+  ruby tools/fmrb_input.rb click 20 5 sleep 500 click 15 17
+  ruby tools/fmrb_input.rb click 30 55 sleep 120 click 30 55   # ダブルクリック
+  ruby tools/fmrb_input.rb text "help" key enter
   ```
 - 操作後は fmrb_screenshot.py で画面を撮って結果を確認する。
 
@@ -70,4 +74,19 @@ python3 tools/fmrb_input.py <コマンド列>
 - sdl2-display/main.c を変更した場合は `docker compose build sdl2-display` が必要。
 - 検証を終えたら `docker compose down` で片付ける (dev_run_check.sh のデフォルトは自動 down)。
 - ヘッドレス検証で確認できないもの: 音声出力、NTSC 実出力、実機挙動。これらはユーザが確認する。
+
+## 周辺ツールの言語
+
+本プロジェクトの周辺ツール (検証・生成・変換スクリプト) は、**可能なものは
+Ruby で書く**。ビルドが Rake で回っており、実機で動く言語も Ruby (mruby /
+PicoRuby) なので、道具立てを揃えるほうが読み書きしやすいため。
+
+- 新規ツールは原則 Ruby。既存の Python ツールも、標準ライブラリだけで
+  書き直せるものは Ruby へ移す (例: tools/fmrb_input.rb)。
+- Python のままにしてよいのは、置き換えに外部ライブラリ相当の実装が要る
+  もの: 画像処理 (Pillow を使う PNG 生成・BMP 変換)、既存の Python 資産に
+  依存するもの (debugd クライアント tool/debug/fmrb_dbg_client.py とその
+  利用ツール)。
+- コンテナ内で実行する部分は、そのイメージに入っている言語に合わせる
+  (ESP-IDF イメージには python3 はあるが ruby は無い)。
 
