@@ -45,7 +45,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends jq openssh-client
 
       - name: Checkout family-mruby
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
@@ -85,7 +85,7 @@ jobs:
           echo "Build image: ${ESP32_BUILD_IMAGE}:${ESP_IDF_VERSION}"
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
