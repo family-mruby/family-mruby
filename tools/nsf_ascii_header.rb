@@ -62,10 +62,16 @@ def kata_to_hira(s)
 end
 
 # UTF-8 Japanese -> best-effort romaji/ASCII. Non-convertible chars vanish.
+ROMAN = { "Ⅰ" => "I", "Ⅱ" => "II", "Ⅲ" => "III", "Ⅳ" => "IV", "Ⅴ" => "V",
+          "Ⅵ" => "VI", "Ⅶ" => "VII", "Ⅷ" => "VIII", "Ⅸ" => "IX", "Ⅹ" => "X",
+          "…" => "...", "ー" => "-" }.freeze
+
 def to_ascii(str)
   s = kata_to_hira(str)
+  s = s.gsub(Regexp.union(ROMAN.keys), ROMAN)
   s = s.tr("０-９ａ-ｚＡ-Ｚ", "0-9a-zA-Z")   # fullwidth alnum
-  s = s.tr("　・ー〜", " .-~")
+  # NOTE: no "-" in the tr replacement -- tr would read it as a range
+  s = s.tr("　・〜", " .~")
   out = +""
   chars = s.chars
   i = 0
