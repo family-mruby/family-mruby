@@ -73,7 +73,53 @@ ruby tools/fmrb_input.rb <コマンド列>
   転送する。実 SDL イベントと注入イベントは同一経路で直列化される。
 - sdl2-display/main.c を変更した場合は `docker compose build sdl2-display` が必要。
 - 検証を終えたら `docker compose down` で片付ける (dev_run_check.sh のデフォルトは自動 down)。
-- ヘッドレス検証で確認できないもの: 音声出力、NTSC 実出力、実機挙動。これらはユーザが確認する。
+- ヘッドレス検証で確認できないもの: 音声出力、NTSC 実出力、実機挙動。これらはユーザが確認する
+  (ただし S3 実機の flash とブートログ確認は下記の手順で自律的にできる)。
+
+# ESP32-S3 実機の自律検証 (flash + シリアルログ)
+
+NARYA (S3) が USB 接続されていれば、Claude Code は flash からブートログの
+確認まで自律的に行える。作業ディレクトリは fmruby-core。
+
+## 手順
+
+```
+rake check-port                     # 初回のみ: S3 のポートを検出して .serial_port にキャッシュ
+FLASH_BAUD=115200 rake flash        # 書き込み (460800 は WSL2 で接続に失敗しやすい)
+python3 ../tools/fmrb_serial_capture.py -t 40 boot.log   # リセット → 40 秒ログ採取
+```
+
+- capture はデフォルトで RTS パルスのリセットを打つので、ログはブートバナー
+  から始まる。稼働中の観測は `--no-reset` (ただし open だけでリセットが
+  かかるアダプタもある)。ファイルは採取中でも grep できる。
+- ブートの健全性は `grep -c "Guru\|abort"` が 0、周期ダンプの
+  `IRAM free:` が想定値であることで判定する。
+
+## ログの読み方 (常設計装)
+
+- `grep "M1|"`: ブートステップごとの内蔵 RAM スナップショット
+  (`M1|ラベル|internal=..|largest=..|psram=..`)。隣接行の差分が各ステップの
+  消費。アプリ起動ごとに `spawn:<名前>` 行も出る (doc/internal_ram_budget.md)。
+- 10 秒周期ダンプ: `fmrb_task:` が各タスクの stack high-water (Free 列、
+  単調悪化なので最後の値 = セッション最悪値)、`fmrb_app:` が VM プールと
+  Spinel の ExcHW (例外/catch スタック深さ)。
+- 入力遅延は `spx: hid_lat` (1000 イベントごと)、GFX は `GFX STATS`。
+
+## 注意
+
+- **シリアルポートは排他**。ユーザのログモニタや自分の capture が掴んで
+  いると flash が "device reports readiness to read but returned no data"
+  で失敗する。flash 前に capture を止める。逆にユーザがモニタを繋ぐと
+  ボードがリセットされる (POWERON リセットとしてログに出る)。
+- 実機の UI 操作 (入力注入) はできない。S3 の debugd は BLE のみなので
+  TCP の debugd クライアントも使えない。操作が要る検証は Linux sim で行うか、
+  ユーザに操作を依頼してシリアルで結果を観測する。
+- Tab5 (P4) は DTR/RTS リセット非対応。flash 後はユーザにボタンリセットを
+  依頼する。
+- ビルドの罠: lib/ を編集したら `rake clean`、ターゲット切替 (linux⇔esp32)
+  は `rake clean_all`。`rake build:linux` は esp32 の build/ が残っていると
+  **Xtensa のまま "Linux build complete" と表示する**ので、検証と主張する
+  前に `file build/fmruby-core.elf` で x86-64 を確認する。
 
 ## 周辺ツールの言語
 
@@ -86,7 +132,8 @@ PicoRuby) なので、道具立てを揃えるほうが読み書きしやすい�
 - Python のままにしてよいのは、置き換えに外部ライブラリ相当の実装が要る
   もの: 画像処理 (Pillow を使う PNG 生成・BMP 変換)、既存の Python 資産に
   依存するもの (debugd クライアント tool/debug/fmrb_dbg_client.py とその
-  利用ツール)。
+  利用ツール)、シリアルの RTS/DTR 制御 (pyserial を使う
+  tools/fmrb_serial_capture.py。esptool 経由で pyserial は既にホスト依存)。
 - コンテナ内で実行する部分は、そのイメージに入っている言語に合わせる
   (ESP-IDF イメージには python3 はあるが ruby は無い)。
 
