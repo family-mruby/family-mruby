@@ -98,8 +98,18 @@ tools/dev_run_check.sh --keep
 - **GM 音源で実際に鳴らす**なら `--fluidsynth --soundfont /usr/share/sounds/sf2/FluidR3_GM.sf2`。
   WSL2 では ALSA シーケンサが無いので `ttymidi` + `aconnect` の定番経路は使えず、
   fluidsynth のコマンドシェルに流して PulseAudio で鳴らす形になっている。
-  docker で済ませるなら `docker compose -f docker-compose.yml -f docker-compose.wsl.yml
-  -f docker-compose.midi.yml up -d` (midi-gm サービス)。
+  必要なパッケージ (Ubuntu 標準リポジトリ。sudo が要るのでユーザに依頼する):
+
+  ```
+  sudo apt-get install -y fluidsynth fluid-soundfont-gm
+  ```
+
+  `fluidsynth` が本体、`fluid-soundfont-gm` が `/usr/share/sounds/sf2/FluidR3_GM.sf2`
+  (GM 音色、142MB) を入れる。容量を惜しむなら `timgm6mb-soundfont` (約 6MB) でも
+  音色の割り当て確認には足りる。
+  **ホストに入れたくないなら docker で済む**:
+  `docker compose -f docker-compose.yml -f docker-compose.wsl.yml
+  -f docker-compose.midi.yml up -d` (midi-gm サービスが同じことをする)。
 - 注意: **モニタを起動していなくても core 側は詰まらない** (FIFO は
   O_NONBLOCK で開かれ、パイプバッファに溜まる)。後からモニタを起動すると
   溜まった分が読める。
