@@ -36,18 +36,20 @@ module FmrbAudioProbe
     duration = float(sys.argv[1])
     interval = float(sys.argv[2])
     path = sys.argv[3]
+    dump = sys.argv[4] if len(sys.argv) > 4 else ""
 
-    MAX_W, MAX_H = 480, 320
-    FRAMEBUF = MAX_W * MAX_H
     RING = 2048 * 2                      # stereo int16 slots
-    # struct fmrb_shm_t: magic, display_initialized, shutdown_requested,
-    # width, height, color_depth, scaling_x, scaling_y, then framebuf.
-    HEADER = 4 + 1 + 1 + 2 + 2 + 1 + 1 + 1 + 1
-    RING_OFF = HEADER + 2 * FRAMEBUF + 4 + 4
-    WPOS_OFF = RING_OFF + RING * 2
 
+    # The audio section is the tail of struct fmrb_shm_t:
+    #   ... audio_ring[RING] (int16), audio_write_pos, audio_read_pos (uint32)
+    # Taking the offsets from the end of the mapping avoids having to guess
+    # the padding the compiler inserted before the display fields.
     size = os.path.getsize(path)
-    if size < WPOS_OFF + 8:
+    RPOS_OFF = size - 4
+    WPOS_OFF = size - 8
+    RING_OFF = WPOS_OFF - RING * 2
+
+    if RING_OFF < 0:
         print("ERR shared memory is %d bytes, too small" % size)
         sys.exit(1)
 
@@ -58,21 +60,19 @@ module FmrbAudioProbe
         return struct.unpack_from("<I", mm, WPOS_OFF)[0]
 
     def grab(prev, cur):
-        # audio_write_pos free-runs (it is only reduced modulo the ring size
-        # when indexing), so the delta has to be taken in uint32 space and
-        # the start position wrapped into the ring.
-        n = (cur - prev) & 0xFFFFFFFF
+        # audio_write_pos is a position inside the ring (the writer keeps it
+        # reduced modulo the ring size), so the delta wraps too.
+        n = (cur - prev) % RING
         if n == 0:
             return b""
-        if n > RING:
-            n = RING            # fell behind: keep the most recent ring-full
-        start = (cur - n) % RING
+        start = prev % RING
         if start + n <= RING:
             return mm[RING_OFF + start * 2 : RING_OFF + (start + n) * 2]
         first = RING - start
         return mm[RING_OFF + start * 2 : RING_OFF + RING * 2] + \\
                mm[RING_OFF : RING_OFF + (n - first) * 2]
 
+    out = open(dump, "wb") if dump else None
     prev = wpos()
     end = time.monotonic() + duration
     while time.monotonic() < end:
@@ -82,18 +82,27 @@ module FmrbAudioProbe
         prev = cur
         if not raw:
             continue
+        if out:
+            out.write(raw)
         samples = struct.unpack("<%dh" % (len(raw) // 2), raw)
         peak = max(abs(s) for s in samples)
         rms = (sum(float(s) * s for s in samples) / len(samples)) ** 0.5
         print("W %d %d %.1f" % (len(samples), peak, rms))
+    if out:
+        out.close()
     mm.close()
   PYTHON
 
   module_function
 
-  def sample(duration, interval)
+  # Where the container writes raw samples when --dump is used.
+  REMOTE_DUMP = "/tmp/fmrb_audio_probe.raw"
+
+  def sample(duration, interval, dump)
+    args = [duration.to_s, interval.to_s, SHM_PATH]
     if File.exist?(SHM_PATH)
-      out = IO.popen(["python3", "-", duration.to_s, interval.to_s, SHM_PATH], "r+") do |io|
+      args << (dump ? dump : "")
+      out = IO.popen(["python3", "-", *args], "r+") do |io|
         io.write(READER)
         io.close_write
         io.read
@@ -101,30 +110,54 @@ module FmrbAudioProbe
       return [out, "host"]
     end
 
-    cmd = ["docker", "exec", "-i", CONTAINER, "python3", "-",
-           duration.to_s, interval.to_s, SHM_PATH]
+    args << (dump ? REMOTE_DUMP : "")
+    cmd = ["docker", "exec", "-i", CONTAINER, "python3", "-", *args]
     out = IO.popen(cmd, "r+") do |io|
       io.write(READER)
       io.close_write
       io.read
     end
+    fetch_dump(dump) if dump
     [out, "container"]
   end
 
+  # Pull the raw capture out of the container and wrap it in a WAV header so
+  # tool/midi/wav_pitch.rb (or any player) can read it.
+  def fetch_dump(path)
+    raw = IO.popen(["docker", "exec", CONTAINER, "cat", REMOTE_DUMP], "rb", &:read)
+    if raw.nil? || raw.empty?
+      warn "fmrb_audio_probe: capture is empty"
+      return
+    end
+    File.binwrite(path, wav_header(raw.bytesize) + raw)
+    system("docker", "exec", CONTAINER, "rm", "-f", REMOTE_DUMP, out: File::NULL, err: File::NULL)
+  end
+
+  def wav_header(bytes)
+    channels = 2
+    bits = 16
+    block_align = channels * bits / 8
+    byte_rate = SAMPLE_RATE * block_align
+    "RIFF" + [36 + bytes].pack("V") + "WAVEfmt " + [16, 1, channels, SAMPLE_RATE,
+                                                    byte_rate, block_align, bits].pack("VvvVVvv") +
+      "data" + [bytes].pack("V")
+  end
+
   def run(argv)
-    options = { duration: 2.0, interval: 0.05, quiet: false }
+    options = { duration: 2.0, interval: 0.05, quiet: false, dump: nil }
     OptionParser.new do |o|
       o.banner = "Usage: fmrb_audio_probe.rb [options]"
       o.on("--duration SEC", Float, "how long to watch (default 2.0)") { |v| options[:duration] = v }
       o.on("--interval SEC", Float, "polling interval (default 0.05)") { |v| options[:interval] = v }
       o.on("-q", "--quiet", "summary only") { options[:quiet] = true }
+      o.on("--dump PATH", "also write the captured audio as a WAV file") { |v| options[:dump] = v }
       o.on("-h", "--help") do
         puts o
         return 0
       end
     end.parse!(argv)
 
-    out, source = sample(options[:duration], options[:interval])
+    out, source = sample(options[:duration], options[:interval], options[:dump])
     if out.nil? || out.strip.empty?
       warn "fmrb_audio_probe: no data (is the simulation running?)"
       return 1
