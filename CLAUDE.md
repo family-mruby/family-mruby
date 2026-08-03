@@ -64,6 +64,47 @@ ruby tools/fmrb_input.rb <コマンド列>
   ```
 - 操作後は fmrb_screenshot.py で画面を撮って結果を確認する。
 
+## 音の確認 (ヘッドレスでもできる)
+
+**スピーカーに出さなくても、音は数値で確認できる**。経路が 2 つある。
+
+### 内蔵音源 (APU) の音を波形で見る
+
+```
+ruby tools/fmrb_audio_probe.rb [--duration 秒] [--dump out.wav]
+```
+
+- graphics-audio が共有メモリのリングに書いた合成済みの音を読む。
+  ピーク・RMS・音のあった窓数を出す。`--dump` で WAV に落とせば
+  周波数解析して音高まで測れる。
+- ヘッドレス (SDL dummy) でも読める。**音が鳴っているか / 複数の声が
+  同時に出ているか**の判定はこれで足りる。
+
+### 外部 MIDI 出力 (シリアル) をバイト列で見る / GM 音源で鳴らす
+
+```
+# 1. 受け皿を先に起動する (FIFO fmruby-core/midi_out.fifo をこのツールが作る)
+ruby tools/fmrb_midi_monitor.rb [--hex] [--log out.jsonl] [--duration 秒]
+
+# 2. 別途 sim を起動し、MIDI アプリで出力先を serial に切り替える
+tools/dev_run_check.sh --keep
+#    -> ランチャーか debugd で /app/demo/midi_apu.app.rb を起動
+#    -> 「7 Out」を押すと out: serial に切り替わる (緑になる)
+#    -> 「1 Scale」等を押すとモニタにバイト列が出る
+```
+
+- 出力例: `note on ch1 C4 vel=100 [90 3C 64]` (到着時刻つき)。
+  **テンポや音符間隔はこの到着時刻で実測できる** (波形より正確)。
+- **GM 音源で実際に鳴らす**なら `--fluidsynth --soundfont /usr/share/sounds/sf2/FluidR3_GM.sf2`。
+  WSL2 では ALSA シーケンサが無いので `ttymidi` + `aconnect` の定番経路は使えず、
+  fluidsynth のコマンドシェルに流して PulseAudio で鳴らす形になっている。
+  docker で済ませるなら `docker compose -f docker-compose.yml -f docker-compose.wsl.yml
+  -f docker-compose.midi.yml up -d` (midi-gm サービス)。
+- 注意: **モニタを起動していなくても core 側は詰まらない** (FIFO は
+  O_NONBLOCK で開かれ、パイプバッファに溜まる)。後からモニタを起動すると
+  溜まった分が読める。
+- 詳細と経緯は `fmruby-core/doc/midi/report/p5s.md`。
+
 ## 仕組みと注意
 
 - 画面: graphics-audio が POSIX SHM /fmrb_display に RGB332 ダブルバッファを公開
@@ -73,8 +114,9 @@ ruby tools/fmrb_input.rb <コマンド列>
   転送する。実 SDL イベントと注入イベントは同一経路で直列化される。
 - sdl2-display/main.c を変更した場合は `docker compose build sdl2-display` が必要。
 - 検証を終えたら `docker compose down` で片付ける (dev_run_check.sh のデフォルトは自動 down)。
-- ヘッドレス検証で確認できないもの: 音声出力、NTSC 実出力、実機挙動。これらはユーザが確認する
-  (ただし S3 実機の flash とブートログ確認は下記の手順で自律的にできる)。
+- ヘッドレス検証で確認できないもの: **音の善し悪し (官能評価)**、NTSC 実出力、実機挙動。
+  これらはユーザが確認する。音が「鳴っているか・何 Hz か・何バイト出たか」は
+  上記の音の確認で自律的に取れる。S3 実機の flash とブートログ確認も下記の手順でできる。
 
 # ESP32-S3 実機の自律検証 (flash + シリアルログ)
 
