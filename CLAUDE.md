@@ -164,15 +164,9 @@ python3 ../tools/fmrb_serial_capture.py -t 40 boot.log   # リセット → 40 �
   で失敗する。flash 前に capture を止める。逆にユーザがモニタを繋ぐと
   ボードがリセットされる (POWERON リセットとしてログに出る)。
 - 実機の UI 操作: **Modern (Tab5) は remote desktop 経由で Claude が自律操作
-  できる** (WiFi 接続時。ブートログの `rd_http: Remote desktop ready:` に IP)。
-  - 入力注入: `ruby tools/fmrb_rd_input.rb <IP> click X Y | dclick X Y |
-    key ctrl+tab | sleep MS ...` (座標はフレームバッファ系 426x240)
-  - 画面取得: `ruby tools/fmrb_rd_snap.rb <IP> out.jpg` (MJPEG から 1 フレーム)
-  - 実績: ランチャー操作でのアプリ起動、Ctrl+Tab 退避/復帰、Ctrl+Q 終了、
-    タイマー挙動の 60 秒実測まで全て遠隔で実施済み (2026-08-07)。
-  S3 (Retro) は従来どおり不可 (debugd が BLE のみ、remote desktop なし)。
-  操作が要る検証は Linux sim で行うか、ユーザに操作を依頼して
-  シリアルで結果を観測する。
+  できる** (下記「Tab5 実機のリモート UI 操作」参照)。S3 (Retro) は不可
+  (debugd が BLE のみ、remote desktop なし)。Retro で操作が要る検証は
+  Linux sim で行うか、ユーザに操作を依頼してシリアルで結果を観測する。
 - Tab5 (P4) は USB-Serial-JTAG (/dev/ttyACM0) 接続なので、esptool の
   自動ダウンロードモード遷移が効き、**ボタンなしで flash できる**
   (通常の ESP32 フロー。2026-08-07 実測)。ただし flash 後のハードリセットは
@@ -186,7 +180,45 @@ python3 ../tools/fmrb_serial_capture.py -t 40 boot.log   # リセット → 40 �
   **Xtensa のまま "Linux build complete" と表示する**ので、検証と主張する
   前に `file build/fmruby-core.elf` で x86-64 を確認する。
 
-## 周辺ツールの言語
+## Tab5 実機のリモート UI 操作 (remote desktop 経由)
+
+Modern (Tab5) が WiFi に接続していれば、Claude は実機の UI 操作と画面確認を
+sim と同様に自律的に行える (シリアル接続すら不要)。
+
+## IP の確認 (毎回変わるので固定値を使わない)
+
+DHCP なので IP はブートごとに変わりうる。次のいずれかで毎回取得する:
+
+```
+# 1. mDNS (推奨。WSL からは Windows resolver 経由で引く)
+powershell.exe -Command "(Resolve-DnsName fmruby.local -ErrorAction SilentlyContinue | Where-Object Type -eq 'A').IPAddress"
+
+# 2. シリアルが繋がっているならブートログから
+#    "rd_http: Remote desktop ready: http://<IP>/" の行
+
+# 3. 取得した IP の確認 (JSON に ip フィールドがある)
+curl -s http://<IP>/status
+```
+
+## 操作と画面取得
+
+```
+ruby tools/fmrb_rd_input.rb <IP> click X Y | dclick X Y | key ctrl+tab | sleep MS ...
+ruby tools/fmrb_rd_snap.rb <IP> out.jpg    # MJPEG から 1 フレーム取得
+```
+
+- 座標はフレームバッファ系 (426x240)。ウィンドウ拡大とは無関係。
+- キーは fmrb_rd_input.rb 冒頭の SCAN 表 (HID Usage ID) に定義があるものだけ。
+  足りなければ表に追記する (modifier は ctrl+ プレフィックス、LCTRL=0x04)。
+- 実装: /ws WebSocket に rd_input.c のバイナリメッセージを直接送る。
+  入力はファームの通常経路 (fmrb_host_send_*) に合流するので、
+  Ctrl+Q / Ctrl+Tab などのグローバルホットキーも効く。
+- 実績: ランチャーのスクロール込みのアプリ起動、Ctrl+Tab 退避/復帰、
+  Ctrl+Q 終了、タイマー挙動の 60 秒実測まで全て遠隔で実施済み (2026-08-07)。
+- 注意: 送った操作はユーザが実機を触っているのと同じ扱いになる。ユーザが
+  実機を操作中の可能性があるときは、割り込む前に一言確認する。
+
+# 周辺ツールの言語
 
 本プロジェクトの周辺ツール (検証・生成・変換スクリプト) は、**可能なものは
 Ruby で書く**。ビルドが Rake で回っており、実機で動く言語も Ruby (mruby /
