@@ -2,7 +2,7 @@ repositories:
   fmruby-core:
     type: git
     url: https://github.com/family-mruby/fmruby-core.git
-    version: 2.0.0
+    version: 2.0.1
   fmruby-graphics-audio:
     type: git
     url: https://github.com/family-mruby/fmruby-graphics-audio.git
