@@ -4,7 +4,12 @@
 
 ## What is Family mruby
 
-A development platform that enables mruby development and execution directly on microcontrollers. It features audio and graphics capabilities and is designed to run on ESP32.
+A development platform that enables mruby development and execution directly on microcontrollers. It features audio and graphics capabilities and is designed to run on the ESP32 series.
+
+There are two hardware generations:
+
+- **Family mruby Retro** — the NARYA board (two chips: ESP32-S3 + ESP32-WROVER). A retro-style setup that connects to a TV over NTSC video output
+- **Family mruby Modern** — the ESP32-P4 variant. Currently runs standalone on the M5Stack Tab5, with a high-resolution touch screen (a dedicated board is under development)
 
 For more details, please refer to the following blog post:
 [Family mruby OS - FreeRTOS-based microRuby Multi-VM Architecture](https://blog.silentworlds.info/family-mruby-os-freertosbesunomicrorubymarutivmgou-xiang-2/)
@@ -25,6 +30,14 @@ Comprehensive documentation including usage instructions and design information 
 
 ## Quick Way to Try It Out
 
+### Flash Real Hardware from the Web Installer
+
+If you have the hardware (a NARYA board or an M5Stack Tab5), you can flash the firmware from your browser alone:
+
+[https://family-mruby.github.io/family-mruby-installer/](https://family-mruby.github.io/family-mruby-installer/)
+
+It uses WebSerial, so a desktop Chrome / Edge / Opera browser is required.
+
 ### Try with Docker VNC Desktop
 
 ![Family mruby on VNC](doc/vnc.jpg)
@@ -44,23 +57,24 @@ An ARM64 image is also available, so it should work on Mac as well, though this 
 
 ## Project Components
 
-### fmrb-core
+### fmruby-core
 
-A library that provides the core functionality of Family mruby. It includes the Family mruby OS runtime environment, abstraction layer, and system resource management features.
-It can also run on Linux for debugging purposes.
+Firmware that provides the core functionality of Family mruby. It includes the Family mruby OS runtime environment, abstraction layer, and system resource management features.
+It targets both Retro (ESP32-S3) and Modern (ESP32-P4), and can also run on Linux for debugging purposes.
 
 [GitHub Repository](https://github.com/family-mruby/fmruby-core)
 
-### fmrb-audio-graphics
+### fmruby-graphics-audio
 
-Firmware for ESP32 that provides audio playback and graphics rendering capabilities. It supports image display, audio output, and basic multimedia processing.
+Firmware for the Retro (NARYA board) sub-microcontroller (ESP32-WROVER). It handles NTSC video output and I2S audio output.
+Modern is a single-chip configuration and does not use this firmware.
 
-[GitHub Repository](https://github.com/family-mruby/fmruby-audio-graphics)
+[GitHub Repository](https://github.com/family-mruby/fmruby-graphics-audio)
 
 ### narya-board
 
-A circuit board used as the development and execution environment for Family mruby.
-Contains KiCAD design data.
+The circuit board used as the development and execution environment for Family mruby Retro.
+Contains KiCAD design data. Modern runs on the off-the-shelf M5Stack Tab5.
 
 [GitHub Repository](https://github.com/family-mruby/narya-board)
 
@@ -90,9 +104,16 @@ rake fetch
 
 ### Building
 
-Build both fmruby-core (ESP32-S3) and fmruby-graphics-audio (ESP32):
+For Retro, build both fmruby-core (ESP32-S3) and fmruby-graphics-audio (ESP32):
 
 ```bash
+rake build:esp32
+```
+
+For Modern (M5Stack Tab5), set `FMRB_HW_TARGET` to `TAB5` in `fmruby-core/.env`, then build fmruby-core only (single-chip configuration, fmruby-graphics-audio is not needed):
+
+```bash
+cd fmruby-core
 rake build:esp32
 ```
 

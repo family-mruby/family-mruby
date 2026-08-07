@@ -4,7 +4,12 @@
 
 ## Family mruby とは
 
-マイコン単体でmrubyの開発、実行が可能な開発プラットフォームです。オーディオ・グラフィックス機能を備え、ESP32で動作するように設計されています。
+マイコン単体でmrubyの開発、実行が可能な開発プラットフォームです。オーディオ・グラフィックス機能を備え、ESP32シリーズで動作するように設計されています。
+
+2つのハードウェア世代があります：
+
+- **Family mruby Retro** — NARYAボード (ESP32-S3 + ESP32-WROVER の2チップ構成)。NTSC映像出力でテレビにつないで遊ぶ、レトロスタイルの構成です
+- **Family mruby Modern** — ESP32-P4向けの構成。現在は M5Stack Tab5 単体で動作し、高解像度画面とタッチ操作を備えます (専用基板は開発中)
 
 詳細については、以下のブログ記事をご覧ください:
 [Family mruby OSーFreeRTOSベースのmicroRubyマルチVM構想](https://blog.silentworlds.info/family-mruby-os-freertosbesunomicrorubymarutivmgou-xiang/)
@@ -24,6 +29,14 @@ Family mrubyの使い方、設計情報のドキュメントです。
 [https://family-mruby.github.io/ja](https://family-mruby.github.io/ja)
 
 ## 動作を簡単に試す方法
+
+### Web Installer で実機に書き込む
+
+実機 (NARYAボード / M5Stack Tab5) を持っている場合は、ブラウザだけでファームウェアを書き込めます：
+
+[https://family-mruby.github.io/family-mruby-installer/](https://family-mruby.github.io/family-mruby-installer/)
+
+WebSerial を使うため、対応ブラウザは Chrome / Edge / Opera (デスクトップ) です。
 
 ### VNC デスクトップをDockerで動かして試す
 
@@ -45,24 +58,24 @@ ARM64のイメージも準備しているので、Macでも動作すると思い
 
 ## プロジェクトの構成
 
-### fmrb-core
+### fmruby-core
 
-Family mrubyのコア機能を提供するライブラリです。Family mruby OS の実行環境、抽象化レイヤー、システムリソース管理機能が含まれています。
-デバッグ用にLinuxでも実行可能です。
-
+Family mrubyのコア機能を提供するファームウェアです。Family mruby OS の実行環境、抽象化レイヤー、システムリソース管理機能が含まれています。
+Retro (ESP32-S3) と Modern (ESP32-P4) の両方のターゲットを持ち、デバッグ用にLinuxでも実行可能です。
 
 [GitHub Repository](https://github.com/family-mruby/fmruby-core)
 
-### fmrb-audio-graphics
+### fmruby-graphics-audio
 
-ESP32向けに、オーディオ再生とグラフィックス描画機能を提供するファームウェアです。画像表示、音声出力、基本的なマルチメディア処理をサポートします。
+Retro (NARYAボード) のサブマイコン (ESP32-WROVER) 向けファームウェアです。NTSC映像出力とI2S音声出力を担当します。
+Modern は1チップ構成のため、このファームウェアは使用しません。
 
-[GitHub Repository](https://github.com/family-mruby/fmruby-audio-graphics)
+[GitHub Repository](https://github.com/family-mruby/fmruby-graphics-audio)
 
 ### narya-board
 
-Family mrubyの開発・実行環境として使用される基板です。
-KiCADの設計データが含まれています。
+Family mruby Retro の開発・実行環境として使用される基板です。
+KiCADの設計データが含まれています。Modern は市販の M5Stack Tab5 で動作します。
 
 [GitHub Repository](https://github.com/family-mruby/narya-board)
 
@@ -92,9 +105,16 @@ rake fetch
 
 ### ビルド
 
-fmruby-core (ESP32-S3) と fmruby-graphics-audio (ESP32) の両方をビルドします：
+Retro向け: fmruby-core (ESP32-S3) と fmruby-graphics-audio (ESP32) の両方をビルドします：
 
 ```bash
+rake build:esp32
+```
+
+Modern (M5Stack Tab5) 向け: `fmruby-core/.env` の `FMRB_HW_TARGET` を `TAB5` に変更してから、fmruby-core をビルドします (1チップ構成のため fmruby-graphics-audio は不要)：
+
+```bash
+cd fmruby-core
 rake build:esp32
 ```
 
