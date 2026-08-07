@@ -163,9 +163,16 @@ python3 ../tools/fmrb_serial_capture.py -t 40 boot.log   # リセット → 40 �
   いると flash が "device reports readiness to read but returned no data"
   で失敗する。flash 前に capture を止める。逆にユーザがモニタを繋ぐと
   ボードがリセットされる (POWERON リセットとしてログに出る)。
-- 実機の UI 操作 (入力注入) はできない。S3 の debugd は BLE のみなので
-  TCP の debugd クライアントも使えない。操作が要る検証は Linux sim で行うか、
-  ユーザに操作を依頼してシリアルで結果を観測する。
+- 実機の UI 操作: **Modern (Tab5) は remote desktop 経由で Claude が自律操作
+  できる** (WiFi 接続時。ブートログの `rd_http: Remote desktop ready:` に IP)。
+  - 入力注入: `ruby tools/fmrb_rd_input.rb <IP> click X Y | dclick X Y |
+    key ctrl+tab | sleep MS ...` (座標はフレームバッファ系 426x240)
+  - 画面取得: `ruby tools/fmrb_rd_snap.rb <IP> out.jpg` (MJPEG から 1 フレーム)
+  - 実績: ランチャー操作でのアプリ起動、Ctrl+Tab 退避/復帰、Ctrl+Q 終了、
+    タイマー挙動の 60 秒実測まで全て遠隔で実施済み (2026-08-07)。
+  S3 (Retro) は従来どおり不可 (debugd が BLE のみ、remote desktop なし)。
+  操作が要る検証は Linux sim で行うか、ユーザに操作を依頼して
+  シリアルで結果を観測する。
 - Tab5 (P4) は USB-Serial-JTAG (/dev/ttyACM0) 接続なので、esptool の
   自動ダウンロードモード遷移が効き、**ボタンなしで flash できる**
   (通常の ESP32 フロー。2026-08-07 実測)。ただし flash 後のハードリセットは
