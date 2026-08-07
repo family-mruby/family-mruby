@@ -100,9 +100,30 @@ jobs:
           # to keep both sub-repos using the exact same image we just pulled.
           docker tag "${ESP32_BUILD_IMAGE}:${IDF_VER}" "${ESP32_BUILD_IMAGE}:latest"
 
-      - name: Build fmruby-core (ESP32-S3)
+      - name: Build fmruby-core (ESP32-S3 / Retro)
         working-directory: fmruby-core
         run: rake build:esp32
+
+      - name: Stash the S3 build before the Tab5 build reuses build/
+        working-directory: fmruby-core
+        run: |
+          mkdir -p build-s3/bootloader build-s3/partition_table
+          cp build/bootloader/bootloader.bin           build-s3/bootloader/
+          cp build/partition_table/partition-table.bin build-s3/partition_table/
+          cp build/fmruby-core.bin build/storage.bin   build-s3/
+
+      - name: Build fmruby-core (ESP32-P4 / Tab5)
+        working-directory: fmruby-core
+        run: |
+          # The target comes from .env, which overrides the environment
+          # (a CLI FMRB_HW_TARGET would be silently ignored), so edit the
+          # file itself and verify exactly one active target remains.
+          sed -i 's/^FMRB_HW_TARGET=NARYAv3/#FMRB_HW_TARGET=NARYAv3/' .env
+          sed -i 's/^#FMRB_HW_TARGET=TAB5/FMRB_HW_TARGET=TAB5/' .env
+          test "$(grep -c '^FMRB_HW_TARGET=' .env)" = 1
+          grep '^FMRB_HW_TARGET=TAB5' .env
+          rake clean_all
+          rake build:esp32
 
       - name: Build fmruby-graphics-audio (ESP32 / WROVER)
         working-directory: fmruby-graphics-audio
@@ -133,7 +154,8 @@ jobs:
           VER: ${{ steps.ver.outputs.version }}
         run: |
           cd installer
-          FMRUBY_CORE_BUILD="$GITHUB_WORKSPACE/fmruby-core/build" \
+          FMRUBY_CORE_BUILD="$GITHUB_WORKSPACE/fmruby-core/build-s3" \
+          FMRUBY_CORE_TAB5_BUILD="$GITHUB_WORKSPACE/fmruby-core/build" \
           FMRUBY_GFX_BUILD="$GITHUB_WORKSPACE/fmruby-graphics-audio/build" \
           bash scripts/stage-firmware.sh "$VER"
 
