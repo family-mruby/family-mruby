@@ -166,8 +166,14 @@ python3 ../tools/fmrb_serial_capture.py -t 40 boot.log   # リセット → 40 �
 - 実機の UI 操作 (入力注入) はできない。S3 の debugd は BLE のみなので
   TCP の debugd クライアントも使えない。操作が要る検証は Linux sim で行うか、
   ユーザに操作を依頼してシリアルで結果を観測する。
-- Tab5 (P4) は DTR/RTS リセット非対応。flash 後はユーザにボタンリセットを
-  依頼する。
+- Tab5 (P4) は USB-Serial-JTAG (/dev/ttyACM0) 接続なので、esptool の
+  自動ダウンロードモード遷移が効き、**ボタンなしで flash できる**
+  (通常の ESP32 フロー。2026-08-07 実測)。ただし flash 後のハードリセットは
+  効かないことがある: ログが `boot:0x204 (DOWNLOAD...)` + `waiting for
+  download` で止まっていたら DL モード滞留なので、そのときだけユーザに
+  ボタンリセットを依頼する (ブートループ等と誤診しない)。USB が列挙される
+  前にクラッシュする firmware を焼いた場合も、手動で DL モードに入れて
+  もらう必要がある。
 - ビルドの罠: lib/ を編集したら `rake clean`、ターゲット切替 (linux⇔esp32)
   は `rake clean_all`。`rake build:linux` は esp32 の build/ が残っていると
   **Xtensa のまま "Linux build complete" と表示する**ので、検証と主張する
