@@ -111,6 +111,8 @@ jobs:
           cp build/bootloader/bootloader.bin           build-s3/bootloader/
           cp build/partition_table/partition-table.bin build-s3/partition_table/
           cp build/fmruby-core.bin build/storage.bin   build-s3/
+          # The staging script derives every flash offset from this file
+          cp build/flasher_args.json                   build-s3/
 
       - name: Build fmruby-core (ESP32-P4 / Tab5)
         working-directory: fmruby-core
