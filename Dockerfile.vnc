@@ -49,9 +49,11 @@ FROM espressif/idf:v5.5.1 AS builder-core
 ARG CORE_REPO
 ARG CORE_BRANCH
 
+# libssl-dev: picoruby-socket's POSIX port (ssl_socket.c) includes openssl
+# headers since the networking gem was enabled for the Linux target.
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ruby libsdl2-dev \
+    ruby libsdl2-dev libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone with submodules (use HTTPS to avoid SSH key issues in CI)

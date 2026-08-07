@@ -4,9 +4,19 @@ on:
   push:
     tags:
       - '[0-9]*'
+  # Manual rebuild: lets a Dockerfile/workflow fix produce the image for an
+  # existing release tag without re-tagging (which would re-fire the firmware
+  # release workflow as well).
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image version tag to publish (e.g. 2.0.0)'
+        required: true
+        type: string
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/fmruby-desktop
+  VERSION: ${{ github.event.inputs.image_tag || github.ref_name }}
 
 jobs:
   build:
@@ -42,7 +52,7 @@ jobs:
           file: ./Dockerfile.vnc
           platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ env.IMAGE_NAME }}:${{ github.ref_name }}-${{ matrix.suffix }}
+          tags: ${{ env.IMAGE_NAME }}:${{ env.VERSION }}-${{ matrix.suffix }}
 
   manifest:
     needs: build
@@ -61,7 +71,7 @@ jobs:
         id: check_latest
         run: |
           LATEST=$(git tag -l '[0-9]*' | sort -V | tail -n1)
-          if [ "${{ github.ref_name }}" = "${LATEST}" ]; then
+          if [ "${{ env.VERSION }}" = "${LATEST}" ]; then
             echo "is_latest=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_latest=false" >> "$GITHUB_OUTPUT"
@@ -75,8 +85,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create and push multi-arch manifest
-        env:
-          VERSION: ${{ github.ref_name }}
         run: |
           docker manifest create ${{ env.IMAGE_NAME }}:${VERSION} \
             ${{ env.IMAGE_NAME }}:${VERSION}-amd64 \
@@ -85,8 +93,6 @@ jobs:
 
       - name: Update latest tag
         if: steps.check_latest.outputs.is_latest == 'true'
-        env:
-          VERSION: ${{ github.ref_name }}
         run: |
           docker manifest create ${{ env.IMAGE_NAME }}:latest \
             ${{ env.IMAGE_NAME }}:${VERSION}-amd64 \
