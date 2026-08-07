@@ -12,3 +12,4 @@ tmp/
 .codex
 .rake_tasks~
 *.vsix
+contest/
