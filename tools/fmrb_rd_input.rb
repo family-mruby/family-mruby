@@ -1,16 +1,21 @@
 #!/usr/bin/env ruby
 # Drive the Tab5 remote desktop: mouse clicks and key chords over /ws.
 # Usage: ruby fmrb_rd_input.rb HOST cmd... where cmd is:
-#   click X Y | dclick X Y | key NAME | key ctrl+NAME | sleep MS
+#   click X Y | dclick X Y | move X Y | drag X1 Y1 X2 Y2 |
+#   key NAME | key ctrl+NAME | sleep MS
 require "socket"
 require "securerandom"
 require "base64"
 
 HOST = ARGV.shift or abort "usage: fmrb_rd_input.rb HOST cmds..."
 
-SCAN = { "tab" => 0x2B, "q" => 0x14, "right" => 0x4F, "left" => 0x50,
-         "esc" => 0x29, "enter" => 0x28, "space" => 0x2C }
+SCAN = { "tab" => 0x2B, "right" => 0x4F, "left" => 0x50, "up" => 0x52,
+         "down" => 0x51, "esc" => 0x29, "enter" => 0x28, "space" => 0x2C }
+# a-z and 1-0 are contiguous in the HID usage table.
+("a".."z").each_with_index { |c, i| SCAN[c] = 0x04 + i }
+(("1".."9").to_a + ["0"]).each_with_index { |c, i| SCAN[c] = 0x1E + i }
 MOD_LCTRL = 0x04
+MSG_MOUSE_MOVE = 0x01
 MSG_MOUSE_BUTTON = 0x02
 MSG_KEY = 0x03
 
@@ -38,6 +43,25 @@ def click(s, x, y)
   ws_send(s, [MSG_MOUSE_BUTTON, x, y, 1, 0].pack("Cs<s<C2"))
 end
 
+def move(s, x, y)
+  ws_send(s, [MSG_MOUSE_MOVE, x, y].pack("Cs<s<"))
+end
+
+# Press at (x1,y1), walk to (x2,y2) in steps, release. Window title bars
+# only follow a pointer that actually moves while the button is held.
+def drag(s, x1, y1, x2, y2)
+  move(s, x1, y1)
+  sleep 0.08
+  ws_send(s, [MSG_MOUSE_BUTTON, x1, y1, 1, 1].pack("Cs<s<C2"))
+  steps = 12
+  1.upto(steps) do |i|
+    move(s, x1 + (x2 - x1) * i / steps, y1 + (y2 - y1) * i / steps)
+    sleep 0.03
+  end
+  sleep 0.08
+  ws_send(s, [MSG_MOUSE_BUTTON, x2, y2, 1, 0].pack("Cs<s<C2"))
+end
+
 def key(s, spec)
   mods = 0
   name = spec.dup
@@ -58,6 +82,9 @@ until args.empty?
   when "click"  then click(s, args.shift.to_i, args.shift.to_i)
   when "dclick" then x = args.shift.to_i; y = args.shift.to_i
                      click(s, x, y); sleep 0.12; click(s, x, y)
+  when "move"   then move(s, args.shift.to_i, args.shift.to_i)
+  when "drag"   then drag(s, args.shift.to_i, args.shift.to_i,
+                             args.shift.to_i, args.shift.to_i)
   when "key"    then key(s, args.shift)
   when "sleep"  then sleep(args.shift.to_f / 1000.0)
   else abort "unknown cmd"

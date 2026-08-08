@@ -203,13 +203,18 @@ curl -s http://<IP>/status
 ## 操作と画面取得
 
 ```
-ruby tools/fmrb_rd_input.rb <IP> click X Y | dclick X Y | key ctrl+tab | sleep MS ...
+ruby tools/fmrb_rd_input.rb <IP> click X Y | dclick X Y | move X Y |
+                                 drag X1 Y1 X2 Y2 | key ctrl+tab | sleep MS ...
 ruby tools/fmrb_rd_snap.rb <IP> out.jpg    # MJPEG から 1 フレーム取得
 ```
 
 - 座標はフレームバッファ系 (426x240)。ウィンドウ拡大とは無関係。
 - キーは fmrb_rd_input.rb 冒頭の SCAN 表 (HID Usage ID) に定義があるものだけ。
-  足りなければ表に追記する (modifier は ctrl+ プレフィックス、LCTRL=0x04)。
+  a-z / 0-9 / 矢印 / tab / esc / enter / space はある。足りなければ表に追記する
+  (modifier は ctrl+ プレフィックス、LCTRL=0x04)。
+- `drag` は窓の移動用。ボタンを押したまま実際にポインタを動かさないと
+  タイトルバーは追従しないので、click では窓は動かせない。
+  掴む前にその窓をクリックしてフォーカスを当てること。
 - 実装: /ws WebSocket に rd_input.c のバイナリメッセージを直接送る。
   入力はファームの通常経路 (fmrb_host_send_*) に合流するので、
   Ctrl+Q / Ctrl+Tab などのグローバルホットキーも効く。
