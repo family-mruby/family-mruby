@@ -150,4 +150,5 @@ This will launch sdl2-display, fmruby-graphics-audio, and fmruby-core in Linux s
 
 - This software is under active development. Some applications may not launch, and unexpected errors may occur.
 - This software is intended for hobby use and is not designed for safety-critical applications.
+- Networking (WiFi / BLE) has no access control. The remote desktop (HTTP / WebSocket) accepts any client on the same network and allows full screen viewing and keyboard/mouse control; the BLE debug service uses no pairing or encryption and lets any nearby client inspect running applications and start or stop them. WiFi credentials are stored in plain text on the device. Use these features only on a network you trust, at your own risk, and never expose the device directly to the Internet.
 - This software is distributed under the GNU General Public License v3. It is provided with NO WARRANTY. See [LICENSE](LICENSE) for details.
