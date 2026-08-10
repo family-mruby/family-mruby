@@ -51,7 +51,14 @@ ruby tools/fmrb_input.rb <コマンド列>
 - コマンド: `move X Y` / `click X Y [--button N]` / `down X Y` / `up X Y` /
   `key NAME` (a-z 0-9 enter esc tab space backspace up down left right f1-f12) /
   `key shift+NAME` / `text "STRING"` / `sleep MS`。左から順に実行される。
-- 座標はフレームバッファ座標 (320x240)。ウィンドウ拡大率とは無関係。
+- 座標はフレームバッファ座標。ウィンドウ拡大率とは無関係。**sim の解像度は
+  .env の FMRB_HW_TARGET に連動する**: Retro 系 (NARYAv3 等) は 320x240、
+  Modern 系 (TAB5 / NARYAv4) は 426x240 (Rakefile が
+  config/system_conf_linux_p4.toml を選ぶ)。実際の値は
+  fmrb_screenshot.py が出す PNG のサイズで確認できる。
+  注意: graphics-audio は解像度を flash/etc/display_conf_linux.txt に
+  覚えており**変更は次回起動から効く**ので、ターゲットを切り替えた直後の
+  1 回目はまだ前の解像度で上がる (もう一度 down/up する)。
 - `text` / `key` の文字→キー変換はファームウェアの変換表
   (fmruby-core/main/drivers/usb/fmrb_keymap.c) を読んで逆引きし、配列は
   config/system_conf_linux.toml の `keyboard_layout` に追従する
