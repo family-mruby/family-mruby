@@ -17,6 +17,7 @@
 #   fmrb_input.rb down X Y / up X Y       # press / release separately
 #   fmrb_input.rb key NAME                # key press+release: a-z 0-9 enter esc
 #                                         # tab space backspace up down left right f1-f12
+#                                         # home end pageup pagedown insert delete
 #   fmrb_input.rb key shift+NAME          # with shift modifier
 #   fmrb_input.rb text "STRING"           # type a string (ascii)
 #   fmrb_input.rb --layout jp ...         # keyboard layout for text/key
@@ -43,6 +44,9 @@ SPECIAL_KEYS = {
   "enter" => [40, 13], "esc" => [41, 27], "backspace" => [42, 8],
   "tab" => [43, 9], "space" => [44, 32],
   "right" => [79, 0x4F], "left" => [80, 0x50], "down" => [81, 0x51], "up" => [82, 0x52],
+  "home" => [74, 0x4A], "end" => [77, 0x4D],
+  "pageup" => [75, 0x4B], "pagedown" => [78, 0x4E],
+  "insert" => [73, 0x49], "delete" => [76, 0x4C],
 }
 (1..12).each { |i| SPECIAL_KEYS["f#{i}"] = [58 + i - 1, 0] }
 
@@ -62,7 +66,13 @@ KMOD_ALT   = 0x00   # unrecoverable in the sim (see note above)
 # coded to US, "PRINT \"X\"" arrived as PRINT *X* on a jp configured system.
 HERE = File.dirname(File.expand_path(__FILE__))
 KEYMAP_C = File.join(HERE, "..", "fmruby-core", "main", "drivers", "usb", "fmrb_keymap.c")
-SYSTEM_CONF = File.join(HERE, "..", "fmruby-core", "config", "system_conf_linux.toml")
+# The config actually in use is the generated one; config/system_conf_linux.toml
+# is only the Retro source for it (a Modern HW target builds the sim from
+# config/system_conf_linux_p4.toml instead).
+SYSTEM_CONF_CANDIDATES = [
+  File.join(HERE, "..", "fmruby-core", "flash", "etc", "system_conf.toml"),
+  File.join(HERE, "..", "fmruby-core", "config", "system_conf_linux.toml"),
+]
 
 CHAR_LITERALS = {
   "'\\n'" => "\n", "'\\t'" => "\t", "'\\b'" => "\b", "'\\\\'" => "\\", "'\\''" => "'",
@@ -101,12 +111,13 @@ end
 
 # keyboard_layout from the simulation system config, "us" when unset.
 def configured_layout
-  File.foreach(SYSTEM_CONF) do |line|
-    m = /^\s*keyboard_layout\s*=\s*"([a-z]+)"/.match(line)
-    return m[1] if m
+  SYSTEM_CONF_CANDIDATES.each do |path|
+    next unless File.exist?(path)
+    File.foreach(path) do |line|
+      m = /^\s*keyboard_layout\s*=\s*"([a-z]+)"/.match(line)
+      return m[1] if m
+    end
   end
-  "us"
-rescue Errno::ENOENT
   "us"
 end
 
