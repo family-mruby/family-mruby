@@ -53,8 +53,9 @@ ruby tools/fmrb_input.rb <コマンド列>
   home end pageup pagedown insert delete / zenkaku katakana) /
   `key shift+NAME` / `text "STRING"` / `sleep MS`。左から順に実行される。
 - **かな入力の検証**: `key zenkaku` (半角/全角) でかなモードを on/off し、
-  `key katakana` でひらがな⇔カタカナを切り替える (`key shift+zenkaku` でも
-  同じ切替。かなキーの無いキーボード向けの代替)。かなモード中は `text` が
+  `key katakana` でひらがな⇔カタカナを切り替える。**半角/全角は修飾キーを
+  一切見ない** (Shift 付きでも on/off。かつて Shift+半角/全角 をかな/カナ
+  切替にしていたが、off に戻れなくなるので廃止した)。かなモード中は `text` が
   そのままローマ字入力になる (`text "ka"` → か、`text "kya"` → きゃ)。
   合成は host_task 側なので**キーボードレイアウトが jp のときだけ**効く
   (config/system_conf_linux.toml の keyboard_layout)。エディタのステータス行
