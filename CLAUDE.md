@@ -49,8 +49,16 @@ ruby tools/fmrb_input.rb <コマンド列>
 ```
 
 - コマンド: `move X Y` / `click X Y [--button N]` / `down X Y` / `up X Y` /
-  `key NAME` (a-z 0-9 enter esc tab space backspace up down left right f1-f12) /
+  `key NAME` (a-z 0-9 enter esc tab space backspace up down left right f1-f12 /
+  home end pageup pagedown insert delete / zenkaku katakana) /
   `key shift+NAME` / `text "STRING"` / `sleep MS`。左から順に実行される。
+- **かな入力の検証**: `key zenkaku` (半角/全角) でかなモードを on/off し、
+  `key katakana` でひらがな⇔カタカナを切り替える (`key shift+zenkaku` でも
+  同じ切替。かなキーの無いキーボード向けの代替)。かなモード中は `text` が
+  そのままローマ字入力になる (`text "ka"` → か、`text "kya"` → きゃ)。
+  合成は host_task 側なので**キーボードレイアウトが jp のときだけ**効く
+  (config/system_conf_linux.toml の keyboard_layout)。エディタのステータス行
+  右端に [A] / [あ] / [ア] が出るので、モードは画面で確認できる。
 - 座標はフレームバッファ座標。ウィンドウ拡大率とは無関係。**sim の解像度は
   .env の FMRB_HW_TARGET に連動する**: Retro 系 (NARYAv3 等) は 320x240、
   Modern 系 (TAB5 / NARYAv4) は 426x240 (Rakefile が

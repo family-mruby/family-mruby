@@ -18,6 +18,7 @@
 #   fmrb_input.rb key NAME                # key press+release: a-z 0-9 enter esc
 #                                         # tab space backspace up down left right f1-f12
 #                                         # home end pageup pagedown insert delete
+#                                         # zenkaku katakana (JP kana input)
 #   fmrb_input.rb key shift+NAME          # with shift modifier
 #   fmrb_input.rb text "STRING"           # type a string (ascii)
 #   fmrb_input.rb --layout jp ...         # keyboard layout for text/key
@@ -47,6 +48,11 @@ SPECIAL_KEYS = {
   "home" => [74, 0x4A], "end" => [77, 0x4D],
   "pageup" => [75, 0x4B], "pagedown" => [78, 0x4E],
   "insert" => [73, 0x49], "delete" => [76, 0x4C],
+  # JP kana input (host_task's composition layer, JP layout only): zenkaku
+  # turns kana input on/off, katakana switches script while it is on, and
+  # shift+zenkaku does the same switch on keyboards without a katakana key.
+  # Both are dead keys for apps, so the keycode does not matter.
+  "zenkaku" => [53, 0], "katakana" => [136, 0],
 }
 (1..12).each { |i| SPECIAL_KEYS["f#{i}"] = [58 + i - 1, 0] }
 
@@ -96,7 +102,10 @@ def load_keymap(layout)
   body = source[(start + marker.length)...source.index("};", start)]
   table = {}
   body.each_line do |line|
-    m = /^\s*\[(\d+)\]\s*=\s*\{(.+?),(.+?)\}/.match(line)
+    # The two entries are C char literals or 0. Matching the literal itself
+    # (rather than "up to the next comma") is what makes {',', '<'} work.
+    entry = /(?:'(?:\\.|[^'])'|0)/
+    m = /^\s*\[(\d+)\]\s*=\s*\{\s*(#{entry})\s*,\s*(#{entry})\s*\}/.match(line)
     next unless m
     scancode = m[1].to_i
     plain = literal(m[2])
