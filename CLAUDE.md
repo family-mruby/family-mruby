@@ -52,14 +52,22 @@ ruby tools/fmrb_input.rb <コマンド列>
   `key NAME` (a-z 0-9 enter esc tab space backspace up down left right f1-f12 /
   home end pageup pagedown insert delete / zenkaku katakana) /
   `key shift+NAME` / `text "STRING"` / `sleep MS`。左から順に実行される。
-- **かな入力の検証**: `key zenkaku` (半角/全角) でかなモードを on/off し、
-  `key katakana` でひらがな⇔カタカナを切り替える。**半角/全角は修飾キーを
-  一切見ない** (Shift 付きでも on/off。かつて Shift+半角/全角 をかな/カナ
-  切替にしていたが、off に戻れなくなるので廃止した)。かなモード中は `text` が
-  そのままローマ字入力になる (`text "ka"` → か、`text "kya"` → きゃ)。
-  合成は host_task 側なので**キーボードレイアウトが jp のときだけ**効く
-  (config/system_conf_linux.toml の keyboard_layout)。エディタのステータス行
-  右端に [A] / [あ] / [ア] が出るので、モードは画面で確認できる。
+- **かな入力の検証**: かなモードの on/off は `key ctrl+space` (どの配列でも
+  効く) か `key zenkaku` (半角/全角。**jp 配列のときだけ**。US 配列では
+  `` ` `` の実キーなので奪わない)。ひらがな⇔カタカナは `key katakana`
+  (0x88。JIS のみ) か、**指示器のクリック**。半角/全角と Ctrl+Space は
+  修飾キーを見ない (off へ必ず戻れるようにするため)。
+  かなモード中は `text` がそのままローマ字入力になる
+  (`text "ka"` → か、`text "kya"` → きゃ)。**ローマ字合成はレイアウトに
+  依存しない** (a-z の scancode は US/JP 共通)。
+- **モード表示と切替 (クリック)**: エディタのステータス行右端の
+  `[A]/[あ]/[ア]` と、デスクトップのメニューバー右 (空きメモリ表示の左) の
+  指示器。**どちらもクリックで A→あ→ア→A と巡回する**ので、キーボードに
+  かなキーが無くても切り替えられる。指示器は language=ja なら起動時から
+  出る (en ではかなモードを一度使うまで出ない)。
+  ログで確かめるなら `docker logs fmruby_core | grep "kana mode"`
+  (`kana mode=1 (sc=0x2c mod=0x04)` のように、合成層が受け取った
+  scancode/修飾キーごと出る)。
 - 座標はフレームバッファ座標。ウィンドウ拡大率とは無関係。**sim の解像度は
   .env の FMRB_HW_TARGET に連動する**: Retro 系 (NARYAv3 等) は 320x240、
   Modern 系 (TAB5 / NARYAv4) は 426x240 (Rakefile が
