@@ -15,9 +15,10 @@ SCAN = { "tab" => 0x2B, "right" => 0x4F, "left" => 0x50, "up" => 0x52,
          # layout; shift picks the second legend, e.g. shift+, -> '<').
          "," => 0x36, "." => 0x37, "@" => 0x2F, "-" => 0x2D, ";" => 0x33,
          ":" => 0x34, "slash" => 0x38 }
-# a-z and 1-0 are contiguous in the HID usage table.
+# a-z, 1-0 and F1-F12 are each contiguous in the HID usage table.
 ("a".."z").each_with_index { |c, i| SCAN[c] = 0x04 + i }
 (("1".."9").to_a + ["0"]).each_with_index { |c, i| SCAN[c] = 0x1E + i }
+(1..12).each { |n| SCAN["f#{n}"] = 0x39 + n }
 MOD_LCTRL = 0x04
 MOD_LSHIFT = 0x02
 MSG_MOUSE_MOVE = 0x01
