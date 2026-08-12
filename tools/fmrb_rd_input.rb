@@ -11,10 +11,15 @@ HOST = ARGV.shift or abort "usage: fmrb_rd_input.rb HOST cmds..."
 
 SCAN = { "tab" => 0x2B, "right" => 0x4F, "left" => 0x50, "up" => 0x52,
          "down" => 0x51, "esc" => 0x29, "enter" => 0x28, "space" => 0x2C,
+         "backspace" => 0x2A, "delete" => 0x4C, "home" => 0x4A, "end" => 0x4D,
+         "pageup" => 0x4B, "pagedown" => 0x4E,
          # Symbols, JP layout scancodes (the firmware maps by its configured
          # layout; shift picks the second legend, e.g. shift+, -> '<').
          "," => 0x36, "." => 0x37, "@" => 0x2F, "-" => 0x2D, ";" => 0x33,
-         ":" => 0x34, "slash" => 0x38 }
+         ":" => 0x34, "slash" => 0x38,
+         # International1, the key left of the right shift on a JP keyboard.
+         # Shifted it is "_", which nothing else can reach.
+         "ro" => 0x87 }
 # a-z, 1-0 and F1-F12 are each contiguous in the HID usage table.
 ("a".."z").each_with_index { |c, i| SCAN[c] = 0x04 + i }
 (("1".."9").to_a + ["0"]).each_with_index { |c, i| SCAN[c] = 0x1E + i }
