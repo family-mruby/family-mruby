@@ -253,6 +253,28 @@ ruby tools/fmrb_rd_snap.rb <IP> out.jpg    # MJPEG から 1 フレーム取得
 - 注意: 送った操作はユーザが実機を触っているのと同じ扱いになる。ユーザが
   実機を操作中の可能性があるときは、割り込む前に一言確認する。
 
+## アプリの起動 / 終了 / 一覧 (WiFi 直接制御)
+
+**アプリを起動するのにランチャーを操作する必要はない**。パス指定で直接起動・
+終了・一覧できる (rd_http の開発用エンドポイント。`FMRB_DEV_REMOTE_CTL` で
+囲われ既定 ON、リリースは OFF。計画・経緯は
+`fmruby-core/doc/dev_remote_ctl/plan.md`)。
+
+```
+ruby tools/fmrb_rd_launch.rb <IP> <path>   # 例 /app/demo/spinel_hello.app.rb。pid を返す
+ruby tools/fmrb_rd_ps.rb     <IP>          # 稼働アプリ一覧 (pid / name / state)
+ruby tools/fmrb_rd_kill.rb   <IP> <pid>    # 終了。kernel(pid 0) は 400 で拒否 (ユーザアプリのみ)
+```
+
+- curl でも叩ける: `POST /app/launch?path=` / `GET /app/list` / `POST /app/kill?pid=`。
+- 典型手順: `fmrb_rd_ps` で現況 → `fmrb_rd_launch` で目的アプリを起動 →
+  `fmrb_rd_snap` で画面確認 → 用が済んだら `fmrb_rd_ps` で pid を見て `fmrb_rd_kill`。
+  **ランチャーのスクロール/矢印ナビはもう不要**。
+- **ログはこの経路に載っていない**。クラッシュ時は WiFi ごと落ちるため。crash/boot
+  ログは、セッション開始時に開いて開きっぱなしにしたシリアルで取る (見たい時だけ
+  開くとリセットがかかる)。
+- P4 (Modern) 限定。S3 (Retro) は remote desktop が無いので不可。
+
 # 周辺ツールの言語
 
 本プロジェクトの周辺ツール (検証・生成・変換スクリプト) は、**可能なものは
