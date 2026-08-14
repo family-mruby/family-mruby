@@ -73,7 +73,7 @@ def drag(s, x1, y1, x2, y2)
   ws_send(s, [MSG_MOUSE_BUTTON, x2, y2, 1, 0].pack("Cs<s<C2"))
 end
 
-def key(s, spec)
+def key_parse(spec)
   mods = 0
   name = spec.dup
   while name.include?("+") && name.length > 1
@@ -82,8 +82,29 @@ def key(s, spec)
     mods |= MOD_LSHIFT if prefix == "shift"
   end
   sc = SCAN[name] or abort "unknown key: #{name}"
+  [sc, mods]
+end
+
+def key(s, spec)
+  sc, mods = key_parse(spec)
   ws_send(s, [MSG_KEY, 1, sc, mods].pack("C4"))
   sleep 0.08
+  ws_send(s, [MSG_KEY, 0, sc, mods].pack("C4"))
+end
+
+# Press and release as separate commands, so a key can be held across a
+# `sleep`. `key` taps for 80ms, which is a frame or two -- not enough to make
+# an app that only redraws while something moves run at its natural rate, which
+# is what you need to measure a frame time rather than the gaps between taps.
+#
+#   keydown right sleep 5000 keyup right
+def keydown(s, spec)
+  sc, mods = key_parse(spec)
+  ws_send(s, [MSG_KEY, 1, sc, mods].pack("C4"))
+end
+
+def keyup(s, spec)
+  sc, mods = key_parse(spec)
   ws_send(s, [MSG_KEY, 0, sc, mods].pack("C4"))
 end
 
@@ -97,7 +118,9 @@ until args.empty?
   when "move"   then move(s, args.shift.to_i, args.shift.to_i)
   when "drag"   then drag(s, args.shift.to_i, args.shift.to_i,
                              args.shift.to_i, args.shift.to_i)
-  when "key"    then key(s, args.shift)
+  when "key"     then key(s, args.shift)
+  when "keydown" then keydown(s, args.shift)
+  when "keyup"   then keyup(s, args.shift)
   when "sleep"  then sleep(args.shift.to_f / 1000.0)
   else abort "unknown cmd"
   end
