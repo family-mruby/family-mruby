@@ -112,6 +112,36 @@ Dir.mktmpdir do |tmp|
     FmAssetEditor::Settings.new(state).directory(:open).nil?
   end
 
+  # The GSettings backend is only forced when the session bus really is missing,
+  # and never over an explicit setting.
+  require 'socket'
+  bus = ENV['DBUS_SESSION_BUS_ADDRESS']
+  backend = ENV['GSETTINGS_BACKEND']
+  begin
+    ENV.delete('GSETTINGS_BACKEND')
+    ENV['DBUS_SESSION_BUS_ADDRESS'] = "unix:path=#{File.join(tmp, 'no-such-bus')}"
+    FmAssetEditor.quiet_gsettings
+    check('a missing session bus did not switch the backend', failures) do
+      ENV['GSETTINGS_BACKEND'] == 'memory'
+    end
+
+    socket_path = File.join(tmp, 'bus')
+    server = UNIXServer.new(socket_path)
+    ENV.delete('GSETTINGS_BACKEND')
+    ENV['DBUS_SESSION_BUS_ADDRESS'] = "unix:path=#{socket_path},guid=abc"
+    FmAssetEditor.quiet_gsettings
+    check('a working session bus was overridden anyway', failures) { ENV['GSETTINGS_BACKEND'].nil? }
+    server.close
+
+    ENV['GSETTINGS_BACKEND'] = 'dconf'
+    ENV['DBUS_SESSION_BUS_ADDRESS'] = "unix:path=#{File.join(tmp, 'no-such-bus')}"
+    FmAssetEditor.quiet_gsettings
+    check('an explicit backend was not left alone', failures) { ENV['GSETTINGS_BACKEND'] == 'dconf' }
+  ensure
+    bus.nil? ? ENV.delete('DBUS_SESSION_BUS_ADDRESS') : ENV['DBUS_SESSION_BUS_ADDRESS'] = bus
+    backend.nil? ? ENV.delete('GSETTINGS_BACKEND') : ENV['GSETTINGS_BACKEND'] = backend
+  end
+
   # The size the loader refuses must be refused here too.
   big = FmAssetEditor::Formats::Sprite332.blank(257, 4)
   check('an oversized sprite was written anyway', failures) do

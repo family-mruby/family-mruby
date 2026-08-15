@@ -14,6 +14,14 @@ ruby tools/fm_asset_editor/fm_asset_editor.rb --formats     # 何を編集でき
 窓が出ない場合は `echo $DISPLAY` を確認する (WSLg なら `:0`)。Wayland 経由で
 不具合が出るときは `GDK_BACKEND=x11` を付ける。
 
+WSL2 では `DBUS_SESSION_BUS_ADDRESS` が設定されているのに実体のソケットが
+無いことが多く、そのままだと GTK が設定を書くたびに
+`dconf-WARNING **: failed to commit changes to dconf` を大量に出す。
+**セッションバスが本当に無いときだけ** `GSETTINGS_BACKEND=memory` を
+自分で立てて黙らせている (自分で環境変数を指定した場合はそちらを尊重する)。
+失われるのは GTK 自身のダイアログの記憶だけで、フォルダの記憶はこの道具が
+別に持っている。
+
 ## なぜ専用の道具なのか
 
 これらの BMP は、普通の画像編集ソフトが思っている意味とは違う中身を持つ。
