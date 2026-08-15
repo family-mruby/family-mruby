@@ -9,6 +9,7 @@ require_relative 'fm_asset_editor/bmp'
 require_relative 'fm_asset_editor/rgb332'
 require_relative 'fm_asset_editor/document'
 require_relative 'fm_asset_editor/format'
+require_relative 'fm_asset_editor/settings'
 require_relative 'fm_asset_editor/formats/basic_sheet'
 require_relative 'fm_asset_editor/formats/sprite332'
 
@@ -22,6 +23,7 @@ module FmAssetEditor
   def self.require_ui
     require 'glimmer-dsl-libui'
     require_relative 'fm_asset_editor/ui/draw'
+    require_relative 'fm_asset_editor/ui/file_dialog'
     require_relative 'fm_asset_editor/ui/grid_view'
     require_relative 'fm_asset_editor/ui/palette_view'
     require_relative 'fm_asset_editor/ui/main_window'

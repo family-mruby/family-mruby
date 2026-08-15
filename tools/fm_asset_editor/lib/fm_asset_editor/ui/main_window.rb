@@ -11,8 +11,9 @@ module FmAssetEditor
       BUTTON_RIGHT = 3
       HELD_LEFT = 0x01 # Held1To64 is a bitmask, bit n-1 for button n
 
-      def initialize(document)
+      def initialize(document, settings = Settings.new)
         @document = document
+        @settings = settings
         @grid = GridView.new(document)
         @palette = PaletteView.new(document)
         @tool = :pen
@@ -381,13 +382,26 @@ module FmAssetEditor
       # --- files ---------------------------------------------------------
 
       def open_dialog
-        pointer = ::LibUI.open_file(@window.libui)
-        return if pointer.nil? || (pointer.respond_to?(:null?) && pointer.null?)
+        path = FileDialog.open(@window, directory: start_directory(:open))
+        return if path.nil?
 
-        path = pointer.to_s
-        return if path.empty?
-
+        @settings.remember(:open, File.dirname(path))
         open_path(path)
+      end
+
+      # Where a dialog should land: the folder it was last used in, else the one
+      # holding the open file, else wherever the editor was started from. Open
+      # and save are remembered apart, since reading and writing are often in
+      # different places (usr/share/sprites and a scratch folder, say).
+      def start_directory(kind)
+        @settings.directory(kind) || document_directory || Dir.pwd
+      end
+
+      def document_directory
+        return nil if @document.path.nil?
+
+        directory = File.dirname(File.expand_path(@document.path))
+        File.directory?(directory) ? directory : nil
       end
 
       def open_path(path)
@@ -429,13 +443,12 @@ module FmAssetEditor
       end
 
       def save_as
-        pointer = ::LibUI.save_file(@window.libui)
-        return if pointer.nil? || (pointer.respond_to?(:null?) && pointer.null?)
-
-        path = pointer.to_s
-        return if path.empty?
+        path = FileDialog.save(@window, directory: start_directory(:save),
+                                        name: @document.path ? File.basename(@document.path) : 'untitled.bmp')
+        return if path.nil?
 
         @document.save(path)
+        @settings.remember(:save, File.dirname(path))
         @window.title = title
         refresh_labels
       rescue StandardError => e

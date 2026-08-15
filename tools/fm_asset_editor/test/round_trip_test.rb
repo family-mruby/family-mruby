@@ -89,6 +89,29 @@ Dir.mktmpdir do |tmp|
     end
   end
 
+  # The folders the dialogs start in survive a restart, and a folder that has
+  # gone away is forgotten rather than handed to the dialog.
+  state = File.join(tmp, 'config', 'state.json')
+  settings = FmAssetEditor::Settings.new(state)
+  check('a fresh settings file remembered something', failures) { settings.directory(:open).nil? }
+  settings.remember(:open, tmp)
+  settings.remember(:save, ROOT)
+  reloaded = FmAssetEditor::Settings.new(state)
+  check('the open folder was not kept', failures) { reloaded.directory(:open) == tmp }
+  check('the save folder was not kept', failures) { reloaded.directory(:save) == ROOT }
+  check('open and save share one folder', failures) { reloaded.directory(:open) != reloaded.directory(:save) }
+  gone = File.join(tmp, 'gone')
+  Dir.mkdir(gone)
+  settings.remember(:open, gone)
+  Dir.rmdir(gone)
+  check('a folder that no longer exists was still offered', failures) do
+    FmAssetEditor::Settings.new(state).directory(:open).nil?
+  end
+  File.write(state, 'not json at all')
+  check('a damaged settings file was not shrugged off', failures) do
+    FmAssetEditor::Settings.new(state).directory(:open).nil?
+  end
+
   # The size the loader refuses must be refused here too.
   big = FmAssetEditor::Formats::Sprite332.blank(257, 4)
   check('an oversized sprite was written anyway', failures) do
