@@ -41,6 +41,34 @@ module FmAssetEditor
         fill_rects(context, [[x, y, width, height]], rgb)
       end
 
+      # A line of text at (x, y), where y is the top of the line.
+      def text(context, x, y, string, rgb, size: 11.0, family: 'Monospace')
+        string = string.to_s
+        return if string.empty?
+
+        attributed = ::LibUI.new_attributed_string(string)
+        color = ::LibUI.new_color_attribute(rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0, 1.0)
+        ::LibUI.attributed_string_set_attribute(attributed, color, 0, string.bytesize)
+
+        font = ::LibUI::FFI::FontDescriptor.malloc
+        font.Family = family
+        font.Size = size
+        font.Weight = 400 # normal
+        font.Italic = 0
+        font.Stretch = 4 # normal
+
+        params = ::LibUI::FFI::DrawTextLayoutParams.malloc
+        params.String = attributed
+        params.DefaultFont = font
+        params.Width = 1000 # no wrapping wanted
+        params.Align = 0
+
+        layout = ::LibUI.draw_new_text_layout(params)
+        ::LibUI.draw_text(context, layout, x, y)
+        ::LibUI.draw_free_text_layout(layout)
+        ::LibUI.free_attributed_string(attributed)
+      end
+
       # Rectangle outline drawn as four filled bars, so no stroke parameters
       # have to be allocated.
       def outline(context, x, y, width, height, rgb, thickness = 1)

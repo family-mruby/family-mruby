@@ -25,6 +25,7 @@ def usage
   warn <<~USAGE
     usage: fm_asset_editor.rb [FILE]
            fm_asset_editor.rb --new WxH   start with an empty sprite
+           fm_asset_editor.rb --new mml   start with an empty tune
            fm_asset_editor.rb --formats   list what the editor understands
   USAGE
   exit 1
@@ -50,7 +51,9 @@ until ARGV.empty?
 end
 
 document =
-  if new_size
+  if new_size == 'mml'
+    FmAssetEditor::Formats::MmlTune.blank
+  elsif new_size
     width, height = new_size.split(/[x*]/).map(&:to_i)
     usage if width.to_i < 1 || height.to_i < 1
     FmAssetEditor::Formats::Sprite332.blank(width, height)

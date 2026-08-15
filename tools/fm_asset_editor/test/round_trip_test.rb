@@ -112,6 +112,123 @@ Dir.mktmpdir do |tmp|
     FmAssetEditor::Settings.new(state).directory(:open).nil?
   end
 
+  # Tunes: the file is read the way the device reads it, and what the parser
+  # would quietly ignore is pointed out rather than left to become silence.
+  tune_path = File.join(tmp, 'round.mml')
+  File.write(tune_path, <<~MML)
+    # Round - two parts
+    bpm 90
+    loop on
+    o5 l4 cegegegc
+    velocity 80
+    o3 l2 c   g   c
+  MML
+  format = FmAssetEditor::Format.find(tune_path)
+  check('no format claims a .mml file', failures) { format == FmAssetEditor::Formats::MmlTune }
+
+  document = format.load(tune_path)
+  tune = document.tune
+  check("the tune read #{tune.bpm} BPM, wanted 90", failures) { tune.bpm == 90 }
+  check('loop on was not read', failures) { tune.loop? == true }
+  check("parts read as #{tune.part_count}, wanted 2", failures) { tune.part_count == 2 }
+  check('the parts did not get a channel each', failures) do
+    tune.parts.map(&:channel) == [0, 1]
+  end
+  check('velocity did not apply to the part below it', failures) do
+    tune.parts.map(&:velocity) == [100, 80]
+  end
+  check("a clean tune reported #{tune.problems.inspect}", failures) { tune.problems.empty? }
+
+  # Editing a setting rewrites one line and leaves the rest alone.
+  document.set_setting('bpm', 140)
+  check('changing the tempo did not rewrite the bpm line', failures) do
+    document.text.include?('bpm 140') && !document.text.include?('bpm 90')
+  end
+  check('changing the tempo disturbed the parts', failures) do
+    document.text.include?('o5 l4 cegegegc') && document.text.include?('velocity 80')
+  end
+  document.save
+  check('the saved tune does not read back the same', failures) do
+    format.load(tune_path).text == document.text
+  end
+
+  # The four sound settings: what plays a part, which the dialect cannot say.
+  voiced = FmAssetEditor::Mml::Tune.new(<<~MML)
+    bpm 120
+    voice triangle
+    duty 1
+    volume 100
+    program 118
+    o3 l4 cde
+    voice noise
+    o3 l4 fga
+  MML
+  check('the sound settings did not reach the first part', failures) do
+    part = voiced.parts.first
+    part.voice == 'triangle' && part.duty == 1 && part.volume == 100 && part.program == 118
+  end
+  check('a sound setting did not carry to the part below it', failures) do
+    voiced.parts.last.voice == 'noise' && voiced.parts.last.duty == 1
+  end
+  check("a clean voiced tune reported #{voiced.problems.inspect}", failures) { voiced.problems.empty? }
+  check('a bad voice name was accepted', failures) do
+    FmAssetEditor::Mml::Tune.new("voice bagpipes\nc").problems.any? { |p| p.message.include?('voice') }
+  end
+  check('the numbers the transport uses were not accepted for a voice', failures) do
+    FmAssetEditor::Mml::Tune.new("voice 2\nc").parts.first.voice == 'triangle'
+  end
+
+  if FmAssetEditor::Mml::Engine.available?
+    # Each setting has to change the sound, or the preview is telling a story.
+    render = lambda do |settings|
+      FmAssetEditor::Mml::Audio.render(FmAssetEditor::Mml::Tune.new("bpm 120\n#{settings}o4 l4 c\n"))
+    end
+    square = render.call('')
+    positive = lambda do |wav|
+      samples = wav[44..].unpack('s<*')
+      samples.count(&:positive?).to_f / samples.count { |value| !value.zero? }
+    end
+    check('duty 0 did not narrow the pulse', failures) { (positive.call(render.call("duty 0\n")) - 0.125).abs < 0.02 }
+    check('duty 2 is not a square', failures) { (positive.call(square) - 0.5).abs < 0.02 }
+    check('the triangle sounds like the pulse', failures) { render.call("voice triangle\n") != square }
+    check('the noise sounds like the pulse', failures) { render.call("voice noise\n") != square }
+    check('volume did not change the level', failures) do
+      peak = lambda { |wav| wav[44..].unpack('s<*').map(&:abs).max }
+      quiet = peak.call(render.call("volume 64\n"))
+      loud = peak.call(square)
+      quiet < loud * 0.6 && quiet > loud * 0.4
+    end
+    check('the GM name of program 118 was not found', failures) do
+      FmAssetEditor::Mml::Engine.gm_name(118) == 'Synth Drum'
+    end
+  end
+
+  stray = FmAssetEditor::Mml::Tune.new("bpm 120\no4 l8 cde fg@ab")
+  check('a character the parser ignores was not reported', failures) do
+    stray.problems.any? { |problem| problem.line == 2 && problem.message.include?('@') }
+  end
+  bad = FmAssetEditor::Mml::Tune.new("bpm fast\nloop maybe\nc")
+  check('nonsense settings were accepted quietly', failures) { bad.problems.size >= 2 }
+  check('a bad tempo did not fall back to the default', failures) { bad.bpm == 120 }
+
+  # The events come from the machine's own parser, so this only runs where the
+  # core checkout is next to the tool.
+  if FmAssetEditor::Mml::Engine.available?
+    scale = FmAssetEditor::Mml::Tune.new("bpm 120\no4 l8 crdrerfrgrarbr>cr")
+    check("the scale has #{scale.note_count} notes, wanted 8", failures) { scale.note_count == 8 }
+    check("the scale runs #{scale.seconds}s, wanted 4", failures) { (scale.seconds - 4.0).abs < 0.01 }
+    wav = FmAssetEditor::Mml::Audio.render(scale)
+    check('no wav came out of the tune', failures) { !wav.nil? && wav.start_with?('RIFF') }
+    check('the wav is not as long as the tune', failures) do
+      samples = (wav.bytesize - 44) / 2.0 / FmAssetEditor::Mml::Audio::RATE
+      (samples - (4.0 + FmAssetEditor::Mml::Audio::TAIL)).abs < 0.05
+    end
+    silent = FmAssetEditor::Mml::Tune.new("bpm 120\n")
+    check('a tune with no parts still rendered', failures) { FmAssetEditor::Mml::Audio.render(silent).nil? }
+  else
+    puts "note: skipped the tune preview checks (#{FmAssetEditor::Mml::Engine.unavailable_reason})"
+  end
+
   # The GSettings backend is only forced when the session bus really is missing,
   # and never over an explicit setting.
   require 'socket'

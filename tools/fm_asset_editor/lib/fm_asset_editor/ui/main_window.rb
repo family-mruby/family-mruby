@@ -2,7 +2,12 @@
 
 module FmAssetEditor
   module Ui
-    # The editor window: canvas on the left, palette and controls on the right.
+    # The editor window.
+    #
+    # It holds one pane per kind of asset -- a canvas with a palette for the
+    # bitmaps, a text pane with a piano roll for the tunes -- and shows the one
+    # the open file asks for (Format#view). Both keep their document, so
+    # opening a tune and going back to a sprite finds it as it was left.
     class MainWindow
       include Glimmer
 
@@ -14,15 +19,22 @@ module FmAssetEditor
       def initialize(document, settings = Settings.new)
         @document = document
         @settings = settings
-        @grid = GridView.new(document)
-        @palette = PaletteView.new(document)
+        @grid_document = grid?(document) ? document : Formats::Sprite332.blank(16, 16)
+        @mml_document = mml?(document) ? document : Formats::MmlTune.blank
+        @grid = GridView.new(@grid_document)
+        @palette = PaletteView.new(@grid_document)
+        @roll = MmlRoll.new(@mml_document.tune)
+        @playback = Mml::Playback.new
         @tool = :pen
         @painting = false
         @hover = nil
         @syncing = false
         build
         sync_color_inputs
+        show_pane
+        refresh_problems
         refresh_labels
+        refresh_time
       end
 
       def show
@@ -37,7 +49,7 @@ module FmAssetEditor
           margined true
 
           horizontal_box {
-            vertical_box {
+            @grid_body = vertical_box {
               @canvas = scrolling_area(@grid.width, @grid.height) {
                 on_draw do |params|
                   @grid.draw(params[:context], params)
@@ -57,6 +69,30 @@ module FmAssetEditor
               }
             }
 
+            @mml_body = vertical_box {
+              @mml_entry = non_wrapping_multiline_entry {
+                text @mml_document.text
+                on_changed do |entry|
+                  next if @syncing_text
+
+                  @mml_document.text = entry.text
+                  refresh_tune
+                end
+              }
+              @roll_area = area {
+                on_draw do |params|
+                  @roll_width = params[:area_width]
+                  @roll.draw(params[:context], params[:area_width], params[:area_height])
+                end
+                on_mouse_down do |event|
+                  seek_to(event[:x])
+                end
+                on_mouse_drag do |event|
+                  seek_to(event[:x])
+                end
+              }
+            }
+
             vertical_box {
               stretchy false
 
@@ -70,91 +106,139 @@ module FmAssetEditor
                 }
               }
 
-              group('Tool') {
-                stretchy false
-                vertical_box {
-                  radio_buttons {
-                    items TOOLS.keys
-                    selected 0
-                    on_selected do |radio|
-                      @tool = TOOLS.values[radio.selected]
-                    end
-                  }
-                }
-              }
-
-              group('View') {
-                stretchy false
-                vertical_box {
-                  horizontal_box {
-                    stretchy false
-                    label('Zoom') { stretchy false }
-                    @zoom_spinbox = spinbox(GridView::MIN_ZOOM, GridView::MAX_ZOOM) {
-                      value @grid.zoom
-                      on_changed do |spinbox|
-                        set_zoom(spinbox.value)
+              @grid_controls = vertical_box {
+                group('Tool') {
+                  stretchy false
+                  vertical_box {
+                    radio_buttons {
+                      items TOOLS.keys
+                      selected 0
+                      on_selected do |radio|
+                        @tool = TOOLS.values[radio.selected]
                       end
                     }
-                    label('Guide') { stretchy false }
-                    @guide_spinbox = spinbox(0, 64) {
-                      value @grid.cell.to_i
-                      on_changed do |spinbox|
-                        @grid.cell_override = spinbox.value.zero? ? nil : spinbox.value
+                  }
+                }
+
+                group('View') {
+                  stretchy false
+                  vertical_box {
+                    horizontal_box {
+                      stretchy false
+                      label('Zoom') { stretchy false }
+                      @zoom_spinbox = spinbox(GridView::MIN_ZOOM, GridView::MAX_ZOOM) {
+                        value @grid.zoom
+                        on_changed do |spinbox|
+                          set_zoom(spinbox.value)
+                        end
+                      }
+                      label('Guide') { stretchy false }
+                      @guide_spinbox = spinbox(0, 64) {
+                        value @grid.cell.to_i
+                        on_changed do |spinbox|
+                          @grid.cell_override = spinbox.value.zero? ? nil : spinbox.value
+                          @canvas.queue_redraw_all
+                        end
+                      }
+                    }
+                    checkbox('Pixel grid') {
+                      stretchy false
+                      checked @grid.show_grid
+                      on_toggled do |box|
+                        @grid.show_grid = box.checked?
                         @canvas.queue_redraw_all
                       end
                     }
                   }
-                  checkbox('Pixel grid') {
-                    stretchy false
-                    checked @grid.show_grid
-                    on_toggled do |box|
-                      @grid.show_grid = box.checked?
-                      @canvas.queue_redraw_all
-                    end
+                }
+
+                # The palette group is the only stretchy child of the panel, so
+                # it takes whatever height is left; the view lays all 256
+                # swatches out in that space rather than scrolling.
+                group('Colour') {
+                  vertical_box {
+                    @palette_area = area {
+                      on_draw do |params|
+                        @palette.draw(params[:context], params[:area_width], params[:area_height])
+                      end
+                      on_mouse_down do |event|
+                        value = @palette.value_at(event[:x], event[:y])
+                        select_value(value) unless value.nil?
+                      end
+                    }
+
+                    horizontal_box {
+                      stretchy false
+                      label('R') { stretchy false }
+                      @red_spinbox = spinbox(0, 7) {
+                        on_changed { levels_changed }
+                      }
+                      label('G') { stretchy false }
+                      @green_spinbox = spinbox(0, 7) {
+                        on_changed { levels_changed }
+                      }
+                      label('B') { stretchy false }
+                      @blue_spinbox = spinbox(0, 3) {
+                        on_changed { levels_changed }
+                      }
+                    }
+
+                    horizontal_box {
+                      stretchy false
+                      label('Hex') { stretchy false }
+                      @hex_entry = entry {
+                        on_changed { hex_changed }
+                      }
+                    }
+
+                    @selected_label = label('') { stretchy false }
                   }
                 }
               }
 
-              # The palette group is the only stretchy child of the panel, so it
-              # takes whatever height is left; the view lays all 256 swatches out
-              # in that space rather than scrolling.
-              group('Colour') {
-                vertical_box {
-                  @palette_area = area {
-                    on_draw do |params|
-                      @palette.draw(params[:context], params[:area_width], params[:area_height])
-                    end
-                    on_mouse_down do |event|
-                      value = @palette.value_at(event[:x], event[:y])
-                      select_value(value) unless value.nil?
-                    end
-                  }
+              @mml_controls = vertical_box {
+                group('Tune') {
+                  stretchy false
+                  vertical_box {
+                    horizontal_box {
+                      stretchy false
+                      label('BPM') { stretchy false }
+                      @bpm_spinbox = spinbox(Mml::Tune::BPM_RANGE.first, Mml::Tune::BPM_RANGE.last) {
+                        value @mml_document.tune.bpm
+                        on_changed do |spinbox|
+                          next if @syncing_text
 
-                  horizontal_box {
-                    stretchy false
-                    label('R') { stretchy false }
-                    @red_spinbox = spinbox(0, 7) {
-                      on_changed { levels_changed }
+                          @mml_document.set_setting('bpm', spinbox.value)
+                          sync_mml_text
+                        end
+                      }
+                      @loop_checkbox = checkbox('Loop') {
+                        stretchy false
+                        checked @mml_document.tune.loop?
+                        on_toggled do |box|
+                          next if @syncing_text
+
+                          @mml_document.set_setting('loop', box.checked? ? 'on' : 'off')
+                          sync_mml_text
+                        end
+                      }
                     }
-                    label('G') { stretchy false }
-                    @green_spinbox = spinbox(0, 7) {
-                      on_changed { levels_changed }
+                    horizontal_box {
+                      stretchy false
+                      button('Play') { on_clicked { play_tune } }
+                      button('Stop') { on_clicked { stop_tune } }
+                      button('Export WAV...') { on_clicked { export_wav } }
                     }
-                    label('B') { stretchy false }
-                    @blue_spinbox = spinbox(0, 3) {
-                      on_changed { levels_changed }
+                    @time_label = label('') { stretchy false }
+                  }
+                }
+
+                group('Notes') {
+                  vertical_box {
+                    @problem_entry = non_wrapping_multiline_entry {
+                      read_only true
                     }
                   }
-
-                  horizontal_box {
-                    stretchy false
-                    label('Hex') { stretchy false }
-                    @hex_entry = entry {
-                      on_changed { hex_changed }
-                    }
-                  }
-
-                  @selected_label = label('') { stretchy false }
                 }
               }
 
@@ -317,6 +401,8 @@ module FmAssetEditor
       end
 
       def undo
+        # The tune pane is a text box, which brings its own editing.
+        return unless grid?
         return unless @document.undo
 
         @canvas.queue_redraw_all
@@ -324,6 +410,7 @@ module FmAssetEditor
       end
 
       def redo_edit
+        return unless grid?
         return unless @document.redo
 
         @canvas.queue_redraw_all
@@ -419,15 +506,40 @@ module FmAssetEditor
 
       def adopt(document)
         @document = document
-        @grid.document = document
-        @palette.document = document
-        @canvas.set_size(@grid.width, @grid.height)
-        @guide_spinbox.value = @grid.cell.to_i
+        if grid?(document)
+          @grid_document = document
+          @grid.document = document
+          @palette.document = document
+          @canvas.set_size(@grid.width, @grid.height)
+          @guide_spinbox.value = @grid.cell.to_i
+          @canvas.queue_redraw_all
+          @palette_area.queue_redraw_all
+          sync_color_inputs
+        else
+          @mml_document = document
+          sync_mml_text
+        end
         @window.title = title
-        @canvas.queue_redraw_all
-        @palette_area.queue_redraw_all
-        sync_color_inputs
+        show_pane
         refresh_labels
+      end
+
+      # --- panes -----------------------------------------------------------
+
+      def grid?(document = @document)
+        document.format.view == :grid
+      end
+
+      def mml?(document = @document)
+        document.format.view == :mml
+      end
+
+      def show_pane
+        showing_grid = grid?
+        @grid_body.visible = showing_grid
+        @grid_controls.visible = showing_grid
+        @mml_body.visible = !showing_grid
+        @mml_controls.visible = !showing_grid
       end
 
       def save
@@ -443,8 +555,7 @@ module FmAssetEditor
       end
 
       def save_as
-        path = FileDialog.save(@window, directory: start_directory(:save),
-                                        name: @document.path ? File.basename(@document.path) : 'untitled.bmp')
+        path = FileDialog.save(@window, directory: start_directory(:save), name: @document.name)
         return if path.nil?
 
         @document.save(path)
@@ -456,6 +567,7 @@ module FmAssetEditor
       end
 
       def quit
+        @playback.stop
         @window.destroy
         ::LibUI.quit
       end
@@ -469,11 +581,18 @@ module FmAssetEditor
 
       def refresh_labels
         @format_label.text = @document.format.label
-        @size_label.text = "#{@document.width} x #{@document.height}"
         @path_label.text = @document.path ? shorten(@document.path) : '(not saved yet)'
-        @note_label.text = palette_note
-        @selected_label.text = @document.format.value_label(@palette.selected)
         @window.title = title
+        if grid?
+          @size_label.text = "#{@document.width} x #{@document.height}"
+          @note_label.text = palette_note
+          @selected_label.text = @document.format.value_label(@palette.selected)
+        else
+          tune = @mml_document.tune
+          @size_label.text = "#{tune.part_count} part(s), #{tune.note_count} notes, " \
+                             "#{format('%.1f', tune.seconds)}s"
+          @note_label.text = Mml::Engine.available? ? ' ' : "no preview: #{Mml::Engine.unavailable_reason}"
+        end
         refresh_status
       end
 
@@ -484,7 +603,143 @@ module FmAssetEditor
         format.palette_mismatch?(@document) ? 'stored palette: not RGB332 (viewers only)' : ' '
       end
 
+      # --- the tune pane ---------------------------------------------------
+
+      # Re-read the text after an edit: the roll, the counts and anything the
+      # parser will quietly ignore.
+      def refresh_tune
+        @roll.tune = @mml_document.tune
+        @seek_at = nil if @seek_at && @seek_at > @mml_document.tune.seconds
+        @roll_area.queue_redraw_all
+        refresh_labels
+        refresh_problems
+        refresh_time
+      end
+
+      # What plays each part, and then anything wrong with the file.
+      def refresh_problems
+        tune = @mml_document.tune
+        lines = tune.parts.map do |part|
+          text = "#{part.channel}: #{part.summary}"
+          name = Mml::Engine.gm_name(part.program)
+          text += " (#{name})" if name
+          text
+        end
+        lines << '' unless lines.empty? || tune.problems.empty?
+        lines += tune.problems.map do |problem|
+          problem.line ? "line #{problem.line}: #{problem.message}" : problem.message
+        end
+        lines << "engine: #{Mml::Engine.unavailable_reason}" unless Mml::Engine.available?
+        @problem_entry.text = lines.empty? ? "\n" : "#{lines.join("\n")}\n"
+      end
+
+      # Push the document's text into the pane without the change coming back
+      # as an edit (the setting spinboxes rewrite a line of it).
+      def sync_mml_text
+        @syncing_text = true
+        begin
+          tune = @mml_document.tune
+          @mml_entry.text = @mml_document.text
+          @bpm_spinbox.value = tune.bpm
+          @loop_checkbox.checked = tune.loop?
+        ensure
+          @syncing_text = false
+        end
+        refresh_tune
+      end
+
+      def play_tune(from = @seek_at || 0.0)
+        return unless mml?
+
+        problem = @playback.start(@mml_document.tune, from: from)
+        return message_box('Play', problem) if problem
+
+        follow_playback
+      end
+
+      def stop_tune
+        @playback.stop
+        @roll.position = @seek_at
+        @roll_area.queue_redraw_all
+        refresh_time
+      end
+
+      # A click on the roll moves the head; while a tune is playing it starts
+      # again from there, which is the only way to seek when the tune was
+      # handed to the player as a whole.
+      def seek_to(x)
+        return unless mml?
+
+        seconds = @roll.seconds_at(x, @roll_width.to_i)
+        return if seconds.nil?
+
+        @seek_at = seconds
+        if @playback.playing?
+          play_tune(seconds)
+        else
+          @roll.position = seconds
+          @roll_area.queue_redraw_all
+          refresh_time
+        end
+      end
+
+      # Move the head along while the tune plays. The timer stops itself when
+      # the player is done, so nothing runs while the window is idle.
+      def follow_playback
+        return if @following
+
+        @following = true
+        Glimmer::LibUI.timer(0.05) do
+          if @playback.playing?
+            @roll.position = @playback.position
+            @roll_area.queue_redraw_all
+            refresh_time
+            true
+          else
+            @following = false
+            @roll.position = @seek_at
+            @roll_area.queue_redraw_all
+            refresh_time
+            false
+          end
+        end
+      end
+
+      def refresh_time
+        return unless mml?
+
+        total = @mml_document.tune.seconds
+        at = @roll.position || @seek_at || 0.0
+        @time_label.text = "#{clock(at)} / #{clock(total)}"
+      end
+
+      def clock(seconds)
+        seconds = 0.0 if seconds.nil? || seconds.negative?
+        format('%d:%04.1f', (seconds / 60).to_i, seconds % 60)
+      end
+
+      def export_wav
+        return unless mml?
+
+        name = @mml_document.name.sub(/\.mml\z/, '') + '.wav'
+        path = FileDialog.save(@window, directory: start_directory(:save), name: name)
+        return if path.nil?
+
+        if Mml::Audio.write(@mml_document.tune, path).nil?
+          message_box('Export WAV', 'the tune has no notes to write')
+          return
+        end
+        @settings.remember(:save, File.dirname(path))
+      end
+
       def refresh_status
+        unless grid?
+          tune = @mml_document.tune
+          @status_label.text = "#{tune.bpm} BPM  #{tune.total_clocks} clocks" \
+                               "#{tune.loop? ? '  looping' : ''}"
+          return
+        end
+
         if @hover.nil?
           @status_label.text = ' '
           return
@@ -501,6 +756,8 @@ module FmAssetEditor
       end
 
       def set_zoom(zoom)
+        return unless grid?
+
         @grid.zoom = zoom
         @zoom_spinbox.value = @grid.zoom
         @canvas.set_size(@grid.width, @grid.height)

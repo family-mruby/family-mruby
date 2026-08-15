@@ -22,6 +22,11 @@ WSL2 では `DBUS_SESSION_BUS_ADDRESS` が設定されているのに実体の�
 失われるのは GTK 自身のダイアログの記憶だけで、フォルダの記憶はこの道具が
 別に持っている。
 
+扱えるもの:
+
+- **絵** (スプライト / アイコン / BASIC の文字シート) — 下記
+- **曲** (`.mml`、`FmrbMidi::MmlPlayer` が鳴らすもの) — [曲を編集する](#曲を編集する-mml)
+
 ## なぜ専用の道具なのか
 
 これらの BMP は、普通の画像編集ソフトが思っている意味とは違う中身を持つ。
@@ -94,6 +99,75 @@ WSL2 では `DBUS_SESSION_BUS_ADDRESS` が設定されているのに実体の�
 直したいときは Edit > Normalise Palette を実行してから保存する
 (実機での見え方は元から変わらない。変わるのは閲覧ソフトでの見え方だけ)。
 
+## 曲を編集する (MML)
+
+```
+ruby tools/fm_asset_editor/fm_asset_editor.rb fmruby-core/flash/usr/share/music/round.mml
+ruby tools/fm_asset_editor/fm_asset_editor.rb --new mml
+```
+
+`.mml` を開くと窓は**曲の面**に変わる (文字を打つ場所と、その下にピアノロール)。
+
+### ファイルの形
+
+```
+# 行頭の # は註釈 (パートの中では # は嬰記号なので、行頭だけ)
+bpm 120          テンポ。方言にテンポ命令が無いのでファイルが持つ
+loop off         最後まで行ったら繰り返すか (既定 off)
+velocity 80      これ以降のパートに効く (既定 100)
+voice triangle   声の割り当て pulse1 / pulse2 / triangle / noise
+duty 1           パルス幅 0-3 (12.5 / 25 / 50 / 75%)
+volume 100       チャンネル音量 0-127
+program 24       外部 MIDI 音源の音色 (GM 番号)
+o5 l4 cegegegc   パート。1 行 1 パートで、上から順にチャンネル 0,1,2...
+```
+
+**音色は MML の文字列では選べない**。方言に音色命令が無く、`@1` などと書いても
+黙って無視される。音色はチャンネルの性質なので、上の 4 行がその代わりになる
+(`velocity` と同じく、それ以降のパートに効く)。省けば実機の既定のまま
+(チャンネル 0=pulse1 / 1=pulse2 / 2=triangle / 9=noise)。
+
+パートの中身は `MIDI::MML::Sequence` が読む方言そのもの
+(`o` `l` `v` `>` `<` `r` `.` `&` `[...]n`、`c+` `c#` `c-`)。**エディタは
+方言を書き直さず、実機と同じパーサ (`fmruby-core/lib/add/picoruby-midi-mml`)
+をその場で読み込んで使う**ので、画面に出る音符と長さは実機の解釈と一致する。
+core が隣に無いときは、書くことはできるが下の確認機能が止まる。
+
+### エディタが出せること
+
+- **ピアノロール**: パートごとに色を変えて、入りと重なりが見える。
+  左端に鍵盤が出て、黒鍵の段はロール全体を薄く塗ってあるので、
+  線を数えなくても音程が読める (C の段には `C4` のように名前が付く。
+  行の高さに余裕があれば白鍵すべてに付く)
+- **再生位置**: 再生中は赤い線が進み、`0:01.6 / 0:04.0` と時間が出る。
+  **ロールのどこかを掴めばそこへ飛ぶ** (再生中ならその位置から鳴り直す)
+- **数え**: パート数・音数・拍 (clocks)・秒
+- **黙って捨てられる文字の指摘**: パーサは知らない文字を**警告なく無視する**
+  (打ち間違いが「音が出ない」として現れる) ので、行と桁を出す
+- **パートの一覧**: 何がそのパートを鳴らすか (声・デューティ・音量・GM 音色
+  とその名前) を Notes 欄に並べる
+- **音**: Play で鳴らす。**声とデューティは試聴にも効く** (pulse は指定した幅の
+  方形波、triangle は三角波、noise は雑音、volume は音量)。ただし APU の
+  似姿であって実機の音そのものではない。`program` は外部音源の話なので
+  試聴では鳴り方が変わらず、番号と名前を出すだけ。
+  Export WAV でファイルにも落とせる。再生には `paplay` / `play` (sox) /
+  `ffplay` / `aplay` のどれかを使う
+- **BPM と Loop**: 数値入力を触るとテキストのその行だけを書き換える
+
+### 実機で鳴らす
+
+```ruby
+player = FmrbMidi::MmlPlayer.new(FmrbMidi.device(self))
+player.load_file("/usr/share/music/round.mml")   # bpm も loop もファイルから
+player.start
+```
+
+`load_file` は読み込みのときに音色の設定も送る (声は transport の
+`map_channel`、デューティと音量は control change、音色は program change)。
+使い道の無い装置はそれを無視するので、同じファイルが内蔵音源でも外部音源でも
+そのまま通る。実装は `lib/add/picoruby-fmrb-midi/mrblib/fmrb-mml.rb`。
+ホスト側の検査は `fmruby-core` で `ruby tool/midi/test/mml_test.rb`。
+
 ## テスト
 
 ```
@@ -102,7 +176,8 @@ ruby tools/fm_asset_editor/test/round_trip_test.rb
 
 画面もコンテナも要らない。リポジトリにある BMP を全部開いて書き戻し、
 **1 バイトも変わらないこと**を確かめる。ほかに undo/redo、塗りつぶし、
-新規スプライトのパレット、大きさの上限も見る。lib/ を触ったらこれを回す。
+新規スプライトのパレット、大きさの上限、`.mml` の読み書きと音の生成、
+ダイアログのフォルダ記憶も見る。lib/ を触ったらこれを回す。
 
 ## 構成 (BMP 以外を足すとき)
 
@@ -117,6 +192,11 @@ view    -> :grid  (窓が今持っている唯一の見せ方)
 `view` が `:grid` の種別はさらに `swatches` / `color` / `value_label` /
 `default_value` / `erase_value` / `cell` に答える。登録順が判定順なので、
 広く受け付ける種別 (Sprite332 は 8bpp BMP なら何でも受ける) は後ろに置く。
+
+窓は種別ごとに面を持ち、開いたファイルの `view` に合う面だけを見せる
+(今は `:grid` と `:mml`)。面を増やすときは `ui/main_window.rb` に部品一式を
+足して `show_pane` の切り替えに加える。**それぞれの面は自分の書類を持ち
+続ける**ので、曲を開いてから絵に戻っても絵はそのまま。
 
 UI 以外 (`bmp.rb` / `rgb332.rb` / `document.rb` / `formats/`) は標準ライブラリ
 だけで動くので、他のツールから require して使える。画面を持たない種別
