@@ -116,12 +116,12 @@ Dir.mktmpdir do |tmp|
   # would quietly ignore is pointed out rather than left to become silence.
   tune_path = File.join(tmp, 'round.mml')
   File.write(tune_path, <<~MML)
-    # Round - two parts
+    # Round - two parts, both eight beats long
     bpm 90
     loop on
     o5 l4 cegegegc
     velocity 80
-    o3 l2 c   g   c
+    o3 l2 c   g   c   r
   MML
   format = FmAssetEditor::Format.find(tune_path)
   check('no format claims a .mml file', failures) { format == FmAssetEditor::Formats::MmlTune }
@@ -202,6 +202,21 @@ Dir.mktmpdir do |tmp|
     end
     check('the GM name of program 118 was not found', failures) do
       FmAssetEditor::Mml::Engine.gm_name(118) == 'Synth Drum'
+    end
+
+    # Parts that do not end together: the player takes the longest as the
+    # length, so the short one waits for the repeat and whatever made the long
+    # one long has been playing against the wrong bar.
+    ragged = FmAssetEditor::Mml::Tune.new("bpm 120\no4 l4 cdef cdef\no3 l4 cdef cde\n")
+    check('a part a beat short was not reported', failures) do
+      ragged.problems.any? { |problem| problem.line == 3 && problem.message.include?('1 beat') }
+    end
+    check('a bar short was not counted in bars', failures) do
+      FmAssetEditor::Mml::Tune.new("bpm 120\no4 l1 cd\no3 l1 c\n").problems
+                              .any? { |problem| problem.message.include?('1 bar') }
+    end
+    check('parts of one length were complained about', failures) do
+      FmAssetEditor::Mml::Tune.new("bpm 120\no4 l4 cdef\no3 l4 cdef\n").problems.empty?
     end
   end
 

@@ -42,7 +42,7 @@ module FmAssetEditor
       DIALECT = "cdefgabrolv<>[]&+-#.0123456789 \t"
 
       Part = Struct.new(:mml, :channel, :velocity, :voice, :duty, :volume, :program, :line,
-                        keyword_init: true) do
+                        :length, keyword_init: true) do
         # What the part sounds like, for the pane and for the preview.
         def summary
           words = []
@@ -56,7 +56,7 @@ module FmAssetEditor
       end
       Problem = Struct.new(:line, :message, keyword_init: true)
 
-      attr_reader :bpm, :loop, :parts, :problems
+      attr_reader :bpm, :loop, :parts
 
       def initialize(text)
         @text = text.to_s
@@ -65,6 +65,13 @@ module FmAssetEditor
 
       def loop?
         @loop
+      end
+
+      # Reading the file finds some of these; the rest need the parser, so the
+      # events are collected first.
+      def problems
+        events
+        @problems
       end
 
       def part_count
@@ -213,10 +220,40 @@ module FmAssetEditor
           events, length = Engine.parse(part.mml, channel: part.channel, velocity: part.velocity)
           next if events.nil?
 
+          part.length = length
           @length = length if length > @length
           events.each { |event| merged << event.merge(part: part.channel) }
         end
+        report_ragged_parts
         merged.sort_by { |event| [event[:clock], event[:type] == :note_on ? 1 : 0] }
+      end
+
+      # Parts that do not end together are the easiest way for a tune to go
+      # wrong and the hardest to hear as a cause: the player takes the longest
+      # part as the length, so a shorter one falls silent and waits for the
+      # repeat, and whatever made the long part long has been playing against
+      # the wrong bar since it happened. The count is in clocks, and in beats
+      # and bars as well, because that is how the mistake is usually thought of.
+      def report_ragged_parts
+        return if @parts.size < 2
+
+        longest = @parts.map { |part| part.length.to_i }.max
+        @parts.each do |part|
+          next if part.length.nil? || part.length == longest
+
+          @problems << Problem.new(line: part.line,
+                                   message: "part #{part.channel} is #{describe(longest - part.length)} " \
+                                            "shorter than the longest part")
+        end
+      end
+
+      def describe(clocks)
+        quarter = Engine::CLOCKS_PER_QUARTER
+        bar = quarter * 4
+        return "#{clocks} clocks (#{clocks / bar} bar#{clocks == bar ? '' : 's'})" if (clocks % bar).zero?
+        return "#{clocks} clocks (#{clocks / quarter} beat#{clocks == quarter ? '' : 's'})" if (clocks % quarter).zero?
+
+        "#{clocks} clocks (#{format('%.2f', clocks.to_f / quarter)} beats)"
       end
     end
   end
