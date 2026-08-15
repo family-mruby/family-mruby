@@ -111,6 +111,20 @@ module FmAssetEditor
         value == TRANSPARENT ? '0x00 (transparent)' : Rgb332.label(value)
       end
 
+      # Answering these three is what tells the window this format can be
+      # picked by numbers as well as from the palette.
+      def levels(value)
+        Rgb332.levels(value)
+      end
+
+      def from_levels(red, green, blue)
+        Rgb332.from_levels(red, green, blue)
+      end
+
+      def parse_color(text)
+        Rgb332.parse(text)
+      end
+
       # True when the file carries a palette that disagrees with RGB332, i.e. it
       # looks different in an image viewer than it will on the machine.
       def palette_mismatch?(document)

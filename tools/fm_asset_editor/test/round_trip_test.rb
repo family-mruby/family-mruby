@@ -73,6 +73,22 @@ Dir.mktmpdir do |tmp|
   end
   check('a new sprite lost its pixel', failures) { image.pixels[1 * 4 + 1] == 0xE0 }
 
+  # The three ways of naming a colour have to agree. Levels are the hardware
+  # steps (0-7, 0-7, 0-3); hex is either the RGB332 byte or a 24-bit colour to
+  # quantise.
+  check('levels do not round-trip through every value', failures) do
+    (0..255).all? { |value| FmAssetEditor::Rgb332.from_levels(*FmAssetEditor::Rgb332.levels(value)) == value }
+  end
+  {
+    '5E' => 0x5E, '0x5e' => 0x5E, '#5E' => 0x5E, ' ff ' => 0xFF,
+    'ff8000' => 0xEC, '#ff8000' => 0xEC, 'f80' => 0xEC,
+    'zz' => nil, '' => nil, '12345' => nil
+  }.each do |text, want|
+    check("hex #{text.inspect} parsed as #{FmAssetEditor::Rgb332.parse(text).inspect}, wanted #{want.inspect}", failures) do
+      FmAssetEditor::Rgb332.parse(text) == want
+    end
+  end
+
   # The size the loader refuses must be refused here too.
   big = FmAssetEditor::Formats::Sprite332.blank(257, 4)
   check('an oversized sprite was written anyway', failures) do

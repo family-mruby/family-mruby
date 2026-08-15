@@ -18,7 +18,9 @@ module FmAssetEditor
         @tool = :pen
         @painting = false
         @hover = nil
+        @syncing = false
         build
+        sync_color_inputs
         refresh_labels
       end
 
@@ -30,7 +32,7 @@ module FmAssetEditor
 
       def build
         build_menus
-        @window = window("#{title}", 960, 700) {
+        @window = window(title, 1024, 820) {
           margined true
 
           horizontal_box {
@@ -80,25 +82,6 @@ module FmAssetEditor
                 }
               }
 
-              group('Colour') {
-                vertical_box {
-                  @palette_area = scrolling_area(@palette.width, @palette.height) {
-                    on_draw do |params|
-                      @palette.draw(params[:context])
-                    end
-                    on_mouse_down do |event|
-                      value = @palette.value_at(event[:x], event[:y])
-                      next if value.nil?
-
-                      @palette.select(value)
-                      @palette_area.queue_redraw_all
-                      refresh_labels
-                    end
-                  }
-                  @selected_label = label('') { stretchy false }
-                }
-              }
-
               group('View') {
                 stretchy false
                 vertical_box {
@@ -111,9 +94,6 @@ module FmAssetEditor
                         set_zoom(spinbox.value)
                       end
                     }
-                  }
-                  horizontal_box {
-                    stretchy false
                     label('Guide') { stretchy false }
                     @guide_spinbox = spinbox(0, 64) {
                       value @grid.cell.to_i
@@ -124,12 +104,56 @@ module FmAssetEditor
                     }
                   }
                   checkbox('Pixel grid') {
+                    stretchy false
                     checked @grid.show_grid
                     on_toggled do |box|
                       @grid.show_grid = box.checked?
                       @canvas.queue_redraw_all
                     end
                   }
+                }
+              }
+
+              # The palette group is the only stretchy child of the panel, so it
+              # takes whatever height is left; the view lays all 256 swatches out
+              # in that space rather than scrolling.
+              group('Colour') {
+                vertical_box {
+                  @palette_area = area {
+                    on_draw do |params|
+                      @palette.draw(params[:context], params[:area_width], params[:area_height])
+                    end
+                    on_mouse_down do |event|
+                      value = @palette.value_at(event[:x], event[:y])
+                      select_value(value) unless value.nil?
+                    end
+                  }
+
+                  horizontal_box {
+                    stretchy false
+                    label('R') { stretchy false }
+                    @red_spinbox = spinbox(0, 7) {
+                      on_changed { levels_changed }
+                    }
+                    label('G') { stretchy false }
+                    @green_spinbox = spinbox(0, 7) {
+                      on_changed { levels_changed }
+                    }
+                    label('B') { stretchy false }
+                    @blue_spinbox = spinbox(0, 3) {
+                      on_changed { levels_changed }
+                    }
+                  }
+
+                  horizontal_box {
+                    stretchy false
+                    label('Hex') { stretchy false }
+                    @hex_entry = entry {
+                      on_changed { hex_changed }
+                    }
+                  }
+
+                  @selected_label = label('') { stretchy false }
                 }
               }
 
@@ -217,10 +241,7 @@ module FmAssetEditor
         x, y = pixel
         case @tool
         when :pick
-          value = @document.get(x, y)
-          @palette.select(value)
-          @palette_area.queue_redraw_all
-          refresh_labels
+          select_value(@document.get(x, y))
           return
         when :fill
           changed = @document.fill(x, y, paint_value(primary))
@@ -237,6 +258,61 @@ module FmAssetEditor
       # background index otherwise.
       def paint_value(primary)
         primary ? @palette.selected : @document.format.erase_value
+      end
+
+      # --- colour selection ----------------------------------------------
+      #
+      # The palette, the R/G/B spinboxes and the hex entry are three views of
+      # one value. Whichever is used, the others follow; source names the one
+      # the user is typing in, which is left alone so the caret does not jump.
+
+      def select_value(value, source: nil)
+        return if value.nil?
+
+        @palette.select(value)
+        sync_color_inputs(source)
+        @palette_area.queue_redraw_all
+        refresh_labels
+      end
+
+      def levels_changed
+        return if @syncing || !numeric_input?
+
+        select_value(@document.format.from_levels(@red_spinbox.value, @green_spinbox.value,
+                                                  @blue_spinbox.value),
+                     source: :levels)
+      end
+
+      def hex_changed
+        return if @syncing || !numeric_input?
+
+        value = @document.format.parse_color(@hex_entry.text)
+        select_value(value, source: :hex) unless value.nil?
+      end
+
+      # True when the format can name a colour by numbers, not just by index.
+      def numeric_input?
+        @document.format.respond_to?(:levels)
+      end
+
+      def sync_color_inputs(source = nil)
+        enabled = numeric_input?
+        [@red_spinbox, @green_spinbox, @blue_spinbox, @hex_entry].each { |control| control.enabled = enabled }
+        return unless enabled
+
+        @syncing = true
+        begin
+          value = @palette.selected
+          unless source == :levels
+            red, green, blue = @document.format.levels(value)
+            @red_spinbox.value = red
+            @green_spinbox.value = green
+            @blue_spinbox.value = blue
+          end
+          @hex_entry.text = format('%02X', value) unless source == :hex
+        ensure
+          @syncing = false
+        end
       end
 
       def undo
@@ -332,11 +408,11 @@ module FmAssetEditor
         @grid.document = document
         @palette.document = document
         @canvas.set_size(@grid.width, @grid.height)
-        @palette_area.set_size(@palette.width, @palette.height)
         @guide_spinbox.value = @grid.cell.to_i
         @window.title = title
         @canvas.queue_redraw_all
         @palette_area.queue_redraw_all
+        sync_color_inputs
         refresh_labels
       end
 
