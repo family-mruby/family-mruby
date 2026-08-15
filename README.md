@@ -88,15 +88,24 @@ Install the packages you need based on what you plan to run:
 
 ```bash
 # Base tools (required for rake fetch / build:linux / build:esp32)
-sudo apt install git ruby-rake build-essential cmake
+sudo apt install git ruby-rake ruby-dev build-essential curl
+
+# The firmware itself is compiled inside the ESP-IDF container, so Docker is
+# required for every build. See https://docs.docker.com/engine/install/
+sudo apt install docker.io   # or Docker Engine / Docker Desktop
+
+# Generating the editor's type database is a host-side step of the build
+gem install rbs
 
 # For rake build:tools (fmrb-audio-tools)
-sudo apt install pkg-config libsdl2-dev
+sudo apt install cmake pkg-config libsdl2-dev
 ```
+
+The firmware build is not entirely containerized: parts of the system are Ruby compiled ahead of time to C by the [Spinel](https://github.com/kishima/spinel) compiler, which runs on the host. The first build fetches and builds that compiler automatically -- hence `build-essential` and `curl` -- and `gem install rbs` covers the other host-side step, the type database behind the editor's completion and hover. See [fmruby-core/README.md](https://github.com/family-mruby/fmruby-core/blob/main/README.md#spinel-aot-compiler) for the details and for how to rebuild the compiler when its pin moves.
 
 ### Setup
 
-First time only, fetch fmruby-core and fmruby-graphics-audio:
+First time only, fetch the repositories listed in `.repos` (fmruby-core, fmruby-graphics-audio and fmrb-audio-tools):
 
 ```bash
 rake fetch
@@ -110,12 +119,14 @@ For Retro, build both fmruby-core (ESP32-S3) and fmruby-graphics-audio (ESP32):
 rake build:esp32
 ```
 
-For Modern (M5Stack Tab5), set `FMRB_HW_TARGET` to `TAB5` in `fmruby-core/.env`, then build fmruby-core only (single-chip configuration, fmruby-graphics-audio is not needed):
+For Modern (M5Stack Tab5), build fmruby-core only (single-chip configuration, fmruby-graphics-audio is not needed). The target is selected either on the command line or by editing `FMRB_HW_TARGET` in `fmruby-core/.env`; the command line wins:
 
 ```bash
 cd fmruby-core
-rake build:esp32
+FMRB_HW_TARGET=TAB5 rake build:esp32
 ```
+
+Switching the target changes the chip, so run `rake clean_all` first when the previous build was for the other one.
 
 For development and testing on Linux (SDL2):
 

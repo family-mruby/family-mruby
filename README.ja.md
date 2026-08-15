@@ -89,15 +89,24 @@ KiCADの設計データが含まれています。Modern は市販の M5Stack Ta
 
 ```bash
 # 基本ツール (rake fetch / build:linux / build:esp32 で必要)
-sudo apt install git ruby-rake build-essential cmake
+sudo apt install git ruby-rake ruby-dev build-essential curl
+
+# ファームウェア本体は ESP-IDF のコンテナ内でビルドするため、
+# どのビルドにも Docker が必要です。https://docs.docker.com/engine/install/
+sudo apt install docker.io   # Docker Engine / Docker Desktop でも可
+
+# エディタの型データベース生成はホスト側で走るビルド手順です
+gem install rbs
 
 # rake build:tools (fmrb-audio-tools) を使う場合
-sudo apt install pkg-config libsdl2-dev
+sudo apt install cmake pkg-config libsdl2-dev
 ```
+
+ビルドはすべてがコンテナ内で完結するわけではありません。システムの一部は [Spinel](https://github.com/kishima/spinel) が Ruby を C へ事前コンパイルしたもので、この Spinel コンパイラはホスト側で動きます。初回ビルド時に自動で取得・ビルドされるため `build-essential` と `curl` が必要です。`gem install rbs` はもう一つのホスト側手順、エディタの補完とホバーが使う型データベースの生成に必要です。詳細と、ピンが更新されたときのコンパイラ再ビルドについては [fmruby-core/README.md](https://github.com/family-mruby/fmruby-core/blob/main/README.md#spinel-aot-compiler) を参照してください。
 
 ### セットアップ
 
-初回のみ、fmruby-core と fmruby-graphics-audio を取得します：
+初回のみ、`.repos` に記載のリポジトリ (fmruby-core / fmruby-graphics-audio / fmrb-audio-tools) を取得します：
 
 ```bash
 rake fetch
@@ -111,12 +120,14 @@ Retro向け: fmruby-core (ESP32-S3) と fmruby-graphics-audio (ESP32) の両方�
 rake build:esp32
 ```
 
-Modern (M5Stack Tab5) 向け: `fmruby-core/.env` の `FMRB_HW_TARGET` を `TAB5` に変更してから、fmruby-core をビルドします (1チップ構成のため fmruby-graphics-audio は不要)：
+Modern (M5Stack Tab5) 向け: fmruby-core のみをビルドします (1チップ構成のため fmruby-graphics-audio は不要)。ターゲットはコマンドラインで指定するか、`fmruby-core/.env` の `FMRB_HW_TARGET` を編集します (コマンドライン側が優先されます)：
 
 ```bash
 cd fmruby-core
-rake build:esp32
+FMRB_HW_TARGET=TAB5 rake build:esp32
 ```
+
+ターゲットを切り替えるとチップが変わるので、直前に別のチップでビルドしていた場合は先に `rake clean_all` を実行してください。
 
 開発・テスト用のLinuxビルド（SDL2）：
 

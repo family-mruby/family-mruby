@@ -4,7 +4,7 @@
 # The endpoints are plain HTTP and answer JSON, so curl works just as well --
 # these exist to be short to type, not to hide anything:
 #
-#   curl -X POST "http://<IP>/app/launch?path=/app/demo/mic_spectrum.app.rb"
+#   curl -X POST "http://<IP>/app/launch?path=/app/modern/mic_spectrum.app.rb"
 #
 # They are compiled in only when the firmware is built with
 # FMRB_DEV_REMOTE_CTL (doc/dev_remote_ctl/plan.md); against a build without it
