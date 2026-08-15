@@ -195,6 +195,16 @@ task :clean_all do
   execute_task_in_repos("clean_all", "Cleaning all in repos")
 end
 
+# A bare `rake` here has no build to run -- the work lives in the per-repository
+# Rakefiles -- so show the task list instead of aborting with "Don't know how to
+# build task 'default'". Same shape as fmruby-graphics-audio.
+desc "List available tasks"
+task :help do
+  sh "rake -T"
+end
+
+task :default => :help
+
 # Build tasks - execute rake task in each repository
 namespace :build do
   desc "Execute 'rake build:linux' in each repository (excluding fmrb-audio-tools)"
