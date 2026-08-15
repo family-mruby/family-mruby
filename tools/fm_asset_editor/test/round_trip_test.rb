@@ -184,9 +184,11 @@ Dir.mktmpdir do |tmp|
       FmAssetEditor::Mml::Audio.render(FmAssetEditor::Mml::Tune.new("bpm 120\n#{settings}o4 l4 c\n"))
     end
     square = render.call('')
+    # Well inside the note: the fades at either end and the tail the DC filter
+    # leaves behind are not what the duty is about.
     positive = lambda do |wav|
-      samples = wav[44..].unpack('s<*')
-      samples.count(&:positive?).to_f / samples.count { |value| !value.zero? }
+      samples = wav[44..].unpack('s<*')[2000, 8000]
+      samples.count(&:positive?).to_f / samples.size
     end
     check('duty 0 did not narrow the pulse', failures) { (positive.call(render.call("duty 0\n")) - 0.125).abs < 0.02 }
     check('duty 2 is not a square', failures) { (positive.call(square) - 0.5).abs < 0.02 }

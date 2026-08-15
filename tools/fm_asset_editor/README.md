@@ -6,10 +6,15 @@ WSLg にそのまま窓が出る。
 
 ```
 gem install glimmer-dsl-libui            # 初回のみ (libui 本体を同梱、sudo 不要)
-ruby tools/fm_asset_editor/fm_asset_editor.rb fmruby-core/flash/usr/share/sprites/bird_up.bmp
+ruby tools/fm_asset_editor/fm_asset_editor.rb                # 何を作るか選ぶ画面から
+ruby tools/fm_asset_editor/fm_asset_editor.rb 絵か曲のファイル
 ruby tools/fm_asset_editor/fm_asset_editor.rb --new 24x24   # 空のスプライトから始める
+ruby tools/fm_asset_editor/fm_asset_editor.rb --new mml     # 空の曲から始める
 ruby tools/fm_asset_editor/fm_asset_editor.rb --formats     # 何を編集できるか一覧
 ```
+
+**引数なしで起動すると、何を作るかを選ぶ画面**が出る (スプライトは大きさ指定、
+BASIC 文字シート、曲、ファイルを開く)。あとから選び直すときは File > New...。
 
 窓が出ない場合は `echo $DISPLAY` を確認する (WSLg なら `:0`)。Wayland 経由で
 不具合が出るときは `GDK_BACKEND=x11` を付ける。
@@ -150,6 +155,11 @@ core が隣に無いときは、書くことはできるが下の確認機能が
   方形波、triangle は三角波、noise は雑音、volume は音量)。ただし APU の
   似姿であって実機の音そのものではない。`program` は外部音源の話なので
   試聴では鳴り方が変わらず、番号と名前を出すだけ。
+  合成は 44.1kHz で、**4 倍に細かく描いてから平均して落とす** (方形波を
+  出力の刻みでそのまま作ると、折り返しと縁のずれで音がざらつく)。
+  最後に直流分を落とす一次のフィルタを通す (幅の狭いパルスは 0 を中心に
+  していないので、そのままだと段差が「ぼこっ」と鳴る)。4 秒の曲で用意に
+  0.2 秒ほどかかる。
   Export WAV でファイルにも落とせる。再生には `paplay` / `play` (sox) /
   `ffplay` / `aplay` のどれかを使う
 - **BPM と Loop**: 数値入力を触るとテキストのその行だけを書き換える

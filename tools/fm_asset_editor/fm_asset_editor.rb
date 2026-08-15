@@ -69,8 +69,11 @@ document =
       abort e.message
     end
   else
+    # Nothing to open: the window starts on the chooser, and this is what it
+    # falls back to if the chooser is dismissed.
     FmAssetEditor::Formats::Sprite332.blank(16, 16)
   end
 
 FmAssetEditor.require_ui
-FmAssetEditor::Ui::MainWindow.new(document).show
+FmAssetEditor::Ui::MainWindow.new(document, FmAssetEditor::Settings.new,
+                                  choose: path.nil? && new_size.nil?).show

@@ -16,9 +16,12 @@ module FmAssetEditor
       BUTTON_RIGHT = 3
       HELD_LEFT = 0x01 # Held1To64 is a bitmask, bit n-1 for button n
 
-      def initialize(document, settings = Settings.new)
+      # choose: true opens on the chooser instead of on the (empty) document,
+      # which is what starting the editor with no file to open should do.
+      def initialize(document, settings = Settings.new, choose: false)
         @document = document
         @settings = settings
+        @mode = choose ? :start : document.format.view
         @grid_document = grid?(document) ? document : Formats::Sprite332.blank(16, 16)
         @mml_document = mml?(document) ? document : Formats::MmlTune.blank
         @grid = GridView.new(@grid_document)
@@ -69,6 +72,38 @@ module FmAssetEditor
               }
             }
 
+            # Shown when the editor is started with nothing to open, and from
+            # File > New. It is a pane like the others rather than a window of
+            # its own: one window, one place to look.
+            @start_body = vertical_box {
+              label('What would you like to make?') { stretchy false }
+              horizontal_box {
+                stretchy false
+                label('Sprite') { stretchy false }
+                @new_width_spinbox = spinbox(1, Bmp::MAX_SIDE) { value 16 }
+                label('x') { stretchy false }
+                @new_height_spinbox = spinbox(1, Bmp::MAX_SIDE) { value 16 }
+                button('Create') {
+                  on_clicked do
+                    adopt(Formats::Sprite332.blank(@new_width_spinbox.value, @new_height_spinbox.value))
+                  end
+                }
+              }
+              button('BASIC character sheet (128x128)') {
+                stretchy false
+                on_clicked { adopt(Formats::BasicSheet.blank) }
+              }
+              button('MML tune') {
+                stretchy false
+                on_clicked { adopt(Formats::MmlTune.blank) }
+              }
+              button('Open a file...') {
+                stretchy false
+                on_clicked { open_dialog }
+              }
+              label('') # takes the space left over, so the buttons stay at the top
+            }
+
             @mml_body = vertical_box {
               @mml_entry = non_wrapping_multiline_entry {
                 text @mml_document.text
@@ -85,10 +120,16 @@ module FmAssetEditor
                   @roll.draw(params[:context], params[:area_width], params[:area_height])
                 end
                 on_mouse_down do |event|
+                  @seek_was_playing = @playback.playing?
+                  @playback.stop if @seek_was_playing
                   seek_to(event[:x])
                 end
                 on_mouse_drag do |event|
                   seek_to(event[:x])
+                end
+                on_mouse_up do
+                  play_tune if @seek_was_playing
+                  @seek_was_playing = false
                 end
               }
             }
@@ -250,6 +291,9 @@ module FmAssetEditor
 
       def build_menus
         menu('File') {
+          menu_item('New...') {
+            on_clicked { choose_asset }
+          }
           menu_item('Open...') {
             on_clicked { open_dialog }
           }
@@ -506,6 +550,7 @@ module FmAssetEditor
 
       def adopt(document)
         @document = document
+        @mode = document.format.view
         if grid?(document)
           @grid_document = document
           @grid.document = document
@@ -527,19 +572,27 @@ module FmAssetEditor
       # --- panes -----------------------------------------------------------
 
       def grid?(document = @document)
-        document.format.view == :grid
+        @mode != :start && document.format.view == :grid
       end
 
       def mml?(document = @document)
-        document.format.view == :mml
+        @mode != :start && document.format.view == :mml
       end
 
       def show_pane
-        showing_grid = grid?
-        @grid_body.visible = showing_grid
-        @grid_controls.visible = showing_grid
-        @mml_body.visible = !showing_grid
-        @mml_controls.visible = !showing_grid
+        @start_body.visible = @mode == :start
+        @grid_body.visible = grid?
+        @grid_controls.visible = grid?
+        @mml_body.visible = mml?
+        @mml_controls.visible = mml?
+      end
+
+      # Back to the chooser, without touching what is open: picking something
+      # replaces it, closing the choice leaves it alone.
+      def choose_asset
+        @mode = :start
+        show_pane
+        refresh_labels
       end
 
       def save
@@ -580,6 +633,16 @@ module FmAssetEditor
       end
 
       def refresh_labels
+        if @mode == :start
+          @format_label.text = 'nothing open yet'
+          @size_label.text = ' '
+          @path_label.text = ' '
+          @note_label.text = ' '
+          @status_label.text = ' '
+          @window.title = 'Family mruby asset editor'
+          return
+        end
+
         @format_label.text = @document.format.label
         @path_label.text = @document.path ? shorten(@document.path) : '(not saved yet)'
         @window.title = title
@@ -664,9 +727,10 @@ module FmAssetEditor
         refresh_time
       end
 
-      # A click on the roll moves the head; while a tune is playing it starts
-      # again from there, which is the only way to seek when the tune was
-      # handed to the player as a whole.
+      # A click or a drag on the roll moves the head. Sound only follows when
+      # the button comes up: the tune was handed to the player as a whole, so
+      # seeking means rendering and starting again, which is too much to do on
+      # every step of a drag.
       def seek_to(x)
         return unless mml?
 
@@ -674,13 +738,9 @@ module FmAssetEditor
         return if seconds.nil?
 
         @seek_at = seconds
-        if @playback.playing?
-          play_tune(seconds)
-        else
-          @roll.position = seconds
-          @roll_area.queue_redraw_all
-          refresh_time
-        end
+        @roll.position = seconds
+        @roll_area.queue_redraw_all
+        refresh_time
       end
 
       # Move the head along while the tune plays. The timer stops itself when

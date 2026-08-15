@@ -14,10 +14,23 @@ module FmAssetEditor
     # with a GM program still sounds like a square wave -- what an external
     # instrument makes of program 24 is that instrument's business.
     module Audio
-      RATE = 22_050
+      RATE = 44_100
+      # A square wave written straight out at the sample rate is rough in two
+      # ways: its harmonics run past half the sample rate and fold back as
+      # tones that belong to no note, and its edges land on whichever sample is
+      # nearest, so no two cycles are the same width and the tone rasps. Both
+      # go away by drawing it several times finer and averaging each group back
+      # down, which is what the hardware's own resampling does. Four is enough:
+      # it takes the energy that is in no harmonic from 2.9% to 0.2%, at about
+      # 50 ms for a four second tune.
+      OVERSAMPLE = 4
       AMPLITUDE = 5000
-      FADE = 40 # samples, so a note neither clicks on nor off
+      FADE = 40 # output samples, so a note neither clicks on nor off
       TAIL = 0.25 # seconds of silence after the last note
+      # One pole high pass at about 20 Hz. A pulse narrower than half is not
+      # centred on zero, so a part that changes duty (or simply starts) shifts
+      # the whole mix up or down and thumps; real hardware blocks that too.
+      DC_BLOCK = 0.997
       # Pulse widths the APU has, in the order the duty setting numbers them.
       DUTY_WIDTHS = [0.125, 0.25, 0.5, 0.75].freeze
       NOISE_SEED = 0x2A5F # fixed, so the same tune renders the same bytes
@@ -58,8 +71,9 @@ module FmAssetEditor
         return nil if events.nil? || events.empty?
 
         seconds_per_clock = 60.0 / tune.bpm / Engine::CLOCKS_PER_QUARTER
-        length = ((tune.total_clocks * seconds_per_clock) + TAIL) * RATE
-        samples = Array.new(length.ceil, 0)
+        fine_rate = RATE * OVERSAMPLE
+        length = ((tune.total_clocks * seconds_per_clock) + TAIL) * fine_rate
+        fine = Array.new(length.ceil, 0.0)
 
         parts = tune.parts.each_with_object({}) { |part, index| index[part.channel] = part }
         events.each do |event|
@@ -68,18 +82,44 @@ module FmAssetEditor
           clocks = event[:duration_clocks] || duration_of(events, event)
           next if clocks.nil? || clocks <= 0
 
-          add_note(samples, frequency(event[:note]),
-                   (event[:clock] * seconds_per_clock * RATE).to_i,
-                   (clocks * seconds_per_clock * RATE).to_i,
+          add_note(fine, frequency(event[:note]),
+                   (event[:clock] * seconds_per_clock * fine_rate).to_i,
+                   (clocks * seconds_per_clock * fine_rate).to_i,
                    event[:velocity] || 100,
                    parts[event[:part] || event[:channel]])
         end
 
+        samples = block_dc(average_down(fine))
         skip = (from.to_f * RATE).to_i
         samples = samples.drop(skip) if skip.positive?
         return nil if samples.empty?
 
         wav(samples)
+      end
+
+      # The fine drawing back to the output rate: the average of each group is
+      # the low pass that keeps the folded-back tones out.
+      def average_down(fine)
+        out = Array.new(fine.size / OVERSAMPLE, 0)
+        index = 0
+        while index < out.size
+          base = index * OVERSAMPLE
+          total = 0.0
+          OVERSAMPLE.times { |offset| total += fine[base + offset] }
+          out[index] = total / OVERSAMPLE
+          index += 1
+        end
+        out
+      end
+
+      def block_dc(samples)
+        previous_in = 0.0
+        previous_out = 0.0
+        samples.map do |sample|
+          previous_out = sample - previous_in + DC_BLOCK * previous_out
+          previous_in = sample
+          previous_out.clamp(-32_000.0, 32_000.0).to_i
+        end
       end
 
       def write(tune, path, from: 0.0)
@@ -102,10 +142,13 @@ module FmAssetEditor
         off && (off[:clock] - note_on[:clock])
       end
 
+      # Draws one note into the fine buffer, so lengths and offsets here are in
+      # oversampled units.
       def add_note(samples, frequency, start, length, velocity, part = nil)
         return if length <= 0
 
-        period = RATE / frequency
+        period = RATE * OVERSAMPLE / frequency
+        fade = FADE * OVERSAMPLE
         width = DUTY_WIDTHS[part&.duty || Tune::DEFAULT_DUTY]
         voice = part&.voice
         level = AMPLITUDE * (velocity.clamp(1, 127) / 100.0) * ((part&.volume || 127) / 127.0)
@@ -133,8 +176,8 @@ module FmAssetEditor
             value = phase < width ? level : -level
           end
 
-          gain = [[i, length - i, FADE].min.to_f / FADE, 1.0].min
-          samples[index] = (samples[index] + value * gain).clamp(-32_000, 32_000).to_i
+          gain = [[i, length - i, fade].min.to_f / fade, 1.0].min
+          samples[index] += value * gain
         end
       end
 
