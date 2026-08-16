@@ -13,6 +13,10 @@ SCAN = { "tab" => 0x2B, "right" => 0x4F, "left" => 0x50, "up" => 0x52,
          "down" => 0x51, "esc" => 0x29, "enter" => 0x28, "space" => 0x2C,
          "backspace" => 0x2A, "delete" => 0x4C, "home" => 0x4A, "end" => 0x4D,
          "pageup" => 0x4B, "pagedown" => 0x4E,
+         # Function keys. F10 opens the desktop's menu bar; F11 is fullscreen.
+         "f1" => 0x3A, "f2" => 0x3B, "f3" => 0x3C, "f4" => 0x3D, "f5" => 0x3E,
+         "f6" => 0x3F, "f7" => 0x40, "f8" => 0x41, "f9" => 0x42, "f10" => 0x43,
+         "f11" => 0x44, "f12" => 0x45,
          # Symbols, JP layout scancodes (the firmware maps by its configured
          # layout; shift picks the second legend, e.g. shift+, -> '<').
          "," => 0x36, "." => 0x37, "@" => 0x2F, "-" => 0x2D, ";" => 0x33,
