@@ -158,6 +158,40 @@ tools/dev_run_check.sh --keep
   これらはユーザが確認する。音が「鳴っているか・何 Hz か・何バイト出たか」は
   上記の音の確認で自律的に取れる。S3 実機の flash とブートログ確認も下記の手順でできる。
 
+## sim のハング/クラッシュ調査 (gdb を後から当てる)
+
+core がログを出さなくなった・固まった、というときは**再起動する前に**
+ハング中のプロセスへ gdb を当てて全スレッドの backtrace を取る。Linux sim
+最大の強み (実機ではできない事後解析) なので、状態を捨てないこと。
+
+```
+# 1. コンテナ内の PID を確認 (通常 101。1 と 7 は init/sh)
+docker exec fmruby_core bash -c "ps aux | grep fmruby-core.elf"
+
+# 2. 同じ PID 名前空間にデバッグ用コンテナを同居させて attach
+docker run --rm -u root --pid=container:fmruby_core --cap-add=SYS_PTRACE \
+  -v $(pwd)/fmruby-core:/project ghcr.io/family-mruby/fmruby-esp32-build:v5.5.4 \
+  bash -c "gdb -batch -ex 'set pagination off' \
+    -ex 'set sysroot /proc/101/root' \
+    -ex 'file /project/build/fmruby-core.elf' -ex 'attach 101' \
+    -ex 'thread apply all bt 14'"
+```
+
+- ptrace はコンテナ内 (root でも) 封じられているため、`--pid=container:` +
+  `--cap-add=SYS_PTRACE` の**別コンテナ同居**が唯一の経路。attach は
+  非破壊で、detach 後プロセスは続行する。
+- **`set sysroot /proc/<PID>/root` が肝**。相手コンテナの libc を /proc
+  経由で読ませないとシンボルが出ず、FreeRTOS タスクの巻き戻しが
+  0xa5a5... (スタックフィル) で切れる。ELF は `file` で明示する。
+- FreeRTOS Linux ポートの読み方: ほぼ全スレッドが event_wait
+  (prvSuspendSelf) で眠っているのが正常。見るべきは **FreeRTOS の待ちで
+  ないもの** — pthread_mutex / futex / glibc 内部ロックで止まっている
+  スレッドと、`<signal handler called>` を挟んで suspend されたスレッド
+  (= 何かを保持したまま preempt された疑い)。この組が揃えば優先度逆転
+  (実例と機序: fmruby-core/doc/sim_log_deadlock.md)。
+- graphics-audio 側も同じ手が使える (`--pid=container:fmruby_graphics_audio`、
+  ELF は fmruby-graphics-audio/build のもの)。
+
 # ESP32-S3 実機の自律検証 (flash + シリアルログ)
 
 NARYA (S3) が USB 接続されていれば、Claude Code は flash からブートログの
