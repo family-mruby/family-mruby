@@ -2,7 +2,7 @@
 # Drive the Tab5 remote desktop: mouse clicks and key chords over /ws.
 # Usage: ruby fmrb_rd_input.rb HOST cmd... where cmd is:
 #   click X Y | dclick X Y | move X Y | drag X1 Y1 X2 Y2 |
-#   key NAME | key ctrl+NAME | sleep MS
+#   key NAME | key ctrl+NAME | key alt+NAME | sleep MS
 require "socket"
 require "securerandom"
 require "base64"
@@ -30,6 +30,10 @@ SCAN = { "tab" => 0x2B, "right" => 0x4F, "left" => 0x50, "up" => 0x52,
 (1..12).each { |n| SCAN["f#{n}"] = 0x39 + n }
 MOD_LCTRL = 0x04
 MOD_LSHIFT = 0x02
+# The editor's menu bar letters are Alt-something, so the tool has to be able
+# to send it. Values are the HID modifier bits (fmrb_keymap.h): LCTRL 0x01 in
+# HID terms is what the firmware calls 0x04, and LALT is 0x10.
+MOD_LALT = 0x10
 MSG_MOUSE_MOVE = 0x01
 MSG_MOUSE_BUTTON = 0x02
 MSG_KEY = 0x03
@@ -84,6 +88,7 @@ def key_parse(spec)
     prefix, name = name.split("+", 2)
     mods |= MOD_LCTRL if prefix == "ctrl"
     mods |= MOD_LSHIFT if prefix == "shift"
+    mods |= MOD_LALT if prefix == "alt"
   end
   sc = SCAN[name] or abort "unknown key: #{name}"
   [sc, mods]
