@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # Drive the Tab5 remote desktop: mouse clicks and key chords over /ws.
 # Usage: ruby fmrb_rd_input.rb HOST cmd... where cmd is:
-#   click X Y | dclick X Y | move X Y | drag X1 Y1 X2 Y2 |
+#   click X Y | rclick X Y | dclick X Y | move X Y | drag X1 Y1 X2 Y2 |
 #   key NAME | key ctrl+NAME | key alt+NAME | sleep MS
 require "socket"
 require "securerandom"
@@ -56,10 +56,11 @@ def ws_send(s, payload)
   s.write([0x82, 0x80 | payload.bytesize].pack("C2") + mask + masked.pack("C*"))
 end
 
-def click(s, x, y)
-  ws_send(s, [MSG_MOUSE_BUTTON, x, y, 1, 1].pack("Cs<s<C2"))
+# button: 1 = left, 2 = middle, 3 = right (what rd_input.c accepts).
+def click(s, x, y, button = 1)
+  ws_send(s, [MSG_MOUSE_BUTTON, x, y, button, 1].pack("Cs<s<C2"))
   sleep 0.06
-  ws_send(s, [MSG_MOUSE_BUTTON, x, y, 1, 0].pack("Cs<s<C2"))
+  ws_send(s, [MSG_MOUSE_BUTTON, x, y, button, 0].pack("Cs<s<C2"))
 end
 
 def move(s, x, y)
@@ -122,6 +123,7 @@ args = ARGV.dup
 until args.empty?
   case args.shift
   when "click"  then click(s, args.shift.to_i, args.shift.to_i)
+  when "rclick" then click(s, args.shift.to_i, args.shift.to_i, 3)
   when "dclick" then x = args.shift.to_i; y = args.shift.to_i
                      click(s, x, y); sleep 0.12; click(s, x, y)
   when "move"   then move(s, args.shift.to_i, args.shift.to_i)
