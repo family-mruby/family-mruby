@@ -267,8 +267,8 @@ curl -s http://<IP>/status
 ## 操作と画面取得
 
 ```
-ruby tools/fmrb_rd_input.rb <IP> click X Y | dclick X Y | move X Y |
-                                 drag X1 Y1 X2 Y2 | key ctrl+tab | sleep MS ...
+ruby tools/fmrb_rd_input.rb <IP> click X Y | dclick X Y | mdown X Y | mup X Y |
+                                 move X Y | drag X1 Y1 X2 Y2 | key ctrl+tab | sleep MS ...
 ruby tools/fmrb_rd_snap.rb <IP> out.jpg    # MJPEG から 1 フレーム取得
 ```
 

@@ -63,6 +63,16 @@ def click(s, x, y, button = 1)
   ws_send(s, [MSG_MOUSE_BUTTON, x, y, button, 0].pack("Cs<s<C2"))
 end
 
+# Press and release as separate commands, so the pointer can be held down
+# across a `sleep` -- that is how you photograph a widget's pressed look.
+def mdown(s, x, y, button = 1)
+  ws_send(s, [MSG_MOUSE_BUTTON, x, y, button, 1].pack("Cs<s<C2"))
+end
+
+def mup(s, x, y, button = 1)
+  ws_send(s, [MSG_MOUSE_BUTTON, x, y, button, 0].pack("Cs<s<C2"))
+end
+
 def move(s, x, y)
   ws_send(s, [MSG_MOUSE_MOVE, x, y].pack("Cs<s<"))
 end
@@ -126,6 +136,8 @@ until args.empty?
   when "rclick" then click(s, args.shift.to_i, args.shift.to_i, 3)
   when "dclick" then x = args.shift.to_i; y = args.shift.to_i
                      click(s, x, y); sleep 0.12; click(s, x, y)
+  when "mdown"  then mdown(s, args.shift.to_i, args.shift.to_i)
+  when "mup"    then mup(s, args.shift.to_i, args.shift.to_i)
   when "move"   then move(s, args.shift.to_i, args.shift.to_i)
   when "drag"   then drag(s, args.shift.to_i, args.shift.to_i,
                              args.shift.to_i, args.shift.to_i)
