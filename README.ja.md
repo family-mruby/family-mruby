@@ -92,17 +92,17 @@ KiCADの設計データが含まれています。Modern は市販の M5Stack Ta
 sudo apt install git ruby-rake ruby-dev build-essential curl
 
 # ファームウェア本体は ESP-IDF のコンテナ内でビルドするため、
-# どのビルドにも Docker が必要です。https://docs.docker.com/engine/install/
+# Docker が必要です。https://docs.docker.com/engine/install/
 sudo apt install docker.io   # Docker Engine / Docker Desktop でも可
 
-# エディタの型データベース生成はホスト側で走るビルド手順です
+# エディタの型データベース生成のため必要
 gem install rbs
 
 # rake build:tools (fmrb-audio-tools) を使う場合
 sudo apt install cmake pkg-config libsdl2-dev
 ```
 
-ビルドはすべてがコンテナ内で完結するわけではありません。システムの一部は [Spinel](https://github.com/kishima/spinel) が Ruby を C へ事前コンパイルしたもので、この Spinel コンパイラはホスト側で動きます。初回ビルド時に自動で取得・ビルドされるため `build-essential` と `curl` が必要です。`gem install rbs` はもう一つのホスト側手順、エディタの補完とホバーが使う型データベースの生成に必要です。詳細と、ピンが更新されたときのコンパイラ再ビルドについては [fmruby-core/README.md](https://github.com/family-mruby/fmruby-core/blob/main/README.md#spinel-aot-compiler) を参照してください。
+詳細については [fmruby-core/README.md](https://github.com/family-mruby/fmruby-core/blob/main/README.md#spinel-aot-compiler) を参照してください。
 
 ### セットアップ
 
