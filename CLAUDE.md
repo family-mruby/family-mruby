@@ -309,6 +309,28 @@ ruby tools/fmrb_rd_kill.rb   <IP> <pid>    # 終了。kernel(pid 0) は 400 で�
   開くとリセットがかかる)。
 - P4 (Modern) 限定。S3 (Retro) は remote desktop が無いので不可。
 
+## ファイルの転送 (WiFi、BLE より桁違いに速い)
+
+```
+ruby tools/fmrb_rd_fs.rb <IP> ls    <path>           # 一覧 (d 印がディレクトリ、size)
+ruby tools/fmrb_rd_fs.rb <IP> get   <path> [local]   # 取得
+ruby tools/fmrb_rd_fs.rb <IP> put   <local> <path>   # 送信 (端末側は .part に書いて rename、途中で切れても壊れない)
+ruby tools/fmrb_rd_fs.rb <IP> del   <path>           # ファイル / 空ディレクトリ
+ruby tools/fmrb_rd_fs.rb <IP> mkdir <path>
+```
+
+- パスはアプリが使うもの (`/app` `/home` `/usr/share` `/mnt/sd`)。**この 4 つの
+  根の外 (`/etc` 等) と `..` は 400 で拒否**される。
+- 実測 put 150KB/s、get はそれ以上 (2026-08-23)。JPEG 1 枚は一瞬、MJPEG も
+  分単位。BLE の転送はもう使わない。
+- **開発ループ**: `put` で `/app/<dir>/x.app.rb` と `.app.toml` を置き、
+  `fmrb_rd_launch.rb` で起動すれば**再 flash なし**で試せる。
+  PicoRabbit が SD に書き出した JPEG (`/mnt/sd/picorabbit/<デッキ名>/NN.jpg`)
+  も `get` で取って `fmrb_pngdiff.rb` にかけられる。
+- 実体は rd_http の `/fs/list` `/fs/get` `/fs/put` `/fs/del` `/fs/mkdir`
+  (`FMRB_DEV_REMOTE_CTL` 配下、無認証、リリースでは外れる)。大きい転送の
+  間は remote desktop の配信が止まる (終われば戻る)。
+
 # 周辺ツールの言語
 
 本プロジェクトの周辺ツール (検証・生成・変換スクリプト) は、**可能なものは
