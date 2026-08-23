@@ -317,7 +317,15 @@ ruby tools/fmrb_rd_fs.rb <IP> get   <path> [local]   # 取得
 ruby tools/fmrb_rd_fs.rb <IP> put   <local> <path>   # 送信 (端末側は .part に書いて rename、途中で切れても壊れない)
 ruby tools/fmrb_rd_fs.rb <IP> del   <path>           # ファイル / 空ディレクトリ
 ruby tools/fmrb_rd_fs.rb <IP> mkdir <path>
+ruby tools/fmrb_rd_fs.rb <IP> pull  <path> <local_dir>   # 木ごと取得 (サイズ一致は飛ばす、--force で全部)
+ruby tools/fmrb_rd_fs.rb <IP> push  <local_dir> <path>   # 木ごと送信 (ディレクトリは自動作成)
+ruby tools/fmrb_rd_fs.rb <IP> rmr   <path>               # 木ごと削除
+ruby tools/fmrb_rd_fs.rb <IP>                            # 対話モード (FTP 風: cd/ls/get/put/pull/push/rm/mkdir/cat/launch/ps)
 ```
+
+- 対話モードは端末側と PC 側に別々のカレントディレクトリを持つ (`cd` / `lcd`、
+  `pwd` で両方表示)。端末側のパスは `/` で始まらなければ端末側カレント基準。
+  `rmr` は確認を求める。スクリプトから流すときは標準入力に 1 行 1 コマンド。
 
 - パスはアプリが使うもの (`/app` `/home` `/usr/share` `/mnt/sd`)。**この 4 つの
   根の外 (`/etc` 等) と `..` は 400 で拒否**される。
