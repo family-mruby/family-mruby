@@ -15,88 +15,61 @@ fmruby-core/CLAUDE.md を参照する
 
 fmruby-graphics-audio/CLAUDE.md を参照する
 
-# 自律検証ツール (Linuxシミュレーション)
+# 検証ツール (MCP サーバ fmrb)
 
-Claude Code は GUI なしで Linux シミュレーションの起動・画面確認・入力操作まで自律的に行える。
-実行前に両リポジトリのビルド (rake build:linux) が済んでいること。
+sim・実機の検証操作は MCP サーバ **fmrb** (tools/mcp/、リポジトリ直下の
+.mcp.json で登録済み) のツールを使う。**手順と注意は各ツールの description に
+書いてある**ので、ここには載っていない細部はまずそちらを読む。導入・一覧は
+tools/mcp/README.md、経緯は doc/mcp_tools/。
 
-## 起動 + スクリーンショット
+| 対象 | ツール |
+|---|---|
+| シリアル + flash (S3/Tab5) | serial_start / serial_log / serial_stop / flash |
+| Tab5 遠隔 (WiFi) | tab5_ip / tab5_screenshot / tab5_input / tab5_app / tab5_fs |
+| Linux sim | sim_up / sim_down / sim_screenshot / sim_input / sim_app |
 
-```
-tools/dev_run_check.sh [--gui] [--keep] [出力.png]
-```
+運用の決まりごと (ポートの排他と開きっぱなし、flash 時の capture 退避、
+sim の偽グリーン遮断・3 コンテナ一括・解像度持ち越しの自己修復、Tab5 の
+IP 解決) は**サーバがコードで守る**。手でやり直さない。
 
-- ヘッドレス (SDL dummy driver、ウィンドウ非表示) で docker compose up -d し、
-  core のブートマーカー (`main_loop started`) を待ってから画面を PNG 化する。
-- デフォルトは撮影後に down する。`--keep` で起動維持 (続けて操作・撮影する場合)。
-- すでにスタックが稼働中 (ユーザが docker compose up 中など) の場合は再利用し、down しない。
-- `--gui` で通常の X11 ウィンドウあり起動。
+CLI (tools/ 直下のスクリプト群) は従来どおり残っており、MCP の無い環境や
+ad-hoc な組み合わせ (ログの複雑な grep、パイプ) ではそのまま使える。
+以下の節は、MCP ツールの description に**載っていない**知識だけを残す。
 
-## 画面キャプチャのみ (稼働中スタックから)
+# Linux シミュレーションの検証
 
-```
-python3 tools/fmrb_screenshot.py [--wait 秒] 出力.png
-```
+sim_up で起動 (最初の 1 枚が返る) → sim_input / sim_app / sim_screenshot で
+操作と確認 → sim_down で片付け。実行前に両リポジトリのビルド
+(rake build:linux) が済んでいること (stale な esp32 ビルドは sim_up が
+起動前に拒否する)。
 
-- 共有メモリ /dev/shm/fmrb_display (RGB332) の完成フレームを PNG 化する。
-- Docker Desktop ではホストから SHM が見えないため docker exec 経由に自動フォールバックする。
-- ユーザの GUI 実行中に横からキャプチャすることも可能。
+## かな入力の検証 (sim 特有の細部)
 
-## 入力注入 (合成マウス/キーボードイベント)
-
-```
-ruby tools/fmrb_input.rb <コマンド列>
-```
-
-- コマンド: `move X Y` / `click X Y [--button N]` / `down X Y` / `up X Y` /
-  `key NAME` (a-z 0-9 enter esc tab space backspace up down left right f1-f12 /
-  home end pageup pagedown insert delete / zenkaku katakana) /
-  `key shift+NAME` / `text "STRING"` / `sleep MS`。左から順に実行される。
-- **かな入力の検証**: かなモードの on/off は `key ctrl+space` (どの配列でも
-  効く) か `key zenkaku` (半角/全角。**jp 配列のときだけ**。US 配列では
-  `` ` `` の実キーなので奪わない)。ひらがな⇔カタカナは `key katakana`
-  (0x88。JIS のみ) か、**指示器のクリック**。半角/全角と Ctrl+Space は
-  修飾キーを見ない (off へ必ず戻れるようにするため)。
-- **注意: sim の GUI で実キーボードの半角/全角・カタカナキーは効かない**。
-  X11 がこの 2 キーを「押しっぱなし」のまま扱い、以後の押下がオートリピート
-  と区別できなくなるため、sdl2-display で捨てている (押すとその旨のログが
-  出る)。**GUI で手で操作するときは Ctrl+Space か指示器のクリック**を使う。
-  実機 (USB HID) では普通に効く。上記 `key zenkaku` の注入は別経路なので
-  従来どおり動く。
-  かなモード中は `text` がそのままローマ字入力になる
-  (`text "ka"` → か、`text "kya"` → きゃ)。**ローマ字合成はレイアウトに
-  依存しない** (a-z の scancode は US/JP 共通)。
+- かなモードの on/off は `key ctrl+space` (どの配列でも効く) か
+  `key zenkaku` (jp 配列のときだけ。US 配列では `` ` `` の実キーなので
+  奪わない)。ひらがな⇔カタカナは `key katakana` (0x88。JIS のみ) か
+  **指示器のクリック**。半角/全角と Ctrl+Space は修飾キーを見ない
+  (off へ必ず戻れるようにするため)。
 - **モード表示と切替 (クリック)**: エディタのステータス行右端の
   `[A]/[あ]/[ア]` と、デスクトップのメニューバー右 (空きメモリ表示の左) の
-  指示器。**どちらもクリックで A→あ→ア→A と巡回する**ので、キーボードに
-  かなキーが無くても切り替えられる。指示器は language=ja なら起動時から
-  出る (en ではかなモードを一度使うまで出ない)。
-  ログで確かめるなら `docker logs fmruby_core | grep "kana mode"`
-  (`kana mode=1 (sc=0x2c mod=0x04)` のように、合成層が受け取った
-  scancode/修飾キーごと出る)。
-- 座標はフレームバッファ座標。ウィンドウ拡大率とは無関係。**sim の解像度は
-  .env の FMRB_HW_TARGET に連動する**: Retro 系 (NARYAv3 等) は 320x240、
-  Modern 系 (TAB5 / NARYAv4) は 426x240 (Rakefile が
-  config/system_conf_linux_p4.toml を選ぶ)。実際の値は
-  fmrb_screenshot.py が出す PNG のサイズで確認できる。
-  注意: graphics-audio は解像度を flash/etc/display_conf_linux.txt に
-  覚えており**変更は次回起動から効く**ので、ターゲットを切り替えた直後の
-  1 回目はまだ前の解像度で上がる (もう一度 down/up する)。
+  指示器。**どちらもクリックで A→あ→ア→A と巡回する**。指示器は
+  language=ja なら起動時から出る (en ではかなモードを一度使うまで出ない)。
+- **sim の GUI で実キーボードの半角/全角・カタカナキーは効かない**。X11 が
+  この 2 キーを押しっぱなし扱いにするため sdl2-display で捨てている。
+  GUI で手で操作するときは Ctrl+Space か指示器のクリック。実機 (USB HID)
+  では普通に効く。注入の `key zenkaku` は別経路なので従来どおり動く。
+- かなモード中は `text` がローマ字入力になる (`text "kya"` → きゃ)。
+  ローマ字合成はレイアウトに依存しない (a-z の scancode は US/JP 共通)。
+  ログで確かめるなら `docker logs fmruby_core | grep "kana mode"`。
 - `text` / `key` の文字→キー変換はファームウェアの変換表
   (fmruby-core/main/drivers/usb/fmrb_keymap.c) を読んで逆引きし、配列は
-  config/system_conf_linux.toml の `keyboard_layout` に追従する
-  (`--layout us|jp` で上書き)。記号を打つときはこれが効く。
-- 例: メニューを開いて Launcher を選択 → アイコンをダブルクリックで起動:
-  ```
-  ruby tools/fmrb_input.rb click 20 5 sleep 500 click 15 17
-  ruby tools/fmrb_input.rb click 30 55 sleep 120 click 30 55   # ダブルクリック
-  ruby tools/fmrb_input.rb text "help" key enter
-  ```
-- 操作後は fmrb_screenshot.py で画面を撮って結果を確認する。
+  config/system_conf_linux.toml の `keyboard_layout` に追従する。
+  記号を打つときはこれが効く。
 
 ## 音の確認 (ヘッドレスでもできる)
 
-**スピーカーに出さなくても、音は数値で確認できる**。経路が 2 つある。
+**スピーカーに出さなくても、音は数値で確認できる**。経路が 2 つある
+(いずれも CLI のまま)。
 
 ### 内蔵音源 (APU) の音を波形で見る
 
@@ -117,32 +90,20 @@ ruby tools/fmrb_audio_probe.rb [--duration 秒] [--dump out.wav]
 ruby tools/fmrb_midi_monitor.rb [--hex] [--log out.jsonl] [--duration 秒]
 
 # 2. 別途 sim を起動し、MIDI アプリで出力先を serial に切り替える
-tools/dev_run_check.sh --keep
-#    -> ランチャーか debugd で /app/demo/midi_apu.app.rb を起動
-#    -> 「7 Out」を押すと out: serial に切り替わる (緑になる)
-#    -> 「1 Scale」等を押すとモニタにバイト列が出る
+#    (sim_up → sim_app で /app/demo/midi_apu.app.rb を起動 → 「7 Out」で
+#     out: serial、「1 Scale」等でモニタにバイト列が出る)
 ```
 
 - 出力例: `note on ch1 C4 vel=100 [90 3C 64]` (到着時刻つき)。
   **テンポや音符間隔はこの到着時刻で実測できる** (波形より正確)。
 - **GM 音源で実際に鳴らす**なら `--fluidsynth --soundfont /usr/share/sounds/sf2/FluidR3_GM.sf2`。
-  WSL2 では ALSA シーケンサが無いので `ttymidi` + `aconnect` の定番経路は使えず、
-  fluidsynth のコマンドシェルに流して PulseAudio で鳴らす形になっている。
-  必要なパッケージ (Ubuntu 標準リポジトリ。sudo が要るのでユーザに依頼する):
-
-  ```
-  sudo apt-get install -y fluidsynth fluid-soundfont-gm
-  ```
-
-  `fluidsynth` が本体、`fluid-soundfont-gm` が `/usr/share/sounds/sf2/FluidR3_GM.sf2`
-  (GM 音色、142MB) を入れる。容量を惜しむなら `timgm6mb-soundfont` (約 6MB) でも
-  音色の割り当て確認には足りる。
-  **ホストに入れたくないなら docker で済む**:
-  `docker compose -f docker-compose.yml -f docker-compose.wsl.yml
+  WSL2 では ALSA シーケンサが無いので fluidsynth のコマンドシェルに流して
+  PulseAudio で鳴らす形。パッケージは `sudo apt-get install -y fluidsynth
+  fluid-soundfont-gm` (sudo が要るのでユーザに依頼する)。ホストに入れたく
+  なければ `docker compose -f docker-compose.yml -f docker-compose.wsl.yml
   -f docker-compose.midi.yml up -d` (midi-gm サービスが同じことをする)。
-- 注意: **モニタを起動していなくても core 側は詰まらない** (FIFO は
-  O_NONBLOCK で開かれ、パイプバッファに溜まる)。後からモニタを起動すると
-  溜まった分が読める。
+- **モニタを起動していなくても core 側は詰まらない** (FIFO は O_NONBLOCK。
+  後からモニタを起動すると溜まった分が読める)。
 - 詳細と経緯は `fmruby-core/doc/midi/report/p5s.md`。
 
 ## 仕組みと注意
@@ -153,10 +114,8 @@ tools/dev_run_check.sh --keep
   受信したパケット ([type][len16][payload]、fmrb_hid_event.h) を通常の入力ストリームへ
   転送する。実 SDL イベントと注入イベントは同一経路で直列化される。
 - sdl2-display/main.c を変更した場合は `docker compose build sdl2-display` が必要。
-- 検証を終えたら `docker compose down` で片付ける (dev_run_check.sh のデフォルトは自動 down)。
-- ヘッドレス検証で確認できないもの: **音の善し悪し (官能評価)**、NTSC 実出力、実機挙動。
-  これらはユーザが確認する。音が「鳴っているか・何 Hz か・何バイト出たか」は
-  上記の音の確認で自律的に取れる。S3 実機の flash とブートログ確認も下記の手順でできる。
+- ヘッドレス検証で確認できないもの: **音の善し悪し (官能評価)**、NTSC 実出力、
+  実機挙動、実タッチ (Tab5 のタッチは相対移動)。これらはユーザが確認する。
 
 ## sim のハング/クラッシュ調査 (gdb を後から当てる)
 
@@ -192,152 +151,71 @@ docker run --rm -u root --pid=container:fmruby_core --cap-add=SYS_PTRACE \
 - graphics-audio 側も同じ手が使える (`--pid=container:fmruby_graphics_audio`、
   ELF は fmruby-graphics-audio/build のもの)。
 
-# ESP32-S3 実機の自律検証 (flash + シリアルログ)
+# 実機の検証 (S3 / Tab5)
 
-NARYA (S3) が USB 接続されていれば、Claude Code は flash からブートログの
-確認まで自律的に行える。作業ディレクトリは fmruby-core。
+## flash とシリアルログ
 
-## 手順
+serial_start でシリアルを開きっぱなしにし、serial_log で読む。flash は
+ビルド済み firmware を焼き、capture の退避・再開・ブート要約まで自動で行う
+(ビルド自体は各リポジトリで rake build:esp32。ターゲットは fmruby-core/.env
+の FMRB_HW_TARGET)。
 
-```
-rake check-port                     # 初回のみ: S3 のポートを検出して .serial_port にキャッシュ
-FLASH_BAUD=115200 rake flash        # 書き込み (460800 は WSL2 で接続に失敗しやすい)
-python3 ../tools/fmrb_serial_capture.py -t 40 boot.log   # リセット → 40 秒ログ採取
-```
-
-- capture はデフォルトで RTS パルスのリセットを打つので、ログはブートバナー
-  から始まる。稼働中の観測は `--no-reset` (ただし open だけでリセットが
-  かかるアダプタもある)。ファイルは採取中でも grep できる。
-- ブートの健全性は `grep -c "Guru\|abort"` が 0、周期ダンプの
-  `IRAM free:` が想定値であることで判定する。
+- **シリアルの機種差 (2026-08-29 実測)**: Tab5 (USB-Serial-JTAG 内蔵) は
+  **ポートを開くだけでチップがリブートする** (`rst:0x17`。`--no-reset` でも
+  避けられない)。よって Tab5 では「稼働中を横から覗く」は不可能で、
+  開きっぱなし運用が唯一の観測手段。しかも `reset: false` の方がバナーから
+  採れる (`reset: true` は 2 回目のリセットの USB 再列挙でバナーを失う)。
+  S3 (外付け USB-UART ブリッジ) は従来どおりで、`--no-reset` なら稼働中に
+  attach できる。
+- ユーザのログモニタとの排他は残る: サーバは自分の capture しか管理しない
+  ので、ユーザがモニタを繋いでいると flash は失敗するし、逆にユーザが
+  モニタを繋ぐとボードがリセットされる (POWERON としてログに出る)。
+- ボードが /dev に見えないときは usbipd 待ち: fmruby-core で `rake attach`
+  (Windows 側権限が要るのでユーザに依頼する)。
 
 ## ログの読み方 (常設計装)
 
-- `grep "M1|"`: ブートステップごとの内蔵 RAM スナップショット
+- `M1|`: ブートステップごとの内蔵 RAM スナップショット
   (`M1|ラベル|internal=..|largest=..|psram=..`)。隣接行の差分が各ステップの
   消費。アプリ起動ごとに `spawn:<名前>` 行も出る (doc/internal_ram_budget.md)。
 - 10 秒周期ダンプ: `fmrb_task:` が各タスクの stack high-water (Free 列、
   単調悪化なので最後の値 = セッション最悪値)、`fmrb_app:` が VM プールと
   Spinel の ExcHW (例外/catch スタック深さ)。
 - 入力遅延は `spx: hid_lat` (1000 イベントごと)、GFX は `GFX STATS`。
+- ブートの健全性は crash マーカー (`Guru|abort`) 0 件と、周期ダンプの
+  `IRAM free:` が想定値であること。
 
 ## 注意
 
-- **シリアルポートは排他**。ユーザのログモニタや自分の capture が掴んで
-  いると flash が "device reports readiness to read but returned no data"
-  で失敗する。flash 前に capture を止める。逆にユーザがモニタを繋ぐと
-  ボードがリセットされる (POWERON リセットとしてログに出る)。
-- 実機の UI 操作: **Modern (Tab5) は remote desktop 経由で Claude が自律操作
-  できる** (下記「Tab5 実機のリモート UI 操作」参照)。S3 (Retro) は不可
-  (debugd が BLE のみ、remote desktop なし)。Retro で操作が要る検証は
-  Linux sim で行うか、ユーザに操作を依頼してシリアルで結果を観測する。
-- Tab5 (P4) は USB-Serial-JTAG (/dev/ttyACM0) 接続なので、esptool の
-  自動ダウンロードモード遷移が効き、**ボタンなしで flash できる**
-  (通常の ESP32 フロー。2026-08-07 実測)。ただし flash 後のハードリセットは
-  効かないことがある: ログが `boot:0x204 (DOWNLOAD...)` + `waiting for
-  download` で止まっていたら DL モード滞留なので、そのときだけユーザに
-  ボタンリセットを依頼する (ブートループ等と誤診しない)。USB が列挙される
-  前にクラッシュする firmware を焼いた場合も、手動で DL モードに入れて
-  もらう必要がある。
+- 実機の UI 操作: **Modern (Tab5) は tab5_* ツールで Claude が自律操作
+  できる**。S3 (Retro) は不可 (debugd が BLE のみ、remote desktop なし)。
+  Retro で操作が要る検証は Linux sim で行うか、ユーザに操作を依頼して
+  シリアルで結果を観測する。
 - ビルドの罠: lib/ を編集したら `rake clean`、ターゲット切替 (linux⇔esp32)
   は `rake clean_all`。`rake build:linux` は esp32 の build/ が残っていると
-  **Xtensa のまま "Linux build complete" と表示する**ので、検証と主張する
-  前に `file build/fmruby-core.elf` で x86-64 を確認する。
+  **Xtensa のまま "Linux build complete" と表示する** (sim_up は起動前に
+  検査して拒否するが、検証と主張する前に自分でも
+  `file build/fmruby-core.elf` で確認する)。
 
-## Tab5 実機のリモート UI 操作 (remote desktop 経由)
+## Tab5 遠隔 (WiFi)
 
-Modern (Tab5) が WiFi に接続していれば、Claude は実機の UI 操作と画面確認を
-sim と同様に自律的に行える (シリアル接続すら不要)。
+tab5_app でパス起動/一覧/kill、tab5_screenshot で画面、tab5_input で操作、
+tab5_fs でファイル転送。IP は tab5_ip が解決する (固定値を使わない)。
+put → launch が**再 flash なしの開発ループ**。
 
-## IP の確認 (毎回変わるので固定値を使わない)
+MCP に載せていない部分:
 
-DHCP なので IP はブートごとに変わりうる。次のいずれかで毎回取得する:
-
-```
-# 1. mDNS (推奨。WSL からは Windows resolver 経由で引く)
-powershell.exe -Command "(Resolve-DnsName fmruby.local -ErrorAction SilentlyContinue | Where-Object Type -eq 'A').IPAddress"
-
-# 2. シリアルが繋がっているならブートログから
-#    "rd_http: Remote desktop ready: http://<IP>/" の行
-
-# 3. 取得した IP の確認 (JSON に ip フィールドがある)
-curl -s http://<IP>/status
-```
-
-## 操作と画面取得
-
-```
-ruby tools/fmrb_rd_input.rb <IP> click X Y | dclick X Y | mdown X Y | mup X Y |
-                                 move X Y | drag X1 Y1 X2 Y2 | key ctrl+tab | sleep MS ...
-ruby tools/fmrb_rd_snap.rb <IP> out.jpg    # MJPEG から 1 フレーム取得
-```
-
-- 座標はフレームバッファ系 (426x240)。ウィンドウ拡大とは無関係。
-- キーは fmrb_rd_input.rb 冒頭の SCAN 表 (HID Usage ID) に定義があるものだけ。
-  a-z / 0-9 / 矢印 / tab / esc / enter / space はある。足りなければ表に追記する
-  (modifier は ctrl+ プレフィックス、LCTRL=0x04)。
-- `drag` は窓の移動用。ボタンを押したまま実際にポインタを動かさないと
-  タイトルバーは追従しないので、click では窓は動かせない。
-  掴む前にその窓をクリックしてフォーカスを当てること。
-- 実装: /ws WebSocket に rd_input.c のバイナリメッセージを直接送る。
-  入力はファームの通常経路 (fmrb_host_send_*) に合流するので、
-  Ctrl+Q / Ctrl+Tab などのグローバルホットキーも効く。
-- 実績: ランチャーのスクロール込みのアプリ起動、Ctrl+Tab 退避/復帰、
-  Ctrl+Q 終了、タイマー挙動の 60 秒実測まで全て遠隔で実施済み (2026-08-07)。
-- 注意: 送った操作はユーザが実機を触っているのと同じ扱いになる。ユーザが
-  実機を操作中の可能性があるときは、割り込む前に一言確認する。
-
-## アプリの起動 / 終了 / 一覧 (WiFi 直接制御)
-
-**アプリを起動するのにランチャーを操作する必要はない**。パス指定で直接起動・
-終了・一覧できる (rd_http の開発用エンドポイント。`FMRB_DEV_REMOTE_CTL` で
-囲われ既定 ON、リリースは OFF。計画・経緯は
-`fmruby-core/doc/dev_remote_ctl/plan.md`)。
-
-```
-ruby tools/fmrb_rd_launch.rb <IP> <path>   # 例 /app/demo/spinel_hello.app.rb。pid を返す
-ruby tools/fmrb_rd_ps.rb     <IP>          # 稼働アプリ一覧 (pid / name / state)
-ruby tools/fmrb_rd_kill.rb   <IP> <pid>    # 終了。kernel(pid 0) は 400 で拒否 (ユーザアプリのみ)
-```
-
-- curl でも叩ける: `POST /app/launch?path=` / `GET /app/list` / `POST /app/kill?pid=`。
-- 典型手順: `fmrb_rd_ps` で現況 → `fmrb_rd_launch` で目的アプリを起動 →
-  `fmrb_rd_snap` で画面確認 → 用が済んだら `fmrb_rd_ps` で pid を見て `fmrb_rd_kill`。
-  **ランチャーのスクロール/矢印ナビはもう不要**。
-- **ログはこの経路に載っていない**。クラッシュ時は WiFi ごと落ちるため。crash/boot
-  ログは、セッション開始時に開いて開きっぱなしにしたシリアルで取る (見たい時だけ
-  開くとリセットがかかる)。
-- P4 (Modern) 限定。S3 (Retro) は remote desktop が無いので不可。
-
-## ファイルの転送 (WiFi、BLE より桁違いに速い)
-
-```
-ruby tools/fmrb_rd_fs.rb <IP> ls    <path>           # 一覧 (d 印がディレクトリ、size)
-ruby tools/fmrb_rd_fs.rb <IP> get   <path> [local]   # 取得
-ruby tools/fmrb_rd_fs.rb <IP> put   <local> <path>   # 送信 (端末側は .part に書いて rename、途中で切れても壊れない)
-ruby tools/fmrb_rd_fs.rb <IP> del   <path>           # ファイル / 空ディレクトリ
-ruby tools/fmrb_rd_fs.rb <IP> mkdir <path>
-ruby tools/fmrb_rd_fs.rb <IP> pull  <path> <local_dir>   # 木ごと取得 (サイズ一致は飛ばす、--force で全部)
-ruby tools/fmrb_rd_fs.rb <IP> push  <local_dir> <path>   # 木ごと送信 (ディレクトリは自動作成)
-ruby tools/fmrb_rd_fs.rb <IP> rmr   <path>               # 木ごと削除
-ruby tools/fmrb_rd_fs.rb <IP>                            # 対話モード (FTP 風: cd/ls/get/put/pull/push/rm/mkdir/cat/launch/ps)
-```
-
-- 対話モードは端末側と PC 側に別々のカレントディレクトリを持つ (`cd` / `lcd`、
-  `pwd` で両方表示)。端末側のパスは `/` で始まらなければ端末側カレント基準。
-  `rmr` は確認を求める。スクリプトから流すときは標準入力に 1 行 1 コマンド。
-
-- パスはアプリが使うもの (`/app` `/home` `/usr/share` `/mnt/sd`)。**この 4 つの
-  根の外 (`/etc` 等) と `..` は 400 で拒否**される。
-- 実測 put 150KB/s、get はそれ以上 (2026-08-23)。JPEG 1 枚は一瞬、MJPEG も
-  分単位。BLE の転送はもう使わない。
-- **開発ループ**: `put` で `/app/<dir>/x.app.rb` と `.app.toml` を置き、
-  `fmrb_rd_launch.rb` で起動すれば**再 flash なし**で試せる。
-  PicoRabbit が SD に書き出した JPEG (`/mnt/sd/picorabbit/<デッキ名>/NN.jpg`)
-  も `get` で取って `fmrb_pngdiff.rb` にかけられる。
-- 実体は rd_http の `/fs/list` `/fs/get` `/fs/put` `/fs/del` `/fs/mkdir`
-  (`FMRB_DEV_REMOTE_CTL` 配下、無認証、リリースでは外れる)。大きい転送の
-  間は remote desktop の配信が止まる (終われば戻る)。
+- `ruby tools/fmrb_rd_fs.rb <IP>` の**対話モード** (FTP 風:
+  cd/lcd/ls/get/put/pull/push/cat/launch/ps。端末側と PC 側に別々の
+  カレントディレクトリ。対話モードの rmr は確認を求める)。
+- curl 直叩き: `POST /app/launch?path=` / `GET /app/list` /
+  `POST /app/kill?pid=`、fs 系は `/fs/list` `/fs/get` `/fs/put` `/fs/del`
+  `/fs/mkdir`。いずれも `FMRB_DEV_REMOTE_CTL` 配下 (既定 ON、リリース OFF、
+  無認証)。計画・経緯は `fmruby-core/doc/dev_remote_ctl/plan.md`。
+- tab5_input のキーが足りないときは fmrb_rd_input.rb 冒頭の SCAN 表
+  (HID Usage ID) に追記する (modifier は ctrl+ プレフィックス、LCTRL=0x04)。
+- **ログはこの経路に載っていない** (クラッシュ時は WiFi ごと落ちる)。
+  crash/boot ログはシリアル (serial_start / serial_log) で取る。
 
 # 周辺ツールの言語
 
@@ -354,4 +232,3 @@ PicoRuby) なので、道具立てを揃えるほうが読み書きしやすい�
   tools/fmrb_serial_capture.py。esptool 経由で pyserial は既にホスト依存)。
 - コンテナ内で実行する部分は、そのイメージに入っている言語に合わせる
   (ESP-IDF イメージには python3 はあるが ruby は無い)。
-

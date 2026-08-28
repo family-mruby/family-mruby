@@ -1,7 +1,7 @@
 # fmrb-mcp — Family mruby の開発ツールを MCP サーバとして提供する
 
-いまのところ P1 の範囲、シリアルと flash だけ。計画は `doc/mcp_tools/plan.md`
-(全体) と `doc/mcp_tools/p1_plan.md` (この段)。
+シリアルと flash (P1)、Tab5 の WiFi 遠隔 (P2)、Linux sim (P3) の 14 ツール。
+計画は `doc/mcp_tools/plan.md`、各段の実装報告は `doc/mcp_tools/report/`。
 
 ## なぜあるか
 
