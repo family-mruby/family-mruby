@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "fmrb": {
+      "command": "ruby",
+      "args": ["tools/mcp/fmrb_mcp_server.rb"]
+    }
+  }
+}
