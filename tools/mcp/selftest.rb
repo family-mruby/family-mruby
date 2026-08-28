@@ -295,6 +295,19 @@ Dir.mktmpdir("fmrb-mcp-selftest") do |dir|
   LOG
   check("crash lines are counted") { [crash[:crash_marker_lines] == 2, crash.inspect] }
 
+  # A Tab5 boot attached with reset: true -- no ROM banner, because the second
+  # reset re-enumerates USB and the first ~0.4s is gone. Measured against a
+  # real board on 2026-08-29.
+  tab5 = mgr.send(:boot_summary, <<~LOG)
+    I (417) esp_image: segment 1: paddr=00282368 vaddr=30100000 size=0037ch load
+    I (837) boot: Loaded app from partition at offset 0x10000
+    I (14:54:26.395) boot: Family mruby OS version 2.1.0
+  LOG
+  check("a Tab5 boot without a ROM banner still reads as a boot") do
+    [tab5[:rom_banner] == false && tab5[:bootloader] == true &&
+       !tab5[:verdict].start_with?("output seen but"), tab5.inspect]
+  end
+
   healthy = mgr.send(:boot_summary, <<~LOG)
     ESP-ROM:esp32s3-20210327
     rst:0x1 (POWERON),boot:0x8

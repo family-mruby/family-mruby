@@ -76,9 +76,30 @@ SERIAL_START = MCP::Tool.define(
       baud  - default 115200.
       reset - false (default) attaches without touching the reset lines
               (--no-reset). true pulses RTS to reset the board first, so the
-              log starts at the boot banner. Use true when you want a clean
-              boot log, false when the board is already doing something you
-              do not want to interrupt.
+              log starts at the boot. Use true when you want a clean boot log,
+              false when the board is already doing something you do not want
+              to interrupt.
+
+    Whether attaching reboots the board, and how much of the boot you get,
+    depends on the board. Measured on both paths 2026-08-29:
+
+      Tab5 / ESP32-P4 (USB-Serial-JTAG, /dev/ttyACM0): opening the port
+      reboots the chip whichever value you pass -- the log says
+      "rst:0x17 (CHIP_USB_UART_RESET)". So reset: false is NOT "attach
+      without disturbing it" here; it costs one reboot. It is still the
+      better choice on this board: it gives a log that starts at the ROM
+      banner. reset: true adds a SECOND reset, and the USB re-enumeration
+      that follows swallows the first ~0.4s, so the banner and the reset
+      cause are lost and the log starts at the second-stage bootloader
+      ("esp_image: segment 1"). Prefer reset: false on a Tab5.
+
+      NARYA / ESP32-S3 (separate USB-UART bridge): reset: false attaches
+      without pulsing the reset lines, and reset: true starts the log at the
+      ROM banner. Some adapters still glitch DTR/RTS on open, so an attach
+      can reboot the board there too, but it is not the rule.
+
+    Either way it costs at most one reboot, once. That is exactly why the
+    capture then stays open and serial_log reads the file instead.
 
     The capture stops on its own after 24 hours, and when this server exits.
   DESC
@@ -121,7 +142,9 @@ SERIAL_LOG = MCP::Tool.define(
       "fmrb_task:" 10s dump of per-task stack high-water marks
       "fmrb_app:"  VM pool and Spinel exception-stack depth
       "spx: hid_lat" input latency, "GFX STATS" graphics timing
-      "rst:0x"   reset causes -- a POWERON here means the board was reset
+      "rst:0x"   reset causes -- a new one here means the board rebooted.
+                 On a Tab5 an attach shows "rst:0x17 (CHIP_USB_UART_RESET)";
+                 anything appearing later means something really did reset it
   DESC
   annotations: { read_only_hint: true, destructive_hint: false, idempotent_hint: true },
   input_schema: {
@@ -216,7 +239,7 @@ server = MCP::Server.new(
   tools: [SERIAL_START, SERIAL_LOG, SERIAL_STOP, FLASH],
 )
 
-at_exit { MANAGER.shutdown }
+at_exit { MANAGER.shutdown(archive: true) }
 %w[TERM INT HUP].each do |sig|
   Signal.trap(sig) do
     MANAGER.shutdown

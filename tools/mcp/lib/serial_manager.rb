@@ -35,7 +35,11 @@ module FmrbMcp
     DEFAULT_BAUD = 115_200
     FLASH_BAUD = 115_200         # 460800 (the rake default) fails to connect
                                  # often under WSL2.
-    FLASH_TIMEOUT = 300
+    # A backstop for a wedged connection, not a way to cancel a flash: killing
+    # esptool part way through leaves the app partition half written. Set well
+    # above a real flash (idf.py re-checks the build first, and a slow link can
+    # take minutes) so it only fires when something is genuinely stuck.
+    FLASH_TIMEOUT = 900
     CHECK_PORT_TIMEOUT = 240
     BOOT_SETTLE_SECS = 5         # how long to let the board talk after flash
     MAX_SCAN_BYTES = 8 * 1024 * 1024
@@ -251,7 +255,9 @@ module FmrbMcp
         end
         if result[:timed_out]
           diagnosis << "flash timed out after #{FLASH_TIMEOUT}s and was killed. " \
-                       "The docker container it started may still be running."
+                       "The docker container it started may still be running, and " \
+                       "the app partition may be half written -- reflash before " \
+                       "trusting the board."
         end
       end
 
@@ -273,8 +279,9 @@ module FmrbMcp
 
     # Called from at_exit / signal traps. An orphaned capture holding the port
     # is the worst failure mode this server can leave behind.
-    def shutdown
+    def shutdown(archive: false)
       stop_child
+      archive_current! if archive
       release_lock
     rescue StandardError
       nil
@@ -527,7 +534,16 @@ module FmrbMcp
       crashes = lines.grep(/Guru Meditation|\babort\(\)|Backtrace:|StoreProhibited|LoadProhibited/)
       dl_mode = text.include?("waiting for download") ||
                 text.match?(/boot:0x[0-9a-f]*[0-9a-f]\s*\(DOWNLOAD/i)
-      banner = text.match?(/ESP-ROM:|rst:0x[0-9a-f]+/i)
+      # The ROM banner is not always there to be found. On a Tab5, attaching
+      # with reset: true resets the chip twice (the open itself resets a
+      # USB-Serial-JTAG board, then the RTS pulse resets it again) and the USB
+      # re-enumeration eats the first ~0.4s, banner and reset cause included --
+      # the log starts at the second-stage bootloader instead. Keying the
+      # verdict on ESP-ROM alone would report those healthy boots as
+      # suspicious, so the bootloader counts as a boot too.
+      rom = text.match?(/ESP-ROM:|rst:0x[0-9a-f]+/i)
+      bootloader = text.match?(/esp_image: segment|boot: Loaded app from partition|cpu_start:/)
+      banner = rom || bootloader
       app_up = text.include?("M1|") || text.include?("main_loop started")
 
       verdict =
@@ -540,8 +556,8 @@ module FmrbMcp
         elsif app_up
           "healthy: no crash markers, firmware reached its boot instrumentation"
         elsif banner
-          "booted (ROM banner seen), but no firmware boot instrumentation yet; " \
-          "read the log again in a few seconds"
+          "booted (#{rom ? 'ROM banner' : 'bootloader'} seen), but no firmware boot " \
+          "instrumentation yet; read the log again in a few seconds"
         elsif text.strip.empty?
           "no serial output captured yet. The capture resumes with --no-reset " \
           "after a flash, so it can attach after the boot has already scrolled " \
@@ -552,7 +568,7 @@ module FmrbMcp
         end
 
       { verdict: verdict, crash_marker_lines: crashes.length,
-        crash_lines: crashes.first(10), rom_banner: banner,
+        crash_lines: crashes.first(10), rom_banner: rom, bootloader: bootloader,
         firmware_markers: app_up, download_mode_stall: dl_mode,
         captured_lines: lines.length,
         tail: clamp(lines.last(40).join("\n"), 8000) }
