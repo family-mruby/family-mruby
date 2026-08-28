@@ -22,6 +22,8 @@
 #   6. stdout stays pure JSON-RPC throughout
 #   7. the boot-log reader calls a download-mode stall a stall and not a boot
 #      loop, and the subprocess helper reports failure and timeout honestly
+#   8. the Tab5 tools, against a fake board (selftest_tab5.rb, run inside a
+#      network namespace so it can hold port 80)
 require "json"
 require "tmpdir"
 require "open3"
@@ -133,7 +135,7 @@ Dir.mktmpdir("fmrb-mcp-selftest") do |dir|
   listed = server.request("tools/list").dig("result", "tools").map { |t| t["name"] }.sort
   check("tools/list has the four P1 tools") do
     want = %w[flash serial_log serial_start serial_stop]
-    [listed == want, listed.inspect]
+    [(want - listed).empty?, listed.inspect]
   end
   check("every tool has a description") do
     tools = server.request("tools/list").dig("result", "tools")
@@ -343,6 +345,23 @@ Dir.mktmpdir("fmrb-mcp-selftest") do |dir|
   end
   check("a missing command is a clear error") do
     [missing.to_s.include?("cannot run"), missing.inspect]
+  end
+
+  puts "8. the Tab5 tools against a fake board"
+  # The endpoints live on port 80, which an unprivileged process cannot bind.
+  # A user+network namespace gives us a private loopback where we can, so the
+  # whole path -- server, rd_* CLI tools, HTTP client -- runs unmodified.
+  tab5 = File.expand_path("selftest_tab5.rb", __dir__)
+  out, status = Open3.capture2e("unshare", "-rn", "sh", "-c",
+                                "ip link set lo up; ruby #{tab5}")
+  if status.success?
+    puts out.chomp
+  elsif out.include?("unshare") && !out.include?("  ok ")
+    puts "  SKIPPED (no user namespaces here: #{out.strip.lines.first.to_s.strip})"
+  else
+    puts out.chomp
+    $failures += 1
+    puts "  FAIL the Tab5 selftest reported failures"
   end
 
   puts

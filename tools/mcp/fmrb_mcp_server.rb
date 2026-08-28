@@ -19,9 +19,11 @@ rescue LoadError
 end
 
 require_relative "lib/serial_manager"
+require_relative "lib/tab5"
 
 REPO_ROOT = File.expand_path("../..", __dir__)
 MANAGER = FmrbMcp::SerialManager.new(repo_root: REPO_ROOT)
+TAB5 = FmrbMcp::Tab5.new(repo_root: REPO_ROOT, state_dir: MANAGER.state_dir)
 
 MCP.configure do |config|
   config.exception_reporter = ->(exception, context) do
@@ -224,19 +226,253 @@ FLASH = MCP::Tool.define(
   respond { MANAGER.flash }
 end
 
+
+# --- Tab5 (Modern / ESP32-P4) over WiFi ------------------------------------
+#
+# None of these take a required address: the board is on DHCP, so a hard-coded
+# IP is a bug waiting to happen. They resolve it, check it against the board's
+# own /status, and cache it for five minutes.
+
+TAB5_NOTE = <<~NOTE
+  This is the Tab5 (Modern, ESP32-P4) only. The Retro board (NARYA/S3) has no
+  remote desktop and cannot be driven this way -- use the Linux simulation, or
+  ask the user to press the keys.
+
+  The remote desktop is unauthenticated and its /app and /fs endpoints exist
+  only in development builds (FMRB_DEV_REMOTE_CTL, on by default, off in
+  release), so this assumes a board on a trusted network. A 404 means a
+  firmware without them, not a broken board.
+
+  A crash takes WiFi down with it, so when the board stops answering, the log
+  that matters is on the serial line: serial_start / serial_log on this same
+  server.
+NOTE
+
+TAB5_IP = MCP::Tool.define(
+  name: "tab5_ip",
+  title: "Find the Tab5 on the network",
+  description: <<~DESC,
+    Resolve the board's address and confirm it is answering, returning what
+    its own /status says (ip, whether it is streaming, fps, kbps).
+
+    You rarely need to call this: every other tab5_* tool resolves the address
+    itself. Reach for it when one of them cannot find the board and you want
+    to see the resolution attempts, or after a reboot to confirm the board is
+    back.
+
+    The address comes from mDNS (fmruby.local -- through the Windows resolver
+    on WSL, avahi/getent otherwise) and is cached for five minutes. A cached
+    address that stops answering is thrown away and resolved again rather than
+    retried, because DHCP hands the board a different one on every boot.
+
+    refresh: true skips the cache. ip: "1.2.3.4" pins an address for this call
+    (it is still checked before use).
+
+    #{TAB5_NOTE}
+  DESC
+  annotations: { read_only_hint: true, destructive_hint: false, open_world_hint: true },
+  input_schema: {
+    properties: {
+      ip: { type: "string", description: "use this address instead of resolving" },
+      refresh: { type: "boolean", description: "ignore the cached address (default false)" },
+    },
+    required: [],
+  },
+) do |ip: nil, refresh: false, server_context: nil, **_extra|
+  respond { TAB5.resolve(ip, refresh: refresh) }
+end
+
+TAB5_SCREENSHOT = MCP::Tool.define(
+  name: "tab5_screenshot",
+  title: "See the Tab5's screen",
+  description: <<~DESC,
+    Grab one frame from the board's screen and return it as an image, so you
+    can look at it directly instead of saving a file and opening it.
+
+    The frame is 426x240 -- the frame buffer, which is also the coordinate
+    system tab5_input uses, whatever size the picture looks on screen. The
+    JPEG is also written to a file (the path comes back in the text part) for
+    tools that want the bytes, such as fmrb_pngdiff.rb.
+
+    Drawing reaches the screen when the app presents, not when it draws, so a
+    shot taken immediately after an input can show the frame before the
+    change. If the screen looks unchanged, take another one before concluding
+    that the input did nothing.
+
+    #{TAB5_NOTE}
+  DESC
+  annotations: { read_only_hint: true, destructive_hint: false, open_world_hint: true },
+  input_schema: {
+    properties: { ip: { type: "string", description: "use this address instead of resolving" } },
+    required: [],
+  },
+) do |ip: nil, server_context: nil, **_extra|
+  begin
+    shot = TAB5.screenshot(ip: ip)
+    MCP::Tool::Response.new([
+      { type: "image", data: shot[:data], mimeType: "image/jpeg" },
+      { type: "text", text: JSON.pretty_generate(shot.reject { |k, _| k == :data }) },
+    ])
+  rescue FmrbMcp::Error => e
+    tool_error("fmrb-mcp error", e.message)
+  rescue StandardError => e
+    warn "fmrb-mcp: #{e.class}: #{e.message}"
+    tool_error(e.class.name, e.message)
+  end
+end
+
+TAB5_INPUT = MCP::Tool.define(
+  name: "tab5_input",
+  title: "Click and type on the Tab5",
+  description: <<~DESC,
+    Send mouse and keyboard events to the board. They join the firmware's
+    normal input path, so global hotkeys work too (Ctrl+Q quits an app,
+    Ctrl+Tab switches focus, F10 opens the menu bar, F11 is fullscreen).
+
+    `commands` is one string, executed left to right:
+
+      click X Y | rclick X Y | dclick X Y | move X Y | mdown X Y | mup X Y
+      drag X1 Y1 X2 Y2 | key NAME | key ctrl+NAME | keydown NAME | keyup NAME
+      sleep MS
+
+    e.g. "click 20 5 sleep 500 click 15 17" or "key ctrl+tab".
+
+    Coordinates are frame-buffer coordinates, 426x240, the same system
+    tab5_screenshot returns -- unrelated to how large the window looks.
+
+    Moving a window takes `drag`, not `click`: a title bar only follows a
+    pointer that actually moves while the button is held. Click the window
+    first to focus it, then drag it.
+
+    Key names are the ones in the tool's scancode table: a-z, 0-9, f1-f12,
+    arrows, tab, esc, enter, space, backspace, and a few symbols. An unknown
+    name comes back as an error naming the key.
+
+    Two things this cannot tell you. The Tab5's touch screen is relative
+    (a tap moves the cursor from where it was), so a UI that depends on
+    absolute touch positions cannot be judged from injected events -- ask the
+    user to try it by hand. And these events look exactly like the user's own,
+    so if they may be using the board right now, ask before interrupting.
+
+    #{TAB5_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: false, open_world_hint: true },
+  input_schema: {
+    properties: {
+      commands: { type: "string", description: "e.g. \"click 20 5 sleep 300 key enter\"" },
+      ip: { type: "string", description: "use this address instead of resolving" },
+    },
+    required: ["commands"],
+  },
+) do |commands:, ip: nil, server_context: nil, **_extra|
+  respond { TAB5.input(commands, ip: ip) }
+end
+
+TAB5_APP = MCP::Tool.define(
+  name: "tab5_app",
+  title: "Start, list and stop apps on the Tab5",
+  description: <<~DESC,
+    Drive apps by path instead of through the launcher: no menu, no scrolling
+    to the right row, nothing that breaks when the list moves.
+
+      action: "launch", path: "/app/demo/spinel_hello.app.rb"   -> returns a pid
+      action: "ps"                                              -> pid, name, state
+      action: "kill",   pid: 7
+
+    Only user apps can be killed; the firmware refuses the kernel, the host
+    and the system desktop, so a slip cannot take the screen down.
+
+    With tab5_fs this is the development loop that needs no reflashing at all:
+    put the .app.rb (and its .app.toml) under /app, launch it, look with
+    tab5_screenshot, kill it, put the next version.
+
+    #{TAB5_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: false, open_world_hint: true },
+  input_schema: {
+    properties: {
+      action: { type: "string", enum: %w[launch ps kill], description: "launch, ps or kill" },
+      path: { type: "string", description: "app path for launch, e.g. /app/demo/spinel_hello.app.rb" },
+      pid: { type: "integer", description: "pid for kill (from action: ps)" },
+      ip: { type: "string", description: "use this address instead of resolving" },
+    },
+    required: ["action"],
+  },
+) do |action:, path: nil, pid: nil, ip: nil, server_context: nil, **_extra|
+  respond { TAB5.app(action: action, path: path, pid: pid, ip: ip) }
+end
+
+TAB5_FS = MCP::Tool.define(
+  name: "tab5_fs",
+  title: "Move files to and from the Tab5",
+  description: <<~DESC,
+    Read and write the board's filesystem over WiFi.
+
+      action: "ls",    device_path: "/app"
+      action: "get",   device_path: "/mnt/sd/shot.jpg", local_path: "shot.jpg"
+      action: "put",   local_path: "my.app.rb", device_path: "/app/test/my.app.rb"
+      action: "mkdir", device_path: "/app/test"
+      action: "del",   device_path: "/app/test/my.app.rb"
+      action: "pull",  device_path: "/mnt/sd/picorabbit", local_path: "./exports"
+      action: "push",  local_path: "./myapp", device_path: "/app/myapp"
+      action: "rmr",   device_path: "/app/test"
+
+    Paths on the device are the four roots apps use -- /app, /home,
+    /usr/share, /mnt/sd. Anything outside them, and any "..", is refused by
+    the firmware.
+
+    put writes to a temporary name and renames, so an interrupted upload does
+    not leave a half-written file. pull and push skip files whose size already
+    matches; force: true copies everything.
+
+    Two things worth knowing: a large transfer pauses the remote desktop
+    stream until it finishes (it comes back on its own), and "rmr" deletes a
+    whole tree with no confirmation -- do not call it without the user asking
+    for that deletion.
+
+    #{TAB5_NOTE}
+  DESC
+  annotations: { destructive_hint: true, idempotent_hint: false, open_world_hint: true },
+  input_schema: {
+    properties: {
+      action: { type: "string", enum: %w[ls get put push pull mkdir del rmr],
+                description: "ls, get, put, push, pull, mkdir, del or rmr" },
+      device_path: { type: "string", description: "path on the board (/app, /home, /usr/share, /mnt/sd)" },
+      local_path: { type: "string", description: "path on this machine" },
+      force: { type: "boolean", description: "for pull/push: copy even when sizes match" },
+      ip: { type: "string", description: "use this address instead of resolving" },
+    },
+    required: ["action"],
+  },
+) do |action:, device_path: nil, local_path: nil, force: false, ip: nil, server_context: nil, **_extra|
+  respond { TAB5.fs(action: action, device_path: device_path, local_path: local_path,
+                    force: force, ip: ip) }
+end
+
 server = MCP::Server.new(
   name: "fmrb",
   title: "Family mruby device tools",
   version: "0.1.0",
   instructions: <<~TXT,
-    Serial and flash control for the Family mruby ESP32 boards.
+    Device tools for the Family mruby boards: the serial line and flashing for
+    both of them, and remote control of the Tab5 (Modern, ESP32-P4) over WiFi.
 
-    Normal order of work: serial_start once at the beginning, then serial_log
-    whenever you want to look, and flash when you have a new build. Do not
-    stop and restart the capture just to read it -- reopening the port resets
-    the board and you lose the evidence.
+    Serial: serial_start once at the beginning, then serial_log whenever you
+    want to look, and flash when you have a new build. Do not stop and restart
+    the capture just to read it -- reopening the port resets the board and you
+    lose the evidence.
+
+    Tab5 over WiFi: tab5_app launches and stops apps by path, tab5_screenshot
+    shows the screen, tab5_input clicks and types, tab5_fs moves files. None of
+    them need an address; it is resolved and re-resolved for you. When the
+    board stops answering these, it has usually crashed and taken WiFi with
+    it -- look at the serial log.
+
+    The Retro board (NARYA/S3) has serial and flash only; it has no remote
+    desktop.
   TXT
-  tools: [SERIAL_START, SERIAL_LOG, SERIAL_STOP, FLASH],
+  tools: [SERIAL_START, SERIAL_LOG, SERIAL_STOP, FLASH,
+          TAB5_IP, TAB5_SCREENSHOT, TAB5_INPUT, TAB5_APP, TAB5_FS],
 )
 
 at_exit { MANAGER.shutdown(archive: true) }

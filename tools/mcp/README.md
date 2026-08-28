@@ -39,6 +39,29 @@ USB 再列挙で ROM バナーを失う (`reset: false` ならバナーから採
 `rake attach` (usbipd で USB を WSL2 へ) はサーバからは行わない。Windows 側の
 権限が要るのでユーザ操作。
 
+## Tab5 遠隔 (P2)
+
+Modern (Tab5 / ESP32-P4) を WiFi で操作する。**どのツールも IP を必須引数に
+しない**。DHCP でブートごとに変わるので、解決 (mDNS) → `/status` で確認 →
+5 分キャッシュ → 応答しなくなったら捨てて引き直す、をサーバが持つ。
+
+| tool | 動作 |
+|---|---|
+| `tab5_ip(ip?, refresh?)` | 住所を解決して `/status` を返す。切り分け用 |
+| `tab5_screenshot(ip?)` | 画面 1 枚を **image content で返す** (ファイル経由不要)。JPEG はファイルにも残す |
+| `tab5_input(commands, ip?)` | `click X Y` `drag ...` `key ctrl+tab` `sleep MS` などを左から実行 |
+| `tab5_app(action, path?, pid?, ip?)` | `launch` (パス起動、pid を返す) / `ps` / `kill` |
+| `tab5_fs(action, device_path?, local_path?, force?, ip?)` | `ls get put push pull mkdir del rmr` |
+
+- 座標はフレームバッファ系 **426x240** (窓の拡大率と無関係)。
+- `put` → `tab5_app launch` が**再 flash なしの開発ループ**。
+- **Retro (S3) は不可** (remote desktop が無い)。
+- `/app` `/fs` は開発ビルド限定 (`FMRB_DEV_REMOTE_CTL`)。無い firmware は
+  404 を返すので、「壊れた」ではなく「リリースビルド」と診断して返す。
+  無認証なので信頼できる LAN 内が前提。
+- **クラッシュすると WiFi ごと落ちてこの経路は全滅する**。そのときのログは
+  同じサーバの `serial_start` / `serial_log` で採る。
+
 ## 導入
 
 ```
@@ -95,12 +118,20 @@ pid とコマンド行を確かめてから始末する。
 ruby tools/mcp/selftest.rb
 ```
 
-サーバを子プロセスとして立て、JSON-RPC で叩く。socat があれば仮想シリアル
-(pty ペア) を作って capture の実経路まで通す。確認するのは、ツール一覧、
-capture なしでの `serial_log`、flock 衝突、実際の採取と区間の繋ぎ、
-**サーバを kill したときに capture の孤児が残らないこと**、stdout が
-JSON-RPC だけであること、ブートログの読み (DL モード滞留をブートループと
-誤診しないこと)、子プロセス実行の失敗・タイムアウト。
+サーバを子プロセスとして立て、JSON-RPC で叩く (53 項目)。実機は要らない。
+
+- シリアル側: socat の pty ペアを仮想シリアルにして capture の実経路まで
+  通す。ツール一覧、capture なしでの `serial_log`、flock 衝突、区間の繋ぎ、
+  **サーバを kill したときに capture の孤児が残らないこと**、stdout が
+  JSON-RPC だけであること、ブートログの読み (DL モード滞留をブートループと
+  誤診しないこと)、子プロセス実行の失敗・タイムアウト。
+- Tab5 側 (`selftest_tab5.rb`): 偽の Tab5 を立てて実経路を通す。住所の
+  解決・キャッシュ・失効、image content が本物の JPEG であること、
+  `/app` の構造化、kernel kill の拒否、404 の診断、未知キーの明示エラー。
+  **`unshare -rn` の中で走らせる** — エンドポイントは port 80 にあり、
+  非特権では bind できないため。名前空間の中なら 127.0.0.1:80 は自分の
+  ものなので、サーバも rd_* CLI も**無改造のまま**通る。
+  ユーザ名前空間が使えない環境では、この節は SKIPPED になる。
 
 ## 掟
 

@@ -22,9 +22,9 @@ require "fileutils"
 require "json"
 require "time"
 
-module FmrbMcp
-  class Error < StandardError; end
+require_relative "support"
 
+module FmrbMcp
   # The port is held by another MCP server process (another Claude session)
   # or by something else that took the same lock. Never stolen silently.
   class LockBusy < Error; end
@@ -496,22 +496,12 @@ module FmrbMcp
       nl ? data[(nl + 1)..] : data
     end
 
-    # Serial output is bytes, not text: it can contain partial UTF-8 (the log
-    # is read while it is being written) and ANSI colour from ESP-IDF. Both
-    # would otherwise break JSON generation or the readability of the result.
     def scrub(bytes)
-      bytes.force_encoding(Encoding::UTF_8)
-           .scrub("?")
-           .gsub(/\e\[[0-9;]*[A-Za-z]/, "")
-           .gsub("\r\n", "\n")
-           .delete("\r")
+      Sub.scrub(bytes)
     end
 
     def clamp(text, limit = MAX_TEXT_BYTES)
-      return text if text.bytesize <= limit
-      tail = text.byteslice(text.bytesize - limit, limit)
-                 .force_encoding(Encoding::UTF_8).scrub("?")
-      "...(truncated #{text.bytesize - limit} bytes)...\n" + tail.sub(/\A[^\n]*\n/, "")
+      Sub.clamp(text, limit)
     end
 
     def count_lines(path)
@@ -574,47 +564,11 @@ module FmrbMcp
         tail: clamp(lines.last(40).join("\n"), 8000) }
     end
 
-    # --- subprocess --------------------------------------------------------
+    # --- subprocess ---------------------------------------------------------
 
     def run(env, cmd, chdir:, timeout:)
-      r, w = IO.pipe
-      r.binmode
-      pid = begin
-        Process.spawn(env, *cmd, chdir: chdir, in: File::NULL,
-                      out: w, err: [:child, :out], pgroup: true)
-      rescue Errno::ENOENT => e
-        r.close
-        w.close
-        raise Error, "cannot run #{cmd.first}: #{e.message} (is it on PATH for this server?)"
-      end
-      w.close
-
-      buf = +""
-      reader = Thread.new { buf << r.read }
-
-      status = nil
-      timed_out = false
-      deadline = Time.now + timeout
-      loop do
-        _, status = Process.waitpid2(pid, Process::WNOHANG)
-        break if status
-        if Time.now > deadline
-          timed_out = true
-          Process.kill("TERM", -pid) rescue nil
-          sleep 2
-          Process.kill("KILL", -pid) rescue nil
-          Process.waitpid(pid) rescue nil
-          break
-        end
-        sleep 0.2
-      end
-
-      reader.join(5)
-      r.close rescue nil
-
-      { ok: !timed_out && status&.success? || false,
-        status: status&.exitstatus, timed_out: timed_out,
-        output: scrub(buf) }
+      Sub.run(env, cmd, chdir: chdir, timeout: timeout)
     end
+
   end
 end
