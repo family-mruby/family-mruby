@@ -62,6 +62,34 @@ Modern (Tab5 / ESP32-P4) を WiFi で操作する。**どのツールも IP を�
 - **クラッシュすると WiFi ごと落ちてこの経路は全滅する**。そのときのログは
   同じサーバの `serial_start` / `serial_log` で採る。
 
+## Linux sim (P3)
+
+docker の 3 コンテナを起動・撮影・操作する。手順書でしか守られていなかった
+3 つの罠をサーバが持つ。
+
+| tool | 動作 |
+|---|---|
+| `sim_up(gui?)` | 起動して**最初の 1 枚を image content で返す**。ELF 検査と解像度の自己修復つき |
+| `sim_down(force?)` | スタックごと down。自分が起動したものでなければ force が要る |
+| `sim_screenshot(wait?)` | 現在の画面を image content で返す |
+| `sim_input(commands)` | `click X Y` `text "hello world"` `key ctrl+space` など |
+| `sim_app(action, path?, pid?)` | debugd 経由の `spawn` / `ps` / `kill` |
+
+- **偽グリーンの遮断**: `rake build:linux` は esp32 の build/ が残っていても
+  「Linux build complete」と言う。起動前に**両 ELF が本当に x86-64 か**を
+  ヘッダで確かめ、違えば起動せずに `rake clean_all && rake build:linux` を案内する。
+- **解像度の持ち越しの自己修復**: graphics-audio は画面サイズを覚えていて
+  変更は次回起動から効く。期待値 (.env の FMRB_HW_TARGET) と食い違ったら
+  **1 回だけ down→up をやり直す**。2 回目も違えば、持ち越しと
+  「.env と build の食い違い」の両方を挙げて失敗する。
+- **3 コンテナまとめて**。単独 restart のツールは作らない (core だけ
+  再起動すると framebuffer が死ぬのに `Up` に見える)。
+- **ユーザのスタックを壊さない**: 稼働中なら再利用し、`started_by_us` を
+  覚えておく。ユーザ (や別セッション) のものを `sim_down` で黙って
+  落とさない。docker は排他資源なので、起動と down の間だけ flock を握る。
+- `sim_input` は **Shellwords で分解**する (`text "hello world"` を 1 引数の
+  まま渡すため)。
+
 ## 導入
 
 ```
@@ -132,6 +160,11 @@ ruby tools/mcp/selftest.rb
   非特権では bind できないため。名前空間の中なら 127.0.0.1:80 は自分の
   ものなので、サーバも rd_* CLI も**無改造のまま**通る。
   ユーザ名前空間が使えない環境では、この節は SKIPPED になる。
+- sim 側 (`selftest_sim.rb`): docker 無しで通る分。偽の ELF (RISC-V /
+  Xtensa / ELF ですらないもの) で**偽グリーンの遮断**、argv を印字する
+  偽 CLI で `text "hello world"` が 1 引数のまま渡ること、debugd への
+  `path=` `pid=` の渡し方、`started_by_us: false` の down 拒否、
+  解像度の期待値と PNG からのサイズ読み取り。
 
 ## 掟
 

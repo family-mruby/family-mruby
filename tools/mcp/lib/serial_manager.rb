@@ -25,10 +25,6 @@ require "time"
 require_relative "support"
 
 module FmrbMcp
-  # The port is held by another MCP server process (another Claude session)
-  # or by something else that took the same lock. Never stolen silently.
-  class LockBusy < Error; end
-
   class SerialManager
     CAPTURE_SECS = 86_400        # -t 0 would capture nothing (the tool loops
                                  # until now+secs), so "stay open" is a big -t.
@@ -435,10 +431,6 @@ module FmrbMcp
 
     # --- flock -------------------------------------------------------------
 
-    def lock_path(port)
-      File.join(@state_dir, port.to_s.gsub(/[^A-Za-z0-9]+/, "-").sub(/\A-+/, "") + ".lock")
-    end
-
     def holding_lock?(port)
       !@lock_file.nil? && @lock_port == port
     end
@@ -447,27 +439,17 @@ module FmrbMcp
       return if holding_lock?(port)
       release_lock if @lock_file
 
-      path = lock_path(port)
-      f = File.open(path, File::RDWR | File::CREAT, 0o644)
-      unless f.flock(File::LOCK_EX | File::LOCK_NB)
-        holder = (f.read.strip rescue "")
-        f.close
-        raise LockBusy, "#{port} is in use by another session#{holder.empty? ? '' : " (#{holder})"}. " \
-                        "This server never steals the port: stop the other session's " \
-                        "capture (serial_stop) or wait for it to finish."
-      end
-      f.truncate(0)
-      f.write("server pid #{Process.pid} since #{Time.now.iso8601}")
-      f.flush
-      @lock_file = f
+      lock = Lock.new(@state_dir, port)
+      lock.acquire(port, hint: "stop the other session's capture (serial_stop) " \
+                               "or wait for it to finish")
+      @lock_file = lock
       @lock_port = port
       @lock_for_flash_only = for_flash_only
     end
 
     def release_lock
       return unless @lock_file
-      @lock_file.flock(File::LOCK_UN) rescue nil
-      @lock_file.close rescue nil
+      @lock_file.release
       @lock_file = nil
       @lock_port = nil
       @lock_for_flash_only = false

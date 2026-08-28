@@ -9,6 +9,7 @@
 # The stdio rule: stdout carries JSON-RPC and nothing else. Everything this
 # server or its children would print goes to stderr or to a file under
 # ~/.fmrb_mcp/ (override with FMRB_MCP_STATE_DIR).
+require "base64"
 require "json"
 
 begin
@@ -20,10 +21,12 @@ end
 
 require_relative "lib/serial_manager"
 require_relative "lib/tab5"
+require_relative "lib/sim"
 
 REPO_ROOT = File.expand_path("../..", __dir__)
 MANAGER = FmrbMcp::SerialManager.new(repo_root: REPO_ROOT)
 TAB5 = FmrbMcp::Tab5.new(repo_root: REPO_ROOT, state_dir: MANAGER.state_dir)
+SIM = FmrbMcp::Sim.new(repo_root: REPO_ROOT, state_dir: MANAGER.state_dir)
 
 MCP.configure do |config|
   config.exception_reporter = ->(exception, context) do
@@ -449,6 +452,206 @@ TAB5_FS = MCP::Tool.define(
                     force: force, ip: ip) }
 end
 
+
+# --- Linux simulation (docker) ---------------------------------------------
+
+SIM_NOTE = <<~NOTE
+  The simulation runs the same core and graphics-audio code as the boards, on
+  this machine, in three docker containers. It is the cheapest place to check
+  a change; what it cannot tell you is how something sounds, how NTSC output
+  looks, or how the real hardware behaves.
+
+  Coordinates and resolution follow the hardware target in fmruby-core/.env:
+  Retro (NARYAv3 and friends) is 320x240, Modern (TAB5, NARYAv4) is 426x240.
+  sim_up reports the size it actually came up at.
+NOTE
+
+SIM_UP = MCP::Tool.define(
+  name: "sim_up",
+  title: "Start the Linux simulation",
+  description: <<~DESC,
+    Bring the simulation up (headless by default) and return the first frame,
+    so you can see it booted rather than assume it.
+
+    Two things it refuses to do quietly. It checks both ELFs are really x86-64
+    before starting anything, because `rake build:linux` prints "Linux build
+    complete" even when the build directory still holds an ESP32 build -- the
+    classic false green. And if the stack comes up at the wrong resolution it
+    restarts once by itself: graphics-audio remembers the frame-buffer size and
+    applies a change on the next boot, so the first run after switching
+    hardware targets is stale.
+
+    A stack that is already running is reused as-is, never recreated -- the
+    user may have a GUI run open. When that happens you are told, and a
+    resolution mismatch on a reused stack is reported rather than fixed.
+
+    gui: true uses a real X11 window instead of the headless SDL driver.
+
+    The whole stack always goes up and down together. There is no
+    single-container restart, because restarting core alone leaves the frame
+    buffer dead while `docker compose ps` still says Up.
+
+    #{SIM_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: true, open_world_hint: true },
+  input_schema: {
+    properties: { gui: { type: "boolean", description: "show an X11 window (default false, headless)" } },
+    required: [],
+  },
+) do |gui: false, server_context: nil, **_extra|
+  begin
+    r = SIM.up(gui: gui)
+    shot = File.exist?(r[:png]) ? Base64.strict_encode64(File.binread(r[:png])) : nil
+    content = []
+    content << { type: "image", data: shot, mimeType: "image/png" } if shot
+    content << { type: "text", text: JSON.pretty_generate(r) }
+    MCP::Tool::Response.new(content)
+  rescue FmrbMcp::Error => e
+    tool_error("fmrb-mcp error", e.message)
+  rescue StandardError => e
+    warn "fmrb-mcp: #{e.class}: #{e.message}"
+    tool_error(e.class.name, e.message)
+  end
+end
+
+SIM_DOWN = MCP::Tool.define(
+  name: "sim_down",
+  title: "Stop the Linux simulation",
+  description: <<~DESC,
+    Take the whole stack down (docker compose down) and forget its state.
+
+    If the stack was already running when the sim tools first saw it, this
+    refuses: it is the user's or another session's, possibly a GUI run they are
+    watching. force: true takes it down anyway -- ask first.
+
+    Tidy up with this when you are done verifying, so the next session starts
+    from a known state.
+
+    #{SIM_NOTE}
+  DESC
+  annotations: { destructive_hint: true, idempotent_hint: true },
+  input_schema: {
+    properties: { force: { type: "boolean", description: "take down a stack this server did not start" } },
+    required: [],
+  },
+) do |force: false, server_context: nil, **_extra|
+  respond { SIM.down(force: force) }
+end
+
+SIM_SCREENSHOT = MCP::Tool.define(
+  name: "sim_screenshot",
+  title: "See the simulation's screen",
+  description: <<~DESC,
+    Capture the current frame from the simulation's shared-memory frame buffer
+    and return it as an image. The PNG is also written to a file (the path is
+    in the text part) for tools like fmrb_pngdiff.rb.
+
+    Drawing reaches the screen when the app presents, not when it draws, so a
+    shot taken right after an input can still show the old frame. If nothing
+    changed, take another one before deciding the input did nothing.
+
+    wait: seconds to wait for a completed frame (the capture needs one).
+
+    #{SIM_NOTE}
+  DESC
+  annotations: { read_only_hint: true, destructive_hint: false, idempotent_hint: true },
+  input_schema: {
+    properties: { wait: { type: "integer", description: "seconds to wait for a frame (default: none)" } },
+    required: [],
+  },
+) do |wait: nil, server_context: nil, **_extra|
+  begin
+    shot = SIM.screenshot(wait: wait)
+    MCP::Tool::Response.new([
+      { type: "image", data: shot[:data], mimeType: "image/png" },
+      { type: "text", text: JSON.pretty_generate(shot.reject { |k, _| k == :data }) },
+    ])
+  rescue FmrbMcp::Error => e
+    tool_error("fmrb-mcp error", e.message)
+  rescue StandardError => e
+    warn "fmrb-mcp: #{e.class}: #{e.message}"
+    tool_error(e.class.name, e.message)
+  end
+end
+
+SIM_INPUT = MCP::Tool.define(
+  name: "sim_input",
+  title: "Click and type in the simulation",
+  description: <<~DESC,
+    Send synthetic mouse and keyboard events. They are injected into the same
+    input stream real SDL events use, so nothing downstream can tell them apart.
+
+    `commands` is one string, executed left to right:
+
+      move X Y | click X Y | down X Y | up X Y | key NAME | key shift+NAME
+      text "STRING" | sleep MS
+
+    Quote a string that contains spaces: text "hello world" arrives as one
+    argument. A double click is click, sleep 120, click.
+
+    Worth knowing before you trust a result:
+      - Coordinates are frame-buffer coordinates; the size is whatever sim_up
+        or sim_screenshot reported (320x240 Retro, 426x240 Modern).
+      - Key handling in app code must read ev[:scancode]; ev[:keycode] here is
+        an SDL keysym and differs from the device.
+      - Alt is dead in the simulation. Menus reached with Alt cannot be
+        driven here.
+      - Kana input: toggle with key ctrl+space (works on any layout);
+        key zenkaku only on a JP layout. In kana mode `text` becomes romaji
+        composition (text "kya" gives きゃ).
+      - A key press cannot be held: press and release are 40ms apart and get
+        swallowed by the 50ms tick, so a game that needs a held key cannot be
+        driven from here -- ask the user.
+      - A newly added app does not appear in the launcher until it is
+        rescanned (right-click, i.e. click with button 3). Launching by path
+        with sim_app skips the launcher entirely.
+
+    #{SIM_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: false, open_world_hint: true },
+  input_schema: {
+    properties: {
+      commands: { type: "string", description: "e.g. \"click 30 55 sleep 120 click 30 55\"" },
+    },
+    required: ["commands"],
+  },
+) do |commands:, server_context: nil, **_extra|
+  respond { SIM.input(commands) }
+end
+
+SIM_APP = MCP::Tool.define(
+  name: "sim_app",
+  title: "Start, list and stop apps in the simulation",
+  description: <<~DESC,
+    Drive apps by path through the simulation's debug server, the way tab5_app
+    does over WiFi:
+
+      action: "spawn", path: "/app/demo/kamon.app.rb"   -> returns a pid
+      action: "ps"
+      action: "kill",  pid: 5
+
+    Paths are the device's, not this machine's (/app, /home, /usr/share).
+    Launching by path needs no launcher interaction, so a newly added app runs
+    without the right-click rescan the launcher would need.
+
+    The debug server lives inside the running simulation: sim_up first, or the
+    connection is simply refused.
+
+    #{SIM_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: false, open_world_hint: true },
+  input_schema: {
+    properties: {
+      action: { type: "string", enum: %w[spawn ps kill], description: "spawn, ps or kill" },
+      path: { type: "string", description: "app path for spawn, e.g. /app/demo/kamon.app.rb" },
+      pid: { type: "integer", description: "pid for kill (from action: ps)" },
+    },
+    required: ["action"],
+  },
+) do |action:, path: nil, pid: nil, server_context: nil, **_extra|
+  respond { SIM.app(action: action, path: path, pid: pid) }
+end
+
 server = MCP::Server.new(
   name: "fmrb",
   title: "Family mruby device tools",
@@ -469,10 +672,17 @@ server = MCP::Server.new(
     it -- look at the serial log.
 
     The Retro board (NARYA/S3) has serial and flash only; it has no remote
-    desktop.
+    desktop -- check its UI in the simulation instead.
+
+    Linux simulation: sim_up starts the three containers and shows the first
+    frame, sim_screenshot and sim_input drive it, sim_app launches apps by
+    path, sim_down tidies up. It refuses to start against a stale ESP32 build,
+    and reuses (rather than recreates) a stack that is already running, which
+    may be the user's.
   TXT
   tools: [SERIAL_START, SERIAL_LOG, SERIAL_STOP, FLASH,
-          TAB5_IP, TAB5_SCREENSHOT, TAB5_INPUT, TAB5_APP, TAB5_FS],
+          TAB5_IP, TAB5_SCREENSHOT, TAB5_INPUT, TAB5_APP, TAB5_FS,
+          SIM_UP, SIM_DOWN, SIM_SCREENSHOT, SIM_INPUT, SIM_APP],
 )
 
 at_exit { MANAGER.shutdown(archive: true) }

@@ -4,8 +4,63 @@
 # tool-level failure, and the two things every wrapper here needs -- running a
 # child process without letting it near our stdout, and making arbitrary bytes
 # safe to put in a JSON-RPC response.
+require "time"
+
 module FmrbMcp
   class Error < StandardError; end
+
+  # The resource is held by another MCP server process (another Claude
+  # session), or by something else that took the same lock. Never stolen.
+  class LockBusy < Error; end
+
+  # Cross-process exclusion for the machine-wide resources this server drives:
+  # the serial port, and the docker stack. One stdio server is spawned per
+  # Claude session, so an in-process mutex would not see the other server.
+  class Lock
+    attr_reader :name, :path
+
+    def initialize(state_dir, name)
+      @name = name
+      @path = File.join(state_dir, name.to_s.gsub(/[^A-Za-z0-9]+/, "-").sub(/\A-+/, "") + ".lock")
+      @file = nil
+    end
+
+    def held?
+      !@file.nil?
+    end
+
+    # Raises LockBusy rather than waiting: a caller that cannot have the
+    # resource should be told who has it, not left hanging.
+    def acquire(what = name, hint: "wait for it to finish")
+      return if held?
+      f = File.open(@path, File::RDWR | File::CREAT, 0o644)
+      unless f.flock(File::LOCK_EX | File::LOCK_NB)
+        holder = (f.read.strip rescue "")
+        f.close
+        raise LockBusy, "#{what} is in use by another session#{holder.empty? ? '' : " (#{holder})"}. " \
+                        "This server never steals it: #{hint}."
+      end
+      f.truncate(0)
+      f.write("server pid #{Process.pid} since #{Time.now.iso8601}")
+      f.flush
+      @file = f
+    end
+
+    def release
+      return unless @file
+      @file.flock(File::LOCK_UN) rescue nil
+      @file.close rescue nil
+      @file = nil
+    end
+
+    # For a resource held only for the length of one operation.
+    def hold(what = name, hint: "wait for it to finish")
+      acquire(what, hint: hint)
+      yield
+    ensure
+      release
+    end
+  end
 
   module Sub
     module_function

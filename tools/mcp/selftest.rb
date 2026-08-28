@@ -24,6 +24,8 @@
 #      loop, and the subprocess helper reports failure and timeout honestly
 #   8. the Tab5 tools, against a fake board (selftest_tab5.rb, run inside a
 #      network namespace so it can hold port 80)
+#   9. the simulation tools, against fake builds and fake CLI tools
+#      (selftest_sim.rb; the parts that need docker are acceptance work)
 require "json"
 require "tmpdir"
 require "open3"
@@ -362,6 +364,15 @@ Dir.mktmpdir("fmrb-mcp-selftest") do |dir|
     puts out.chomp
     $failures += 1
     puts "  FAIL the Tab5 selftest reported failures"
+  end
+
+  puts "9. the simulation tools without docker"
+  sim = File.expand_path("selftest_sim.rb", __dir__)
+  out, status = Open3.capture2e("ruby", sim)
+  puts out.chomp
+  unless status.success?
+    $failures += 1
+    puts "  FAIL the simulation selftest reported failures"
   end
 
   puts

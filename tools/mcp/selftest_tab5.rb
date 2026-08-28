@@ -268,12 +268,11 @@ Dir.mktmpdir("fmrb-mcp-tab5") do |dir|
   end
   fake.release_mode = false
 
-  puts "  -- stdout purity with all nine tools --"
+  puts "  -- registration and stdout purity --"
   listed = srv.request("tools/list").dig("result", "tools").map { |t| t["name"] }.sort
-  check("nine tools are registered") do
-    want = %w[flash serial_log serial_start serial_stop tab5_app tab5_fs tab5_input
-              tab5_ip tab5_screenshot]
-    [listed == want, listed.inspect]
+  check("the five Tab5 tools are registered") do
+    want = %w[tab5_app tab5_fs tab5_input tab5_ip tab5_screenshot]
+    [(want - listed).empty?, listed.inspect]
   end
   check("every line the server wrote to stdout is JSON-RPC") do
     bad = srv.raw_stdout.reject { |l| JSON.parse(l)["jsonrpc"] == "2.0" rescue false }
