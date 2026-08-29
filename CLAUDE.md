@@ -147,7 +147,7 @@ docker run --rm -u root --pid=container:fmruby_core --cap-add=SYS_PTRACE \
   ないもの** — pthread_mutex / futex / glibc 内部ロックで止まっている
   スレッドと、`<signal handler called>` を挟んで suspend されたスレッド
   (= 何かを保持したまま preempt された疑い)。この組が揃えば優先度逆転
-  (実例と機序: fmruby-core/doc/sim_log_deadlock.md)。
+  (実例と機序: fmruby-core/doc/reference/sim_log_deadlock.md)。
 - graphics-audio 側も同じ手が使える (`--pid=container:fmruby_graphics_audio`、
   ELF は fmruby-graphics-audio/build のもの)。
 
@@ -177,7 +177,7 @@ serial_start でシリアルを開きっぱなしにし、serial_log で読む�
 
 - `M1|`: ブートステップごとの内蔵 RAM スナップショット
   (`M1|ラベル|internal=..|largest=..|psram=..`)。隣接行の差分が各ステップの
-  消費。アプリ起動ごとに `spawn:<名前>` 行も出る (doc/internal_ram_budget.md)。
+  消費。アプリ起動ごとに `spawn:<名前>` 行も出る (doc/reference/internal_ram_budget.md)。
 - 10 秒周期ダンプ: `fmrb_task:` が各タスクの stack high-water (Free 列、
   単調悪化なので最後の値 = セッション最悪値)、`fmrb_app:` が VM プールと
   Spinel の ExcHW (例外/catch スタック深さ)。
