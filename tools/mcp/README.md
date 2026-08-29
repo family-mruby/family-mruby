@@ -31,10 +31,13 @@ USB 再列挙で ROM バナーを失う (`reset: false` ならバナーから採
 | `serial_start(port?, baud?, reset?)` | capture を起動して開きっぱなしにする。ポートは `fmruby-core/.serial_port`、無ければ `rake check-port` で検出。`reset: true` でリセットしてブートバナーから採る |
 | `serial_log(grep?, tail?, regex?)` | ログファイルを読む。**ポートには触らない** |
 | `serial_stop()` | capture を止めてポートを解放する |
-| `flash()` | capture 退避 → `FLASH_BAUD=115200 rake flash` → `--no-reset` で再開 → ブートの要約 |
+| `flash(app_only?)` | capture 退避 → `FLASH_BAUD=115200 rake flash` (app_only なら `rake flash:app`) → `--no-reset` で再開 → ブートの要約 |
 
-`flash` は**端末の /home 区画を消す** (ユーザデータと TTS 鍵。鍵はビルド時
+全体 `flash` は**端末の /home 区画を消す** (ユーザデータと TTS 鍵。鍵はビルド時
 注入なので焼き直せば戻る)。ユーザが使っている機体では確認してから叩く。
+`app_only: true` は app 区画だけを書き、storage (/home 含む) に触らない。
+コードだけの変更を繰り返し焼くときはこちら。ただし flash/ や config/ を
+変えた場合は端末側が古いまま**無警告**なので、全体 flash を使う。
 
 `rake attach` (usbipd で USB を WSL2 へ) はサーバからは行わない。Windows 側の
 権限が要るのでユーザ操作。

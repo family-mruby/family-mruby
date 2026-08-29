@@ -190,11 +190,18 @@ FLASH = MCP::Tool.define(
     port dance for you: stop the capture, flash, resume the capture with
     --no-reset, then read the fresh log and summarise the boot.
 
-    THIS ERASES THE DEVICE'S /home PARTITION. User data goes with it, and so
-    does the TTS API key (the key is injected at build time, so a rebuild and
-    reflash restores it -- but anything the user saved on the device does not
-    come back). Confirm with the user before flashing a board they have been
-    using.
+    THE DEFAULT FULL FLASH ERASES THE DEVICE'S /home PARTITION. User data goes
+    with it, and so does the TTS API key (the key is injected at build time, so
+    a rebuild and reflash restores it -- but anything the user saved on the
+    device does not come back). Confirm with the user before full-flashing a
+    board they have been using.
+
+    app_only: true writes only the app partition (`rake flash:app`). The
+    storage image -- /home included -- is untouched, so no confirmation is
+    needed and the write is much faster. Use it when only firmware code
+    changed. The trade-off is silent staleness: if flash/ or config/ changed,
+    the device keeps the OLD files with no warning. When in doubt about
+    whether storage content changed, do a full flash.
 
     Fixed choices, on purpose:
       - FLASH_BAUD=115200. The rake default of 460800 frequently fails to
@@ -224,9 +231,15 @@ FLASH = MCP::Tool.define(
     it needs Windows-side privileges. Ask the user if the port is missing.
   DESC
   annotations: { destructive_hint: true, idempotent_hint: false, open_world_hint: true },
-  input_schema: { properties: {}, required: [] },
-) do |server_context: nil, **_extra|
-  respond { MANAGER.flash }
+  input_schema: {
+    properties: {
+      app_only: { type: "boolean",
+                  description: "write only the app partition; storage (/home) untouched (default false)" },
+    },
+    required: [],
+  },
+) do |app_only: false, server_context: nil, **_extra|
+  respond { MANAGER.flash(app_only: app_only) }
 end
 
 

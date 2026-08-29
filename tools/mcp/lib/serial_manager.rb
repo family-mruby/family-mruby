@@ -216,7 +216,7 @@ module FmrbMcp
       }
     end
 
-    def flash
+    def flash(app_only: false)
       notes = []
       was_running = running?
       port = @lock_port || resolve_port(nil, notes)
@@ -239,7 +239,9 @@ module FmrbMcp
       end
 
       env = { "FLASH_BAUD" => FLASH_BAUD.to_s }
-      result = run(env, ["rake", "flash"], chdir: core_dir, timeout: FLASH_TIMEOUT)
+      rake_target = app_only ? "flash:app" : "flash"
+      notes << "app partition only: the storage image (and /home) is untouched" if app_only
+      result = run(env, ["rake", rake_target], chdir: core_dir, timeout: FLASH_TIMEOUT)
       output = clamp(result[:output])
 
       diagnosis = []
