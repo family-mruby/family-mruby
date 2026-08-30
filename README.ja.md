@@ -124,8 +124,11 @@ Modern (M5Stack Tab5) 向け: fmruby-core のみをビルドします (1チッ�
 
 ```bash
 cd fmruby-core
-FMRB_HW_TARGET=TAB5 rake build:esp32
+FMRB_HW_TARGET=TAB5 rake build:esp32      # M5Stack Tab5
+FMRB_HW_TARGET=NARYAv4 rake build:esp32   # NARYA v4 試作機 (ESP32-P4-Nano + LT8912B HDMI)
 ```
+
+Tab5 と NARYA v4 は同じ ESP32-P4 ですが、チップリビジョンの指定が異なるためバイナリに互換性はありません。
 
 ターゲットを切り替えるとチップが変わるので、直前に別のチップでビルドしていた場合は先に `rake clean_all` を実行してください。
 

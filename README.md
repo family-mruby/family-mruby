@@ -123,8 +123,11 @@ For Modern (M5Stack Tab5), build fmruby-core only (single-chip configuration, fm
 
 ```bash
 cd fmruby-core
-FMRB_HW_TARGET=TAB5 rake build:esp32
+FMRB_HW_TARGET=TAB5 rake build:esp32      # M5Stack Tab5
+FMRB_HW_TARGET=NARYAv4 rake build:esp32   # NARYA v4 prototype (ESP32-P4-Nano + LT8912B HDMI)
 ```
+
+Tab5 and NARYA v4 are both ESP32-P4, but their binaries are not interchangeable: they pin different chip revisions.
 
 Switching the target changes the chip, so run `rake clean_all` first when the previous build was for the other one.
 
