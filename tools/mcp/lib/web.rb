@@ -58,6 +58,7 @@ module FmrbMcp
         save_state(port: port, server_ours: server_ours, browser_ours: browser_ours,
                    headless: headless)
         wait_settled(port, notes)
+        wait_drawing(port, notes)
         st = run_tool(port, ["status"])
         shot = screenshot(port: port, tries: 3)
         { port: port, page: st[:output].strip, notes: notes,
@@ -164,6 +165,7 @@ module FmrbMcp
       res = run_tool(port, ["reload"], timeout: UP_TIMEOUT)
       notes = []
       wait_settled(port, notes)
+      wait_drawing(port, notes)
       shot = screenshot(port: port, tries: 3)
       { reloaded: true, output: res[:output].strip, notes: notes,
         size: shot[:size], png: shot[:path], data: shot[:data] }
@@ -222,6 +224,38 @@ module FmrbMcp
       end
       notes << "waited for the page to settle after the boot" if waited
       good >= 2
+    end
+
+    # And settled is still not drawn: the page answers well before the desktop
+    # has painted, and a shot taken then is the boot splash or a white
+    # rectangle. The frame counter tells the two apart -- it climbs in bursts
+    # while the machine is coming up (measured after a reload: +18, +6, +3 per
+    # second) and falls to the menu bar clock's one a second once the desktop
+    # is idle. Wait for two calm seconds, having drawn something first.
+    def wait_drawing(port, notes, seconds = 45)
+      deadline = Time.now + seconds
+      prev = frame_seq(port)
+      calm = 0
+      while Time.now < deadline
+        sleep 1
+        now = frame_seq(port)
+        if now && prev && now >= 10 && now >= prev && (now - prev) <= 1
+          calm += 1
+          return true if calm >= 2
+        else
+          calm = 0
+        end
+        prev = now
+      end
+      notes << "the screen may still be busy: the frame counter never settled"
+      false
+    end
+
+    def frame_seq(port)
+      out = run_tool(port, ["--timeout", "30", "status"], timeout: 60)[:output]
+      out[/frame=(\d+)/, 1]&.to_i
+    rescue Error
+      nil
     end
 
     def run_tool(port, args, timeout: CMD_TIMEOUT)
