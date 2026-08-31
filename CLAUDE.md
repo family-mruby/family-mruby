@@ -120,6 +120,12 @@ ruby tools/fmrb_midi_monitor.rb [--hex] [--log out.jsonl] [--duration 秒]
 - 入力: sdl2-display が Unix DGRAM ソケット /var/run/fmrb/fmrb_inject を bind し、
   受信したパケット ([type][len16][payload]、fmrb_hid_event.h) を通常の入力ストリームへ
   転送する。実 SDL イベントと注入イベントは同一経路で直列化される。
+- **入力は 3 ホップある**: sdl2-display → **graphics-audio (中継。
+  main/input_linux/input_handler_ipc.c が fmrb_input_socket のサーバで、
+  型ごとの switch。知らない型はここで捨てられる)** → core
+  (main/drivers/usb/usb_task_linux.c)。新しいイベント型を足すときは
+  **ヘッダ 2 つ (両リポジトリの fmrb_hid_event.h) とこの switch の 3 箇所**。
+  届かないときは 3 つのコンテナのログを全部見る。
 - sdl2-display/main.c を変更した場合は `docker compose build sdl2-display` が必要。
 - ヘッドレス検証で確認できないもの: **音の善し悪し (官能評価)**、NTSC 実出力、
   実機挙動、実タッチ (Tab5 のタッチは相対移動)。これらはユーザが確認する。
