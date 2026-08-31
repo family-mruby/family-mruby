@@ -22,11 +22,13 @@ end
 require_relative "lib/serial_manager"
 require_relative "lib/tab5"
 require_relative "lib/sim"
+require_relative "lib/web"
 
 REPO_ROOT = File.expand_path("../..", __dir__)
 MANAGER = FmrbMcp::SerialManager.new(repo_root: REPO_ROOT)
 TAB5 = FmrbMcp::Tab5.new(repo_root: REPO_ROOT, state_dir: MANAGER.state_dir)
 SIM = FmrbMcp::Sim.new(repo_root: REPO_ROOT, state_dir: MANAGER.state_dir)
+WEB = FmrbMcp::Web.new(repo_root: REPO_ROOT, state_dir: MANAGER.state_dir)
 
 MCP.configure do |config|
   config.exception_reporter = ->(exception, context) do
@@ -665,6 +667,236 @@ SIM_APP = MCP::Tool.define(
   respond { SIM.app(action: action, path: path, pid: pid) }
 end
 
+# --- the browser build (wasm) ----------------------------------------------
+
+WEB_NOTE = <<~NOTE
+  The browser build runs the same core code as the Modern board, compiled to
+  WebAssembly, in a real browser. It is the only place the web page's own
+  behaviour (storage, settings, the audio worklet) can be checked, and a
+  cheap second opinion on the desktop and the apps.
+
+  Two processes stand behind these tools: the development server (which
+  serves the page with the isolation headers the module needs, and relays
+  these commands to it) and a browser with the page open at ?drive=1. web_up
+  starts whichever is missing and reuses whatever is already there -- a page
+  the user has open is driven as it is, never replaced.
+
+  The screen is 426x240 unless the page was opened at another resolution.
+  Coordinates are frame-buffer coordinates, as in the simulation.
+
+  What it cannot do: launch an app by path (there is no debug server in the
+  browser -- go through the launcher, or put a file in /home and open it),
+  and hold a key down.
+NOTE
+
+WEB_UP = MCP::Tool.define(
+  name: "web_up",
+  title: "Start the browser build",
+  description: <<~DESC,
+    Bring the browser build up -- development server, browser, page -- and
+    return the first frame, so you can see it booted rather than assume it.
+
+    It refuses to start against a bundle that is not built, and says how to
+    build one (`rake wasm:web` in fmruby-core; it reads the git index, so
+    moved files have to be staged first).
+
+    A server or a browser that is already running is reused and reported, not
+    replaced. That is what makes this usable while the user has the page open
+    themselves: open it, then call web_up, and you are driving their page.
+
+    headless: false opens a visible window (default true).
+    port: the development server's port (default 8006; remembered afterwards).
+    url_args: extra query for the page, e.g. "w=852&h=480" for a larger
+    screen or "theme=classic" -- the page applies these at boot.
+
+    #{WEB_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: true, open_world_hint: true },
+  input_schema: {
+    properties: {
+      headless: { type: "boolean", description: "run without a window (default true)" },
+      port: { type: "integer", description: "development server port (default 8006)" },
+      url_args: { type: "string", description: "extra page query, e.g. w=852&h=480" },
+    },
+    required: [],
+  },
+) do |headless: true, port: nil, url_args: nil, server_context: nil, **_extra|
+  begin
+    r = WEB.up(headless: headless, port: port, url_args: url_args)
+    MCP::Tool::Response.new([
+      { type: "image", data: r[:data], mimeType: "image/png" },
+      { type: "text", text: JSON.pretty_generate(r.reject { |k, _| k == :data }) },
+    ])
+  rescue FmrbMcp::Error => e
+    tool_error("fmrb-mcp error", e.message)
+  rescue StandardError => e
+    warn "fmrb-mcp: #{e.class}: #{e.message}"
+    tool_error(e.class.name, e.message)
+  end
+end
+
+WEB_DOWN = MCP::Tool.define(
+  name: "web_down",
+  title: "Close the browser build",
+  description: <<~DESC,
+    Close the browser and stop the development server, but only the ones
+    these tools started. A browser that was already open when web_up first
+    saw it belongs to the user or another session: it is left alone unless
+    force is passed.
+
+    #{WEB_NOTE}
+  DESC
+  annotations: { destructive_hint: true, idempotent_hint: true },
+  input_schema: {
+    properties: { force: { type: "boolean", description: "close it even if it was not ours" } },
+    required: [],
+  },
+) do |force: false, server_context: nil, **_extra|
+  begin
+    respond { WEB.down(force: force) }
+  rescue StandardError => e
+    warn "fmrb-mcp: #{e.class}: #{e.message}"
+    tool_error(e.class.name, e.message)
+  end
+end
+
+WEB_SCREENSHOT = MCP::Tool.define(
+  name: "web_screenshot",
+  title: "See the browser build's screen",
+  description: <<~DESC,
+    Return the machine's frame buffer as an image -- the canvas contents, not
+    a picture of the page, so it compares with sim_screenshot on the same
+    terms. The PNG is also written to a file (path in the text part).
+
+    Drawing reaches the screen when the app presents, not when it draws, so a
+    shot taken right after an input can still show the old frame. If nothing
+    changed, take another one before deciding the input did nothing.
+
+    #{WEB_NOTE}
+  DESC
+  annotations: { read_only_hint: true, destructive_hint: false, idempotent_hint: true },
+  input_schema: { properties: {}, required: [] },
+) do |server_context: nil, **_extra|
+  begin
+    shot = WEB.screenshot
+    MCP::Tool::Response.new([
+      { type: "image", data: shot[:data], mimeType: "image/png" },
+      { type: "text", text: JSON.pretty_generate(shot.reject { |k, _| k == :data }) },
+    ])
+  rescue FmrbMcp::Error => e
+    tool_error("fmrb-mcp error", e.message)
+  rescue StandardError => e
+    warn "fmrb-mcp: #{e.class}: #{e.message}"
+    tool_error(e.class.name, e.message)
+  end
+end
+
+WEB_INPUT = MCP::Tool.define(
+  name: "web_input",
+  title: "Click and type in the browser build",
+  description: <<~DESC,
+    Send mouse and keyboard events. They go into the same ring real browser
+    events use, so nothing downstream can tell them apart.
+
+    `commands` is one string, executed left to right:
+
+      move X Y | click X Y | down X Y | up X Y | key NAME | key ctrl+NAME
+      text "STRING" | sleep MS
+
+    Quote a string that contains spaces. A double click is click, sleep 120,
+    click -- but note that in the file dialogs a click only SELECTS: click the
+    entry, then `key enter` to open it.
+
+    Scancodes come from the firmware's own keymap, so `text` follows the
+    configured layout (the quotes in text 'puts "hi"' land correctly on a JP
+    keyboard). Unlike the simulation, alt+ works here.
+
+    A key press cannot be held: press and release are 40 ms apart and get
+    swallowed by the tick, so a game that needs a held key cannot be driven
+    from here -- ask the user.
+
+    #{WEB_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: false },
+  input_schema: {
+    properties: { commands: { type: "string", description: 'e.g. click 30 8 sleep 700 key enter' } },
+    required: ["commands"],
+  },
+) do |commands:, server_context: nil, **_extra|
+  begin
+    respond { WEB.input(commands) }
+  rescue StandardError => e
+    warn "fmrb-mcp: #{e.class}: #{e.message}"
+    tool_error(e.class.name, e.message)
+  end
+end
+
+WEB_FS = MCP::Tool.define(
+  name: "web_fs",
+  title: "Move files in and out of the browser build",
+  description: <<~DESC,
+    Read and write the machine's files through the page. Paths are the
+    machine's, prefixed with /flash: /flash/home is the user's directory,
+    /flash/app holds the apps.
+
+      ls   path                    list a directory
+      cat  path                    print a file (text)
+      get  path + local_path       save it here
+      put  local_path + path       send a file in (put a .rb in /flash/home
+                                   and open it from the machine)
+      rm   path                    delete a file
+
+    Anything written under /flash/home is kept in the browser's IndexedDB and
+    survives a reload; everything else lives only as long as the tab.
+
+    #{WEB_NOTE}
+  DESC
+  annotations: { destructive_hint: true, idempotent_hint: false },
+  input_schema: {
+    properties: {
+      action: { type: "string", description: "ls|cat|get|put|rm" },
+      path: { type: "string", description: "path on the machine, e.g. /flash/home" },
+      local_path: { type: "string", description: "file on this machine (get, put)" },
+    },
+    required: ["action"],
+  },
+) do |action:, path: nil, local_path: nil, server_context: nil, **_extra|
+  begin
+    respond { WEB.fs(action: action, path: path, local_path: local_path) }
+  rescue StandardError => e
+    warn "fmrb-mcp: #{e.class}: #{e.message}"
+    tool_error(e.class.name, e.message)
+  end
+end
+
+WEB_RELOAD = MCP::Tool.define(
+  name: "web_reload",
+  title: "Reload the page and wait for the machine",
+  description: <<~DESC,
+    Reload the page, wait until the machine is drawing again, and return the
+    frame. This is how to check that something survived a restart (files under
+    /flash/home should; anything else should not), and how to pick up a bundle
+    you have just rebuilt.
+
+    #{WEB_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: true },
+  input_schema: { properties: {}, required: [] },
+) do |server_context: nil, **_extra|
+  begin
+    r = WEB.reload
+    MCP::Tool::Response.new([
+      { type: "image", data: r[:data], mimeType: "image/png" },
+      { type: "text", text: JSON.pretty_generate(r.reject { |k, _| k == :data }) },
+    ])
+  rescue FmrbMcp::Error => e
+    tool_error("fmrb-mcp error", e.message)
+  rescue StandardError => e
+    warn "fmrb-mcp: #{e.class}: #{e.message}"
+    tool_error(e.class.name, e.message)
+  end
+end
+
 server = MCP::Server.new(
   name: "fmrb",
   title: "Family mruby device tools",
@@ -692,10 +924,18 @@ server = MCP::Server.new(
     path, sim_down tidies up. It refuses to start against a stale ESP32 build,
     and reuses (rather than recreates) a stack that is already running, which
     may be the user's.
+
+    Browser build (wasm): web_up starts the development server, a browser and
+    the page and shows the first frame, web_screenshot and web_input drive it,
+    web_fs moves files in and out, web_reload restarts the page, web_down
+    tidies up. A page the user already has open is driven as it is. It is the
+    only place to check the web page's own behaviour -- storage that outlives
+    a reload, the settings, the audio worklet.
   TXT
   tools: [SERIAL_START, SERIAL_LOG, SERIAL_STOP, FLASH,
           TAB5_IP, TAB5_SCREENSHOT, TAB5_INPUT, TAB5_APP, TAB5_FS,
-          SIM_UP, SIM_DOWN, SIM_SCREENSHOT, SIM_INPUT, SIM_APP],
+          SIM_UP, SIM_DOWN, SIM_SCREENSHOT, SIM_INPUT, SIM_APP,
+          WEB_UP, WEB_DOWN, WEB_SCREENSHOT, WEB_INPUT, WEB_FS, WEB_RELOAD],
 )
 
 at_exit { MANAGER.shutdown(archive: true) }

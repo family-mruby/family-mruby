@@ -188,10 +188,11 @@ Dir.mktmpdir("fmrb-mcp-sim") do |dir|
   line, res = req.call("tools/list")
   raw << line
   listed = res.dig("result", "tools").map { |t| t["name"] }.sort
-  check("all fourteen tools are registered") do
+  check("all twenty tools are registered") do
     want = %w[flash serial_log serial_start serial_stop
               sim_app sim_down sim_input sim_screenshot sim_up
-              tab5_app tab5_fs tab5_input tab5_ip tab5_screenshot]
+              tab5_app tab5_fs tab5_input tab5_ip tab5_screenshot
+              web_down web_fs web_input web_reload web_screenshot web_up]
     [listed == want, listed.inspect]
   end
 

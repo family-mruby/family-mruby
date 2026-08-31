@@ -28,7 +28,9 @@
 #   fmrb_web.rb click 30 8 sleep 500 key enter sleep 1000 screenshot out.png
 #
 # Options: --port N (default 8006), --host H (default localhost),
-#          --layout us|jp (default: keyboard_layout from system_conf_wasm.toml)
+#          --layout us|jp (default: keyboard_layout from system_conf_wasm.toml),
+#          --timeout S (how long one command may wait for the page, default 25;
+#                       raise it while the machine is still booting)
 
 require "base64"
 require "json"
@@ -58,6 +60,10 @@ CLICK_GAP_MS = 60    # between motion, press and release
 
 $port = 8006
 $host = "localhost"
+# How long one command may wait for the page. The default is generous
+# already; right after a boot or a reload the page's own thread is busy
+# carrying the machine up and answers late, which is what --timeout is for.
+$timeout = 25
 
 def wasm_layout
   return "us" unless File.exist?(WASM_CONF)
@@ -94,7 +100,7 @@ end
 # Post one command and wait for the page to answer it. With soft: true a
 # page that is not there (or is still booting) gives nil instead of ending
 # the run -- which is how the waiting loops poll.
-def request(cmd, timeout: 25, soft: false)
+def request(cmd, timeout: $timeout, soft: false)
   uri = URI("http://#{$host}:#{$port}/wasm/web/drive/cmd")
   http = Net::HTTP.new(uri.host, uri.port)
   http.read_timeout = timeout + 10
@@ -129,7 +135,9 @@ end
 # `sleep` between two clicks really waits on the page's side.
 def run_commands(argv)
   events = []
+  sent = 0
   flush = lambda do
+    sent += events.length
     send_events(events)
     events = []
   end
@@ -232,6 +240,7 @@ def run_commands(argv)
     end
   end
   flush.call
+  puts "injected #{sent} event(s)" if sent > 0
 end
 
 def shot(path)
@@ -320,6 +329,7 @@ def main
   if (at = argv.index("--port")) then $port = argv[at + 1].to_i; argv.slice!(at, 2) end
   if (at = argv.index("--host")) then $host = argv[at + 1]; argv.slice!(at, 2) end
   if (at = argv.index("--layout")) then layout = argv[at + 1]; argv.slice!(at, 2) end
+  if (at = argv.index("--timeout")) then $timeout = argv[at + 1].to_i; argv.slice!(at, 2) end
   headless = !!argv.delete("--headless")
   url_args = nil
   if (at = argv.index("--url-args")) then url_args = argv[at + 1]; argv.slice!(at, 2) end

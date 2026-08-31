@@ -26,6 +26,8 @@
 #      network namespace so it can hold port 80)
 #   9. the simulation tools, against fake builds and fake CLI tools
 #      (selftest_sim.rb; the parts that need docker are acceptance work)
+#  10. the browser tools, against a fake bundle and a fake CLI tool
+#      (selftest_web.rb; the parts that need a browser are acceptance work)
 require "json"
 require "tmpdir"
 require "open3"
@@ -373,6 +375,15 @@ Dir.mktmpdir("fmrb-mcp-selftest") do |dir|
   unless status.success?
     $failures += 1
     puts "  FAIL the simulation selftest reported failures"
+  end
+
+  puts "10. the browser tools without a browser"
+  web = File.expand_path("selftest_web.rb", __dir__)
+  out, status = Open3.capture2e("ruby", web)
+  puts out.chomp
+  unless status.success?
+    $failures += 1
+    puts "  FAIL the browser selftest reported failures"
   end
 
   puts

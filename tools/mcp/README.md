@@ -1,6 +1,7 @@
 # fmrb-mcp — Family mruby の開発ツールを MCP サーバとして提供する
 
-シリアルと flash (P1)、Tab5 の WiFi 遠隔 (P2)、Linux sim (P3) の 14 ツール。
+シリアルと flash (P1)、Tab5 の WiFi 遠隔 (P2)、Linux sim (P3)、
+ブラウザ版 (wasm) の 20 ツール。
 計画は `doc/mcp_tools/plan.md`、各段の実装報告は `doc/mcp_tools/report/`。
 
 ## なぜあるか
@@ -93,6 +94,37 @@ docker の 3 コンテナを起動・撮影・操作する。手順書でしか�
 - `sim_input` は **Shellwords で分解**する (`text "hello world"` を 1 引数の
   まま渡すため)。
 
+## ブラウザ版 (wasm)
+
+WebAssembly に落とした core を実ブラウザで動かし、外から操作する。
+**ブラウザは外から叩けない**ので向きが逆で、ページ (`?drive=1`) が
+開発サーバに命令を取りに来て、結果を返す。中身は
+`tools/fmrb_web.rb` (shell からも同じことができる)。
+
+| tool | 動作 |
+|---|---|
+| `web_up(headless?, port?, url_args?)` | 開発サーバとブラウザを揃えて**最初の 1 枚を image content で返す**。既にあるものは再利用 |
+| `web_down(force?)` | ブラウザを閉じ、自分で起動した開発サーバを止める |
+| `web_screenshot()` | 画面 1 枚 (canvas の中身 = 機械のフレームバッファ) |
+| `web_input(commands)` | `click X Y` `text "hello world"` `key ctrl+s` など。sim と同じ語彙 |
+| `web_fs(action, path?, local_path?)` | `ls cat get put rm`。`/flash/home` はリロードを越えて残る |
+| `web_reload()` | ページを読み込み直し、機械が戻るまで待って 1 枚返す |
+
+- **ユーザが開いているページをそのまま操る**。`web_up` は動いている
+  開発サーバもブラウザも再利用し、`web_down` は自分が開いたものしか
+  閉じない (sim と同じ `started_by_us` の考え方)。
+- **梱包が無ければ起動しない**。`core_web.{js,wasm,data}` を確かめ、
+  無ければ `rake wasm:web` を案内する (このタスクは git の index を読むので、
+  移動したファイルは stage されていないと失敗する、という注意つき)。
+- **起動直後・リロード直後はページが答えない**ことがある。機械のブートは
+  ブラウザ本体のスレッドを長く握る (ファームウェアが開くファイルは全部
+  そこへ転送される) ため。`web_up` と `web_reload` は**続けて 2 回答えるまで
+  待って**から画面を返す。
+- 走査コードは `fmrb_input.rb` の表 = ファームウェアの keymap の逆引きを
+  そのまま使うので、`text` は設定された配列に従う。sim と違って alt+ も効く。
+- ファイル選択の一覧は**クリックだけでは開かない** (選択と決定が別。
+  `click` の後に `key enter`)。
+
 ## 導入
 
 ```
@@ -149,7 +181,7 @@ pid とコマンド行を確かめてから始末する。
 ruby tools/mcp/selftest.rb
 ```
 
-サーバを子プロセスとして立て、JSON-RPC で叩く (53 項目)。実機は要らない。
+サーバを子プロセスとして立て、JSON-RPC で叩く (90 項目)。実機は要らない。
 
 - シリアル側: socat の pty ペアを仮想シリアルにして capture の実経路まで
   通す。ツール一覧、capture なしでの `serial_log`、flock 衝突、区間の繋ぎ、
@@ -168,6 +200,11 @@ ruby tools/mcp/selftest.rb
   偽 CLI で `text "hello world"` が 1 引数のまま渡ること、debugd への
   `path=` `pid=` の渡し方、`started_by_us: false` の down 拒否、
   解像度の期待値と PNG からのサイズ読み取り。
+- web 側 (`selftest_web.rb`): ブラウザ無しで通る分。梱包が無いときの案内、
+  argv を印字する偽 CLI で `text "hello world"` が 1 引数のまま渡ること、
+  `put` / `get` の引数の順、未知 action と足りない引数の拒否、
+  ポートを覚えること、`browser_ours: false` の down 拒否と force、
+  6 ツールが並ぶこと。
 
 ## 掟
 

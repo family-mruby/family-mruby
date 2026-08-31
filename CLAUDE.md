@@ -27,6 +27,7 @@ tools/mcp/README.md、経緯は doc/mcp_tools/。
 | シリアル + flash (S3/Tab5) | serial_start / serial_log / serial_stop / flash |
 | Tab5 遠隔 (WiFi) | tab5_ip / tab5_screenshot / tab5_input / tab5_app / tab5_fs |
 | Linux sim | sim_up / sim_down / sim_screenshot / sim_input / sim_app |
+| ブラウザ版 (wasm) | web_up / web_down / web_screenshot / web_input / web_fs / web_reload |
 
 運用の決まりごと (ポートの排他と開きっぱなし、flash 時の capture 退避、
 sim の偽グリーン遮断・3 コンテナ一括・解像度持ち越しの自己修復、Tab5 の
@@ -36,17 +37,11 @@ CLI (tools/ 直下のスクリプト群) は従来どおり残っており、MCP
 ad-hoc な組み合わせ (ログの複雑な grep、パイプ) ではそのまま使える。
 以下の節は、MCP ツールの description に**載っていない**知識だけを残す。
 
-**ブラウザ版 (wasm) の操作は MCP に無く、CLI の `tools/fmrb_web.rb`** で行う
-(ページが開発サーバに命令を取りに来る形。sim と同じ語彙で click / key /
-text / screenshot / ls / cat / put / reload が使える)。使い方は
-`ruby tools/fmrb_web.rb --help`、経緯は fmruby-core/doc/wasm/report/drive_tool.md。
-
-```
-cd fmruby-core && rake wasm:serve PORT=8006 &     # 中継役 (開きっぱなし)
-ruby tools/fmrb_web.rb up --headless              # 機械が上がるまで待つ
-ruby tools/fmrb_web.rb click 30 8 sleep 700 screenshot /tmp/s.png
-ruby tools/fmrb_web.rb down
-```
+ブラウザ版 (wasm) は `web_*` ツールで操作する (開発サーバとブラウザは
+web_up が面倒を見る。ページが命令を取りに来る形で、実体は
+`tools/fmrb_web.rb` — shell から同じことができる。
+`ruby tools/fmrb_web.rb --help`、経緯は
+fmruby-core/doc/wasm/report/drive_tool.md)。
 
 # Linux シミュレーションの検証
 
