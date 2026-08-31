@@ -36,6 +36,18 @@ CLI (tools/ 直下のスクリプト群) は従来どおり残っており、MCP
 ad-hoc な組み合わせ (ログの複雑な grep、パイプ) ではそのまま使える。
 以下の節は、MCP ツールの description に**載っていない**知識だけを残す。
 
+**ブラウザ版 (wasm) の操作は MCP に無く、CLI の `tools/fmrb_web.rb`** で行う
+(ページが開発サーバに命令を取りに来る形。sim と同じ語彙で click / key /
+text / screenshot / ls / cat / put / reload が使える)。使い方は
+`ruby tools/fmrb_web.rb --help`、経緯は fmruby-core/doc/wasm/report/drive_tool.md。
+
+```
+cd fmruby-core && rake wasm:serve PORT=8006 &     # 中継役 (開きっぱなし)
+ruby tools/fmrb_web.rb up --headless              # 機械が上がるまで待つ
+ruby tools/fmrb_web.rb click 30 8 sleep 700 screenshot /tmp/s.png
+ruby tools/fmrb_web.rb down
+```
+
 # Linux シミュレーションの検証
 
 sim_up で起動 (最初の 1 枚が返る) → sim_input / sim_app / sim_screenshot で
