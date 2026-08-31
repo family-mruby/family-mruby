@@ -13,7 +13,8 @@
 #
 # Usage:
 #   fmrb_web.rb up [--headless] [--url-args S]  # start a browser on the page
-#   fmrb_web.rb down                            # close it again
+#   fmrb_web.rb down                            # close it again (no coordinates:
+#                                               # `down X Y` is the mouse)
 #   fmrb_web.rb status                          # running? frame? /home store?
 #   fmrb_web.rb screenshot [OUT.png]            # the framebuffer, not the page
 #   fmrb_web.rb move X Y | click X Y [--button N] | down X Y | up X Y
@@ -338,9 +339,12 @@ def main
   $layout = layout || wasm_layout
   $char_keys = load_keymap($layout)
 
+  # `up` and `down` are both browser control AND mouse commands. The arity
+  # settles it: alone they mean the browser, with coordinates they mean the
+  # mouse. (Found by killing the browser mid-drag with `down 303 213`.)
   case argv[0]
-  when "up"   then browser_up(headless, url_args)
-  when "down" then browser_down
+  when "up"   then argv.size == 1 ? browser_up(headless, url_args) : run_commands(argv)
+  when "down" then argv.size == 1 ? browser_down : run_commands(argv)
   else run_commands(argv)
   end
   0
