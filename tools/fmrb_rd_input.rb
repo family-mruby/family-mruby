@@ -2,7 +2,7 @@
 # Drive the Tab5 remote desktop: mouse clicks and key chords over /ws.
 # Usage: ruby fmrb_rd_input.rb HOST cmd... where cmd is:
 #   click X Y | rclick X Y | dclick X Y | move X Y | drag X1 Y1 X2 Y2 |
-#   key NAME | key ctrl+NAME | key alt+NAME | sleep MS
+#   wheel N | key NAME | key ctrl+NAME | key alt+NAME | sleep MS
 require "socket"
 require "securerandom"
 require "base64"
@@ -37,6 +37,7 @@ MOD_LALT = 0x10
 MSG_MOUSE_MOVE = 0x01
 MSG_MOUSE_BUTTON = 0x02
 MSG_KEY = 0x03
+MSG_MOUSE_WHEEL = 0x06
 
 def ws_connect(host)
   s = TCPSocket.new(host, 80)
@@ -75,6 +76,14 @@ end
 
 def move(s, x, y)
   ws_send(s, [MSG_MOUSE_MOVE, x, y].pack("Cs<s<"))
+end
+
+# Wheel notches, positive away from the user (which scrolls a view towards its
+# start). The coordinates are the last ones this command line moved to, so a
+# `move` before the `wheel` puts the pointer where the app will read it -- the
+# same rule as tools/fmrb_input.rb, so one habit works on both machines.
+def wheel(s, notches, x, y)
+  ws_send(s, [MSG_MOUSE_WHEEL, x, y, notches].pack("Cs<s<c"))
 end
 
 # Press at (x1,y1), walk to (x2,y2) in steps, release. Window title bars
@@ -130,17 +139,29 @@ end
 
 s = ws_connect(HOST)
 args = ARGV.dup
+# Where the pointer was last put on this command line, so `wheel` can say
+# where it happened without a coordinate of its own.
+last_x = 0
+last_y = 0
 until args.empty?
   case args.shift
-  when "click"  then click(s, args.shift.to_i, args.shift.to_i)
-  when "rclick" then click(s, args.shift.to_i, args.shift.to_i, 3)
-  when "dclick" then x = args.shift.to_i; y = args.shift.to_i
-                     click(s, x, y); sleep 0.12; click(s, x, y)
-  when "mdown"  then mdown(s, args.shift.to_i, args.shift.to_i)
-  when "mup"    then mup(s, args.shift.to_i, args.shift.to_i)
-  when "move"   then move(s, args.shift.to_i, args.shift.to_i)
-  when "drag"   then drag(s, args.shift.to_i, args.shift.to_i,
-                             args.shift.to_i, args.shift.to_i)
+  when "click"  then last_x = args.shift.to_i; last_y = args.shift.to_i
+                     click(s, last_x, last_y)
+  when "rclick" then last_x = args.shift.to_i; last_y = args.shift.to_i
+                     click(s, last_x, last_y, 3)
+  when "dclick" then last_x = args.shift.to_i; last_y = args.shift.to_i
+                     click(s, last_x, last_y); sleep 0.12
+                     click(s, last_x, last_y)
+  when "mdown"  then last_x = args.shift.to_i; last_y = args.shift.to_i
+                     mdown(s, last_x, last_y)
+  when "mup"    then last_x = args.shift.to_i; last_y = args.shift.to_i
+                     mup(s, last_x, last_y)
+  when "move"   then last_x = args.shift.to_i; last_y = args.shift.to_i
+                     move(s, last_x, last_y)
+  when "wheel"  then wheel(s, args.shift.to_i, last_x, last_y)
+  when "drag"   then x1 = args.shift.to_i; y1 = args.shift.to_i
+                     last_x = args.shift.to_i; last_y = args.shift.to_i
+                     drag(s, x1, y1, last_x, last_y)
   when "key"     then key(s, args.shift)
   when "keydown" then keydown(s, args.shift)
   when "keyup"   then keyup(s, args.shift)

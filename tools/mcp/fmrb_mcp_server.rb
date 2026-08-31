@@ -350,10 +350,16 @@ TAB5_INPUT = MCP::Tool.define(
     `commands` is one string, executed left to right:
 
       click X Y | rclick X Y | dclick X Y | move X Y | mdown X Y | mup X Y
-      drag X1 Y1 X2 Y2 | key NAME | key ctrl+NAME | keydown NAME | keyup NAME
-      sleep MS
+      drag X1 Y1 X2 Y2 | wheel N | key NAME | key ctrl+NAME | keydown NAME
+      keyup NAME | sleep MS
 
     e.g. "click 20 5 sleep 500 click 15 17" or "key ctrl+tab".
+
+    `wheel N` turns the mouse wheel N notches, positive away from the user
+    (which scrolls a view towards its start). It has no coordinates of its
+    own: it happens wherever the pointer was last put on this command line,
+    so put a `move X Y` in front of it. The event goes to the focused window,
+    not the one under the pointer.
 
     Coordinates are frame-buffer coordinates, 426x240, the same system
     tab5_screenshot returns -- unrelated to how large the window looks.
