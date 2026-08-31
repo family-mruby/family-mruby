@@ -20,6 +20,8 @@
 #                                         # home end pageup pagedown insert delete
 #                                         # zenkaku katakana (JP kana input)
 #   fmrb_input.rb key shift+NAME          # with shift modifier
+#   fmrb_input.rb wheel N                 # mouse wheel, N notches
+#                                         # (+ = away from you = scroll up)
 #   fmrb_input.rb text "STRING"           # type a string (ascii)
 #   fmrb_input.rb --layout jp ...         # keyboard layout for text/key
 #                                         # (default: keyboard_layout from
@@ -36,6 +38,7 @@ EV_KEY_DOWN = 0x01
 EV_KEY_UP = 0x02
 EV_MOUSE_BUTTON = 0x10
 EV_MOUSE_MOTION = 0x11
+EV_MOUSE_WHEEL = 0x12
 
 KEY_DELAY_MS = 40      # between press and release
 CLICK_DELAY_MS = 60    # between motion/press/release of a click
@@ -186,6 +189,13 @@ def ev_motion(x, y)
   pkt(EV_MOUSE_MOTION, [x, y].pack("vv"))
 end
 
+# Wheel notches, positive away from the user (scrolls a view towards its
+# start). The coordinates are the last ones this command line moved to, so a
+# `move` before the `wheel` puts the pointer where the app will read it.
+def ev_wheel(delta, x, y)
+  pkt(EV_MOUSE_WHEEL, [delta, x, y].pack("cvv"))
+end
+
 def ev_button(button, state, x, y)
   pkt(EV_MOUSE_BUTTON, [button, state, x, y].pack("CCvv"))
 end
@@ -212,6 +222,10 @@ def parse_commands(argv)
   end
 
   pending_sleep = 0
+  # Where the pointer was last put on this command line, so `wheel` can say
+  # where it happened without being given coordinates of its own.
+  last_x = 0
+  last_y = 0
   while i < argv.length
     cmd = argv[i]
     case cmd
@@ -219,10 +233,20 @@ def parse_commands(argv)
       pending_sleep += take.call(1)[0].to_i
     when "move"
       x, y = take.call(2).map(&:to_i)
+      last_x = x
+      last_y = y
       out << [pending_sleep, ev_motion(x, y)]
+      pending_sleep = 0
+    when "wheel"
+      delta = take.call(1)[0].to_i
+      delta = 127 if delta > 127
+      delta = -127 if delta < -127
+      out << [pending_sleep, ev_wheel(delta, last_x, last_y)]
       pending_sleep = 0
     when "click", "down", "up"
       x, y = take.call(2).map(&:to_i)
+      last_x = x
+      last_y = y
       button = 1
       if argv[i + 1] == "--button" && argv[i + 2]
         button = argv[i + 2].to_i

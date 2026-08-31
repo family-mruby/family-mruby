@@ -18,6 +18,7 @@
 #   fmrb_web.rb status                          # running? frame? /home store?
 #   fmrb_web.rb screenshot [OUT.png]            # the framebuffer, not the page
 #   fmrb_web.rb move X Y | click X Y [--button N] | down X Y | up X Y
+#   fmrb_web.rb wheel N                         # notches, + = away from you
 #   fmrb_web.rb key NAME                        # a-z 0-9 enter esc tab space f1..
 #   fmrb_web.rb key ctrl+s | shift+NAME | alt+NAME
 #   fmrb_web.rb text "STRING"
@@ -52,6 +53,7 @@ RING_KEY_DOWN = 1
 RING_KEY_UP = 2
 RING_MOUSE_BUTTON = 3
 RING_MOUSE_MOVE = 4
+RING_MOUSE_WHEEL = 5
 MOD_SHIFT = 0x01
 MOD_CTRL = 0x04
 MOD_ALT = 0x10
@@ -137,6 +139,10 @@ end
 def run_commands(argv)
   events = []
   sent = 0
+  # Where the pointer was last put, so `wheel` can report a position without
+  # being handed one.
+  last_x = 0
+  last_y = 0
   flush = lambda do
     sent += events.length
     send_events(events)
@@ -147,10 +153,18 @@ def run_commands(argv)
     case (word = argv[i])
     when "move"
       x, y = argv[i + 1].to_i, argv[i + 2].to_i
+      last_x = x
+      last_y = y
       events << [RING_MOUSE_MOVE, x, y, 0, 0, 0]
       i += 3
+    when "wheel"
+      delta = argv[i + 1].to_i
+      events << [RING_MOUSE_WHEEL, last_x, last_y, delta, 0, 0]
+      i += 2
     when "click", "down", "up"
       x, y = argv[i + 1].to_i, argv[i + 2].to_i
+      last_x = x
+      last_y = y
       button = 1
       if argv[i + 3] == "--button"
         button = argv[i + 4].to_i
@@ -193,8 +207,8 @@ def run_commands(argv)
     when "screenshot"
       flush.call
       out = argv[i + 1] && !argv[i + 1].start_with?("-") &&
-            !%w[move click down up key text sleep screenshot ls cat get put rm
-                reload status].include?(argv[i + 1]) ? argv[i + 1] : nil
+            !%w[move click down up wheel key text sleep screenshot ls cat get
+                put rm reload status].include?(argv[i + 1]) ? argv[i + 1] : nil
       shot(out)
       i += out ? 2 : 1
     when "status"

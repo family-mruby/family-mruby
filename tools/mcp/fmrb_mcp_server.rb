@@ -800,12 +800,18 @@ WEB_INPUT = MCP::Tool.define(
 
     `commands` is one string, executed left to right:
 
-      move X Y | click X Y | down X Y | up X Y | key NAME | key ctrl+NAME
-      text "STRING" | sleep MS
+      move X Y | click X Y | down X Y | up X Y | wheel N | key NAME
+      key ctrl+NAME | text "STRING" | sleep MS
 
     Quote a string that contains spaces. A double click is click, sleep 120,
     click -- but note that in the file dialogs a click only SELECTS: click the
-    entry, then `key enter` to open it.
+    entry, then `key enter` to open it, and in the launcher a double click is
+    what launches.
+
+    `wheel N` turns the wheel N notches, positive away from you (scrolling a
+    list towards its start). It goes to the FOCUSED window, so click the
+    window first; a `move` beforehand only decides the coordinates the app is
+    told about.
 
     Scancodes come from the firmware's own keymap, so `text` follows the
     configured layout (the quotes in text 'puts "hi"' land correctly on a JP
