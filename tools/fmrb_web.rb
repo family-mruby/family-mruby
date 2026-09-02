@@ -25,6 +25,8 @@
 #   fmrb_web.rb sleep MS
 #   fmrb_web.rb ls PATH | cat PATH | get PATH LOCAL | put LOCAL PATH | rm PATH
 #   fmrb_web.rb reload                          # reload the page (boots again)
+#   fmrb_web.rb reset                           # what the page's Erase button
+#                                               # does: files and settings gone
 #
 # Commands chain left to right, like fmrb_input.rb:
 #   fmrb_web.rb click 30 8 sleep 500 key enter sleep 1000 screenshot out.png
@@ -208,7 +210,7 @@ def run_commands(argv)
       flush.call
       out = argv[i + 1] && !argv[i + 1].start_with?("-") &&
             !%w[move click down up wheel key text sleep screenshot ls cat get
-                put rm reload status].include?(argv[i + 1]) ? argv[i + 1] : nil
+                put rm reload reset status].include?(argv[i + 1]) ? argv[i + 1] : nil
       shot(out)
       i += out ? 2 : 1
     when "status"
@@ -248,6 +250,14 @@ def run_commands(argv)
       flush.call
       request({ "op" => "reload" })
       puts "reloading; waiting for the machine to come back"
+      wait_running
+      i += 1
+    when "reset"
+      # The Erase button, minus the confirmation a headless browser answers
+      # "no" to. The page reloads itself once the store is really empty.
+      flush.call
+      request({ "op" => "reset" })
+      puts "erased; waiting for the machine to come back"
       wait_running
       i += 1
     else
