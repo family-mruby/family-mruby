@@ -29,7 +29,12 @@ module FmrbMcp
 
   class Tab5
     CACHE_TTL = 300               # seconds; a DHCP lease outlives this easily
-    MDNS_NAME = ENV.fetch("FMRB_MCP_TAB5_HOST", "fmruby.local")
+    # Every board answers to this one. With two on a network they both do, and
+    # which replies is a race -- so a board's own name (fmruby-XXXXXX.local,
+    # from its WiFi MAC) is tried first when the serial log has told us one.
+    MDNS_SHARED = "fmruby.local"
+    TAIL_BYTES = 256 * 1024       # of a serial log: enough for the last boot
+    MDNS_NAME = ENV.fetch("FMRB_MCP_TAB5_HOST", MDNS_SHARED)
     FB_WIDTH = 426                # frame-buffer coordinates, not window pixels
     FB_HEIGHT = 240
     HTTP_TIMEOUT = 8
@@ -261,37 +266,77 @@ module FmrbMcp
 
     def discover(notes)
       tried = []
-      resolvers.each do |name, cmd|
-        res = begin
-          Sub.run({}, cmd, chdir: @repo_root, timeout: 20)
-        rescue Error
-          # Not every box has every resolver. A missing one is not the answer
-          # to "where is the board" -- move on to the next and let the summary
-          # at the end say what was tried.
-          tried << "#{name}: not installed"
-          next
+      mdns_names.each do |host|
+        resolvers(host).each do |name, cmd|
+          res = begin
+            Sub.run({}, cmd, chdir: @repo_root, timeout: 20)
+          rescue Error
+            # Not every box has every resolver. A missing one is not the answer
+            # to "where is the board" -- move on to the next and let the summary
+            # at the end say what was tried.
+            tried << "#{host} via #{name}: not installed"
+            next
+          end
+          ip = res[:output].to_s[/\b(?:\d{1,3}\.){3}\d{1,3}\b/]
+          if ip
+            notes << "resolved #{host} to #{ip} via #{name}"
+            return [ip, name]
+          end
+          tried << "#{host} via #{name}: #{res[:output].to_s.strip.empty? ? 'no answer' : res[:output].strip.lines.first.to_s.strip}"
         end
-        ip = res[:output].to_s[/\b(?:\d{1,3}\.){3}\d{1,3}\b/]
-        if ip
-          notes << "resolved #{MDNS_NAME} to #{ip} via #{name}"
-          return [ip, name]
-        end
-        tried << "#{name}: #{res[:output].to_s.strip.empty? ? 'no answer' : res[:output].strip.lines.first.to_s.strip}"
       end
       raise Error, unreachable_message(tried)
     end
 
+    # The names to try, most specific first.
+    #
+    # A board announces its own at boot ("wifi: mDNS hostname: X.local"), and
+    # the serial capture is usually running, so the log names the board that
+    # is actually plugged in -- which is the one being worked on. Falling back
+    # to the shared name keeps this working when nothing has been captured.
+    #
+    # An explicit FMRB_MCP_TAB5_HOST means that name and no other.
+    def mdns_names
+      return [MDNS_NAME] if ENV["FMRB_MCP_TAB5_HOST"]
+      [own_mdns_name, MDNS_SHARED].compact.uniq
+    end
+
+    def own_mdns_name
+      dir = File.expand_path(ENV["FMRB_MCP_STATE_DIR"] || "~/.fmrb_mcp")
+      # current.log is the capture that is running; capture.log is what has
+      # been archived. The live one is read second so a boot from a minute ago
+      # wins over one from this morning -- the archive lags behind it.
+      last = nil
+      ["capture.log", "current.log"].each do |name|
+        log = File.join(dir, name)
+        next unless File.exist?(log)
+        # Read binary and only the tail. A serial capture carries whatever
+        # bytes the line produced, so decoding it as text raises on the first
+        # scrap of noise -- and the archive runs to hundreds of thousands of
+        # lines, of which only the last boot matters.
+        text = File.open(log, "rb") do |f|
+          f.seek(-[f.size, TAIL_BYTES].min, IO::SEEK_END)
+          f.read
+        end
+        m = text.to_s.scan(/mDNS hostname: (\S+\.local)/).last
+        last = m[0] if m
+      end
+      last == MDNS_SHARED ? nil : last
+    rescue StandardError
+      nil
+    end
+
     # mDNS has no single spelling. WSL has no avahi but can borrow the Windows
     # resolver; a native Linux box usually has avahi behind getent.
-    def resolvers
+    def resolvers(host = MDNS_NAME)
       list = []
       if wsl?
         list << ["powershell mDNS", ["powershell.exe", "-NoProfile", "-Command",
-                                     "(Resolve-DnsName #{MDNS_NAME} -ErrorAction SilentlyContinue | " \
+                                     "(Resolve-DnsName #{host} -ErrorAction SilentlyContinue | " \
                                      "Where-Object Type -eq 'A').IPAddress"]]
       end
-      list << ["getent", ["getent", "hosts", MDNS_NAME]]
-      list << ["avahi", ["avahi-resolve", "-4", "-n", MDNS_NAME]]
+      list << ["getent", ["getent", "hosts", host]]
+      list << ["avahi", ["avahi-resolve", "-4", "-n", host]]
       list
     end
 
@@ -306,7 +351,8 @@ module FmrbMcp
       "serial capture is running, the boot log line " \
       "\"rd_http: Remote desktop ready: http://<IP>/\" carries the address, " \
       "and serial_log will show it. You can also pass the address directly " \
-      "as the `ip` argument."
+      "as the `ip` argument, or name the board with FMRB_MCP_TAB5_HOST " \
+      "(each board answers to fmruby-XXXXXX.local as well as fmruby.local)."
     end
 
     # --- cache ----------------------------------------------------------------
