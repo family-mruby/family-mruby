@@ -713,7 +713,7 @@ WEB_UP = MCP::Tool.define(
     headless: false opens a visible window (default true).
     port: the development server's port (default 8006; remembered afterwards).
     url_args: extra query for the page, e.g. "w=852&h=480" for a larger
-    screen or "theme=classic" -- the page applies these at boot.
+    screen or "theme=light" -- the page applies these at boot.
 
     #{WEB_NOTE}
   DESC

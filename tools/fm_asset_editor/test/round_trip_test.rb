@@ -107,6 +107,25 @@ Dir.mktmpdir do |tmp|
   check('a folder that no longer exists was still offered', failures) do
     FmAssetEditor::Settings.new(state).directory(:open).nil?
   end
+  # The right button picks unless told to erase, and the choice survives a
+  # restart; a value the editor does not know falls back to picking.
+  check('the right button did not default to picking', failures) { settings.right_button == :pick }
+  settings.right_button = :erase
+  check('the right button choice was not kept', failures) do
+    FmAssetEditor::Settings.new(state).right_button == :erase
+  end
+  check('an unknown right button action was accepted', failures) do
+    begin
+      settings.right_button = :paint
+      false
+    rescue ArgumentError
+      true
+    end
+  end
+  File.write(state, JSON.generate('right_button' => 'nonsense'))
+  check('a nonsense right button action was not shrugged off', failures) do
+    FmAssetEditor::Settings.new(state).right_button == :pick
+  end
   File.write(state, 'not json at all')
   check('a damaged settings file was not shrugged off', failures) do
     FmAssetEditor::Settings.new(state).directory(:open).nil?

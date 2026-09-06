@@ -12,6 +12,7 @@ module FmAssetEditor
       include Glimmer
 
       TOOLS = { 'Pen' => :pen, 'Fill' => :fill, 'Pick' => :pick }.freeze
+      RIGHT_BUTTONS = { 'Right Click Picks the Colour' => :pick, 'Right Click Erases' => :erase }.freeze
       BUTTON_LEFT = 1
       BUTTON_RIGHT = 3
       HELD_LEFT = 0x01 # Held1To64 is a bitmask, bit n-1 for button n
@@ -320,6 +321,14 @@ module FmAssetEditor
             on_clicked { normalise_palette }
           }
         }
+        menu('Settings') {
+          RIGHT_BUTTONS.each do |label, action|
+            radio_menu_item(label) {
+              checked @settings.right_button == action
+              on_clicked { @settings.right_button = action }
+            }
+          end
+        }
         menu('View') {
           menu_item('Zoom In') {
             on_clicked { set_zoom(@grid.zoom + 1) }
@@ -352,6 +361,9 @@ module FmAssetEditor
         if event[:down] == BUTTON_LEFT
           @painting = true
           paint(pixel, primary: true)
+        elsif event[:down] == BUTTON_RIGHT && @settings.right_button == :pick
+          # A pick is a single act, whatever tool is selected, so no stroke starts.
+          select_value(@document.get(*pixel)) unless pixel.nil?
         elsif event[:down] == BUTTON_RIGHT
           @painting = true
           paint(pixel, primary: false)
@@ -383,8 +395,9 @@ module FmAssetEditor
         refresh_labels
       end
 
-      # The right button erases: to transparent where the format has one, to the
-      # background index otherwise.
+      # The right button, when set to erase, paints transparent where the format
+      # has one and the background index otherwise. (By default it picks
+      # instead, and never reaches here.)
       def paint_value(primary)
         primary ? @palette.selected : @document.format.erase_value
       end
@@ -840,7 +853,8 @@ module FmAssetEditor
       def show_key_help
         message_box('Keys', <<~KEYS)
           Left drag    paint with the selected colour
-          Right click  erase (transparent, or index 0)
+          Right click  pick the colour under the pointer
+                       (Settings menu: erase instead -- transparent, or index 0)
           1 / 2 / 3    pen / fill / pick
           + / -        zoom
           g            pixel grid on/off
