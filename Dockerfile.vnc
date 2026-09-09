@@ -51,10 +51,15 @@ ARG CORE_BRANCH
 
 # libssl-dev: picoruby-socket's POSIX port (ssl_socket.c) includes openssl
 # headers since the networking gem was enabled for the Linux target.
+# rbs: rake setup builds the picoruby-ti type database from sig/*.rbs, and
+# tidbgen parses those with the rbs gem. The one bundled with Debian's ruby
+# 3.2 is 2.8, which has no RBS::AST::Declarations::TypeAlias and aborts the
+# setup, so a 3.x goes over it (ruby-dev builds its parser extension).
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ruby libsdl2-dev libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+    ruby ruby-dev libsdl2-dev libssl-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && gem install rbs -v 3.6.1 --no-document
 
 # Clone with submodules (use HTTPS to avoid SSH key issues in CI)
 WORKDIR /build
