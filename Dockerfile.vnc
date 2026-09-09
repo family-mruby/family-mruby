@@ -55,6 +55,9 @@ ARG CORE_BRANCH
 # tidbgen parses those with the rbs gem. The one bundled with Debian's ruby
 # 3.2 is 2.8, which has no RBS::AST::Declarations::TypeAlias and aborts the
 # setup, so a 3.x goes over it (ruby-dev builds its parser extension).
+# The image sets no locale, so ruby reads every file as US-ASCII and tidbgen
+# dies on the Japanese in sig/*.rbs ("invalid byte sequence in US-ASCII").
+ENV LANG=C.UTF-8
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ruby ruby-dev libsdl2-dev libssl-dev \
