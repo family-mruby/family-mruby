@@ -123,7 +123,7 @@ end
 ```
 
 数値表示など可変テキストは、ブロック外で
-`@gfx.fill_rect(...) → @gfx.draw_text(...)` で行う(参考: tetris の
+`@gfx.fill_rect(...) → @gfx.draw_text(...)` で行う(参考: blockgame の
 `draw_info`)。
 
 ### 2.5 例外型
@@ -194,8 +194,8 @@ end
 
 「コマンド列の構造が同じで色や位置だけ違う」用途は同じブロックで OK。
 
-例: tetris の `@piece_block` は active piece, ghost piece の双方で使う
-([`flash/app/game/tetris.app.rb`](../fmruby-core/flash/app/game/tetris.app.rb)
+例: blockgame の `@piece_block` は active piece, ghost piece の双方で使う
+([`flash/app/game/blockgame.app.rb`](../fmruby-core/flash/app/game/blockgame.app.rb)
 の `draw_4cells_at`)。
 
 ### 3.5 何を Block 化すべきか
@@ -239,9 +239,9 @@ end
 [`fmruby-core/flash/app/demo/mruby.app.rb`](../fmruby-core/flash/app/demo/mruby.app.rb#L268-L289)
 の `_build_ball_block`: ボール 8 個 = (x, y) × 8 = 16 レジスタ。
 
-### 4.3 同一ブロックを 2 用途で使い回す — テトリス
+### 4.3 同一ブロックを 2 用途で使い回す — ブロックゲーム
 
-[`fmruby-core/flash/app/game/tetris.app.rb`](../fmruby-core/flash/app/game/tetris.app.rb)
+[`fmruby-core/flash/app/game/blockgame.app.rb`](../fmruby-core/flash/app/game/blockgame.app.rb)
 の `@piece_block` は 4 セル分の `fill_rect` を持ち、active piece と
 ghost piece (色だけ違う) で同じブロックを `draw` し直して使い回す。
 
