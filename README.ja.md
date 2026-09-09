@@ -54,9 +54,6 @@ WebSerial を使うため、対応ブラウザは Chrome / Edge / Opera (デス�
 
 ### VNC デスクトップをDockerで動かして試す
 
-![Family mruby on VNC](doc/vnc.jpg)
-
-
 ハードウェアやビルド環境なしで Family mruby OS を試すことができます。ビルド済みのDockerイメージにはすべてのバイナリが含まれており、VNCデスクトップとして提供されます。
 
 ```bash

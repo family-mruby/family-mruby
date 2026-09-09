@@ -54,8 +54,6 @@ It uses WebSerial, so a desktop Chrome / Edge / Opera browser is required.
 
 ### Try with Docker VNC Desktop
 
-![Family mruby on VNC](doc/vnc.jpg)
-
 You can try Family mruby OS without any hardware or build environment. A pre-built Docker image includes all binaries and is provided as a VNC desktop.
 
 ```bash
