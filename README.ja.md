@@ -30,6 +30,20 @@ Family mrubyの使い方、設計情報のドキュメントです。
 
 ## 動作を簡単に試す方法
 
+### ブラウザだけで試す
+
+[![Family mruby Web Studio](doc/studio.png)](https://family-mruby.github.io/studio/)
+
+FreeRTOS カーネル、Ruby VM、デスクトップ、エディタ、音源まで、機械まるごとを
+WebAssembly にしたものです。ページを開いて画面をクリックすると電源が入ります
+(このクリックがブラウザに音を出す許可も与えます)。
+
+[https://family-mruby.github.io/studio/](https://family-mruby.github.io/studio/)
+
+実機と同じファームウェアなので、アプリもエディタも日本語入力も実機と同じように動きます。
+保存したものはブラウザの中に残り、まとめて 1 つのファイルとして持ち出せます。
+パソコンの Chrome か Firefox と、キーボードが要ります。
+
 ### Web Installer で実機に書き込む
 
 実機 (NARYAボード / M5Stack Tab5) を持っている場合は、ブラウザだけでファームウェアを書き込めます：

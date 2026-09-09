@@ -30,6 +30,20 @@ Comprehensive documentation including usage instructions and design information 
 
 ## Quick Way to Try It Out
 
+### In a Browser, with Nothing Installed
+
+[![Family mruby Web Studio](doc/studio.png)](https://family-mruby.github.io/studio/)
+
+The whole machine -- the FreeRTOS kernel, the Ruby VM, the desktop, the editor and the
+sound chip -- compiled to WebAssembly. Open the page and click the screen to switch it on;
+the click is also what lets the browser make sound.
+
+[https://family-mruby.github.io/studio/](https://family-mruby.github.io/studio/)
+
+It is the same firmware the boards run, so the apps, the editor and Japanese input behave
+as they do on hardware. What you save stays in your browser and can be carried out as one
+file. Desktop Chrome or Firefox, and a keyboard.
+
 ### Flash Real Hardware from the Web Installer
 
 If you have the hardware (a NARYA board or an M5Stack Tab5), you can flash the firmware from your browser alone:
