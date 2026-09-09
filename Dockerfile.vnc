@@ -71,10 +71,14 @@ RUN git config --global url."https://github.com/".insteadOf "git@github.com:" &&
 
 WORKDIR /build/fmruby-core
 
-# Setup (copy mrbgems, patches) and build
+# Setup (copy mrbgems, patches) and build. spinel:gen is separate from setup
+# and has to run before cmake: the kernel, the editor and the FFT gem are
+# compiled from Spinel-generated C, and cmake stops when it is not there.
+# It provisions the pinned compiler into vendor/spinel by itself.
 RUN bash -c '\
     source /opt/esp/idf/export.sh && \
     rake setup && \
+    rake spinel:gen && \
     cp config/system_conf_linux.toml flash/etc/system_conf.toml && \
     export IDF_TARGET=linux && \
     idf.py --preview -DSDKCONFIG_DEFAULTS="config/sdkconfig.defaults.linux" set-target linux && \
