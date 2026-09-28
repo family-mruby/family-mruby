@@ -363,8 +363,13 @@ TAB5_INPUT = MCP::Tool.define(
     so put a `move X Y` in front of it. The event goes to the focused window,
     not the one under the pointer.
 
-    Coordinates are frame-buffer coordinates, 426x240, the same system
-    tab5_screenshot returns -- unrelated to how large the window looks.
+    Coordinates are frame-buffer coordinates, the same system
+    tab5_screenshot returns -- unrelated to how large the window looks. That
+    is 426x240, or 640x360 while a fullscreen app is in the high-resolution
+    mode (the editor, and apps whose .app.toml says fullscreen_hires); the
+    frame_size of a fresh tab5_screenshot says which. The board clamps
+    to the current size and does not scale, so coordinates meant for the
+    other size land in the wrong place.
 
     Moving a window takes `drag`, not `click`: a title bar only follows a
     pointer that actually moves while the button is held. Click the window
@@ -690,7 +695,12 @@ WEB_NOTE = <<~NOTE
   the user has open is driven as it is, never replaced.
 
   The screen is 426x240 unless the page was opened at another resolution.
-  Coordinates are frame-buffer coordinates, as in the simulation.
+  Coordinates are frame-buffer coordinates, as in the simulation. On a
+  426x240 page a fullscreen app in the high-resolution mode (the editor, and
+  apps whose .app.toml says fullscreen_hires) turns the frame buffer into
+  640x360 while it is on top: web_screenshot then returns 640x360 frames and
+  web_input takes 640x360 coordinates. Take a screenshot to see which size
+  is current before clicking.
 
   What it cannot do: launch an app by path (there is no debug server in the
   browser -- go through the launcher, or put a file in /home and open it),

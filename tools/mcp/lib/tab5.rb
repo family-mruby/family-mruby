@@ -35,8 +35,8 @@ module FmrbMcp
     MDNS_SHARED = "fmruby.local"
     TAIL_BYTES = 256 * 1024       # of a serial log: enough for the last boot
     MDNS_NAME = ENV.fetch("FMRB_MCP_TAB5_HOST", MDNS_SHARED)
-    FB_WIDTH = 426                # frame-buffer coordinates, not window pixels
-    FB_HEIGHT = 240
+    FB_WIDTH = 426                # the base screen; 640x360 in the fullscreen
+    FB_HEIGHT = 240               # high-resolution mode (see jpeg_frame_size)
     HTTP_TIMEOUT = 8
     INPUT_TIMEOUT = 120
     SNAP_TIMEOUT = 30
@@ -141,8 +141,10 @@ module FmrbMcp
       unless res[:ok]
         raise Error, "input failed: #{res[:output].strip}"
       end
+      # No frame size here: the screen can be 426x240 or 640x360, and only a
+      # frame says which (tab5_screenshot). A fixed value would mislead.
       { ip: r[:ip], sent: words.join(" "), output: res[:output].strip,
-        frame_size: "#{FB_WIDTH}x#{FB_HEIGHT}", notes: r[:notes] }
+        notes: r[:notes] }
     end
 
     def app(action:, path: nil, pid: nil, ip: nil)
@@ -259,6 +261,13 @@ module FmrbMcp
 
     def parse_json(status, body, endpoint)
       if status == 404
+        # The firmware also answers 404 with its own JSON when the thing asked
+        # for does not exist (a kill of a pid that is not running, a missing
+        # file). That is an answer, not a missing endpoint.
+        doc = (JSON.parse(body) rescue nil)
+        if doc.is_a?(Hash) && doc.key?("ok")
+          raise Error, "#{endpoint} answered 404: #{doc['err'] || 'not found'}"
+        end
         raise Error, "#{endpoint} answered 404: this firmware has no development " \
                      "remote control. It is compiled in only with FMRB_DEV_REMOTE_CTL " \
                      "(on by default, off in release builds), so a release firmware " \
