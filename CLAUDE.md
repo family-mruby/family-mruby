@@ -183,8 +183,11 @@ serial_start でシリアルを開きっぱなしにし、serial_log で読む�
 - ユーザのログモニタとの排他は残る: サーバは自分の capture しか管理しない
   ので、ユーザがモニタを繋いでいると flash は失敗するし、逆にユーザが
   モニタを繋ぐとボードがリセットされる (POWERON としてログに出る)。
-- ボードが /dev に見えないときは usbipd 待ち: fmruby-core で `rake attach`
-  (Windows 側権限が要るのでユーザに依頼する)。
+- ボードが /dev に見えないときは、**Claude が自分で** fmruby-core で `rake attach`
+  を実行する (powershell.exe 経由の `usbipd attach --wsl`。数秒後に /dev/ttyACM* が出る)。
+  自分で通るのは**一度 usbipd で共有 (bind) 済みの機器に限る**。初めて繋ぐ機器は
+  Windows の管理者権限で `usbipd bind` が要るので、そのときだけユーザに依頼する。
+  `.env` の `VIDPID` に対象の VID:PID が入っていることも確かめる。
 
 ## ログの読み方 (常設計装)
 
