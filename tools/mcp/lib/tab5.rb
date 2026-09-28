@@ -105,8 +105,31 @@ module FmrbMcp
       end
       jpeg = File.binread(out)
       { ip: r[:ip], path: out, bytes: jpeg.bytesize,
-        frame_size: "#{FB_WIDTH}x#{FB_HEIGHT}", data: Base64.strict_encode64(jpeg),
+        frame_size: jpeg_frame_size(jpeg), data: Base64.strict_encode64(jpeg),
         notes: r[:notes] }
+    end
+
+    # The frame's size, read from the JPEG itself: the screen is 426x240
+    # normally but 640x360 while a fullscreen app is in the high-resolution
+    # mode (doc/fullscreen_hires/). The encoder pads the width to a multiple
+    # of 16, so 426 arrives as 432 with black on the right; that one is
+    # reported as the frame it came from. Falls back to 426x240 when the
+    # header cannot be read.
+    def jpeg_frame_size(jpeg)
+      i = 2
+      while i + 9 <= jpeg.bytesize
+        break unless jpeg.getbyte(i) == 0xFF
+        marker = jpeg.getbyte(i + 1)
+        len = (jpeg.getbyte(i + 2) << 8) | jpeg.getbyte(i + 3)
+        if (0xC0..0xC3).cover?(marker)
+          h = (jpeg.getbyte(i + 5) << 8) | jpeg.getbyte(i + 6)
+          w = (jpeg.getbyte(i + 7) << 8) | jpeg.getbyte(i + 8)
+          w = FB_WIDTH if w == ((FB_WIDTH + 15) & ~15) && h == FB_HEIGHT
+          return "#{w}x#{h}"
+        end
+        i += 2 + len
+      end
+      "#{FB_WIDTH}x#{FB_HEIGHT}"
     end
 
     def input(commands, ip: nil)

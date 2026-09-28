@@ -308,7 +308,9 @@ TAB5_SCREENSHOT = MCP::Tool.define(
     can look at it directly instead of saving a file and opening it.
 
     The frame is 426x240 -- the frame buffer, which is also the coordinate
-    system tab5_input uses, whatever size the picture looks on screen. The
+    system tab5_input uses, whatever size the picture looks on screen. While a
+    fullscreen app is in the high-resolution mode it is 640x360 instead;
+    frame_size in the text part says which. The
     JPEG is also written to a file (the path comes back in the text part) for
     tools that want the bytes, such as fmrb_pngdiff.rb.
 
