@@ -480,6 +480,46 @@ TAB5_FS = MCP::Tool.define(
                     force: force, ip: ip) }
 end
 
+TAB5_AUDIO = MCP::Tool.define(
+  name: "tab5_audio",
+  title: "Mute or set the volume of a Modern board",
+  description: <<~DESC,
+    The machine's own mute switch and volume, over WiFi:
+
+      action: "get"                    -> muted, volume
+      action: "mute"  / "unmute"
+      action: "volume", level: 0..10   (0 = silence, 10 = loudest)
+
+    Mute is like a speaker's switch: everything keeps playing and only the
+    output goes silent (the codec is muted too). Volume is separate; unmuting
+    comes back at it.
+
+    The user may be on a call. Mute BEFORE you launch anything that might make
+    a sound, and before a reboot or an app-only flash: both settings are saved
+    in the board's /etc/system_conf.toml, so the next boot (its beep and the
+    desktop's jingle included) stays silent. A FULL flash rewrites
+    /etc/system_conf.toml from config/ and so resets them to the defaults
+    (unmuted) -- the boot after it makes sound; flash app_only to keep them.
+
+    Works on any board whose firmware has the development remote control and
+    is new enough to have /audio (both Modern boards: Tab5 and NARYAv4).
+
+    #{TAB5_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: true, open_world_hint: true },
+  input_schema: {
+    properties: {
+      action: { type: "string", enum: %w[get mute unmute volume],
+                description: "get, mute, unmute or volume" },
+      level: { type: "integer", minimum: 0, maximum: 10,
+               description: "for volume: 0 (silence) to 10" },
+      ip: { type: "string", description: "use this address instead of resolving" },
+    },
+    required: ["action"],
+  },
+) do |action:, level: nil, ip: nil, server_context: nil, **_extra|
+  respond { TAB5.audio(action: action, level: level, ip: ip) }
+end
 
 # --- Linux simulation (docker) ---------------------------------------------
 
@@ -678,6 +718,41 @@ SIM_APP = MCP::Tool.define(
   },
 ) do |action:, path: nil, pid: nil, server_context: nil, **_extra|
   respond { SIM.app(action: action, path: path, pid: pid) }
+end
+
+SIM_AUDIO = MCP::Tool.define(
+  name: "sim_audio",
+  title: "Mute or set the volume of the simulation",
+  description: <<~DESC,
+    The simulated machine's mute switch and volume, through its debug server:
+
+      action: "get"                    -> muted, volume
+      action: "mute"  / "unmute"
+      action: "volume", level: 0..10   (0 = silence, 10 = loudest)
+
+    The simulation runs headless and plays through no speaker, so this is for
+    checking the feature itself: the samples graphics-audio writes out are
+    scaled (volume) or zeroed (mute) at its last output stage, which
+    tools/fmrb_audio_probe.rb measures directly. Both settings are saved
+    (core: flash/etc/system_conf.toml, graphics-audio: its own
+    flash/etc/audio_output.txt), so they survive sim_down / sim_up -- but a
+    `rake build:linux` regenerates system_conf.toml from config/ and the core
+    then puts graphics-audio back to the defaults at the next boot.
+
+    #{SIM_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: true, open_world_hint: true },
+  input_schema: {
+    properties: {
+      action: { type: "string", enum: %w[get mute unmute volume],
+                description: "get, mute, unmute or volume" },
+      level: { type: "integer", minimum: 0, maximum: 10,
+               description: "for volume: 0 (silence) to 10" },
+    },
+    required: ["action"],
+  },
+) do |action:, level: nil, server_context: nil, **_extra|
+  respond { SIM.audio(action: action, level: level) }
 end
 
 # --- the browser build (wasm) ----------------------------------------------
@@ -938,14 +1013,16 @@ server = MCP::Server.new(
     shows the screen, tab5_input clicks and types, tab5_fs moves files. None of
     them need an address; it is resolved and re-resolved for you. When the
     board stops answering these, it has usually crashed and taken WiFi with
-    it -- look at the serial log.
+    it -- look at the serial log. tab5_audio mutes the board or sets its
+    volume; the user may be on a call, so mute before launching anything
+    that makes a sound.
 
     The Retro board (NARYA/S3) has serial and flash only; it has no remote
     desktop -- check its UI in the simulation instead.
 
     Linux simulation: sim_up starts the three containers and shows the first
     frame, sim_screenshot and sim_input drive it, sim_app launches apps by
-    path, sim_down tidies up. It refuses to start against a stale ESP32 build,
+    path, sim_audio mutes it or sets its volume, sim_down tidies up. It refuses to start against a stale ESP32 build,
     and reuses (rather than recreates) a stack that is already running, which
     may be the user's.
 
@@ -957,8 +1034,8 @@ server = MCP::Server.new(
     a reload, the settings, the audio worklet.
   TXT
   tools: [SERIAL_START, SERIAL_LOG, SERIAL_STOP, FLASH,
-          TAB5_IP, TAB5_SCREENSHOT, TAB5_INPUT, TAB5_APP, TAB5_FS,
-          SIM_UP, SIM_DOWN, SIM_SCREENSHOT, SIM_INPUT, SIM_APP,
+          TAB5_IP, TAB5_SCREENSHOT, TAB5_INPUT, TAB5_APP, TAB5_FS, TAB5_AUDIO,
+          SIM_UP, SIM_DOWN, SIM_SCREENSHOT, SIM_INPUT, SIM_APP, SIM_AUDIO,
           WEB_UP, WEB_DOWN, WEB_SCREENSHOT, WEB_INPUT, WEB_FS, WEB_RELOAD],
 )
 

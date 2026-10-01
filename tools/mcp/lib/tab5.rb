@@ -178,6 +178,35 @@ module FmrbMcp
       end
     end
 
+    # Mute and volume (fmruby-core doc/audio_mute/). The board saves both in
+    # its system_conf, so they hold across reboots and app-only flashes.
+    def audio(action:, level: nil, ip: nil)
+      r = resolve(ip)
+      method, path =
+        case action
+        when "get"    then ["GET", "/audio/mute"]
+        when "mute"   then ["POST", "/audio/mute?on=1"]
+        when "unmute" then ["POST", "/audio/mute?on=0"]
+        when "volume"
+          unless level.is_a?(Integer) && level.between?(0, 10)
+            raise Error, "volume needs a level from 0 (silence) to 10"
+          end
+          ["POST", "/audio/volume?level=#{level}"]
+        else
+          raise Error, "unknown action #{action.inspect} (get|mute|unmute|volume)"
+        end
+      status, body = http(r[:ip], method, path)
+      doc = (JSON.parse(body) rescue nil)
+      if status == 404 && !(doc.is_a?(Hash) && doc.key?("ok"))
+        raise Error, "#{path} answered 404: this firmware has no /audio endpoints -- " \
+                     "it predates the mute (fmruby-core doc/audio_mute/), or it is a " \
+                     "release build without FMRB_DEV_REMOTE_CTL. Nothing was changed."
+      end
+      doc = parse_json(status, body, path) unless doc.is_a?(Hash)
+      raise Error, "#{path} was refused (HTTP #{status}): #{body}" unless doc["ok"]
+      { ip: r[:ip], muted: doc["muted"], volume: doc["volume"], notes: r[:notes] }
+    end
+
     def fs(action:, device_path: nil, local_path: nil, force: false, ip: nil)
       r = resolve(ip)
       args, timeout = fs_args(action, device_path, local_path, force)

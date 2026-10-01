@@ -1,7 +1,7 @@
 # fmrb-mcp — Family mruby の開発ツールを MCP サーバとして提供する
 
 シリアルと flash (P1)、Tab5 の WiFi 遠隔 (P2)、Linux sim (P3)、
-ブラウザ版 (wasm) の 20 ツール。
+ブラウザ版 (wasm) の 22 ツール。
 計画は `doc/mcp_tools/plan.md`、各段の実装報告は `doc/mcp_tools/report/`。
 
 ## なぜあるか
@@ -56,6 +56,7 @@ Modern (Tab5 / ESP32-P4) を WiFi で操作する。**どのツールも IP を�
 | `tab5_input(commands, ip?)` | `click X Y` `drag ...` `key ctrl+tab` `sleep MS` などを左から実行 |
 | `tab5_app(action, path?, pid?, ip?)` | `launch` (パス起動、pid を返す) / `ps` / `kill` |
 | `tab5_fs(action, device_path?, local_path?, force?, ip?)` | `ls get put push pull mkdir del rmr` |
+| `tab5_audio(action, level?, ip?)` | `get` / `mute` / `unmute` / `volume` (0-10)。devctl の `/audio/*` を叩く |
 
 - 座標はフレームバッファ系 **426x240** (窓の拡大率と無関係)。
 - `put` → `tab5_app launch` が**再 flash なしの開発ループ**。
@@ -63,6 +64,10 @@ Modern (Tab5 / ESP32-P4) を WiFi で操作する。**どのツールも IP を�
 - `/app` `/fs` は開発ビルド限定 (`FMRB_DEV_REMOTE_CTL`)。無い firmware は
   404 を返すので、「壊れた」ではなく「リリースビルド」と診断して返す。
   無認証なので信頼できる LAN 内が前提。
+- `tab5_audio` のミュートと音量は端末の `/etc/system_conf.toml` に保存され、
+  再起動と app_only の flash を越えて残る (起動音も鳴らない)。**通常の
+  flash は system_conf を config/ から書き直すので既定 (ミュートなし) に戻る**。
+  経緯は fmruby-core `doc/audio_mute/`。
 - **クラッシュすると WiFi ごと落ちてこの経路は全滅する**。そのときのログは
   同じサーバの `serial_start` / `serial_log` で採る。
 
@@ -78,6 +83,7 @@ docker の 3 コンテナを起動・撮影・操作する。手順書でしか�
 | `sim_screenshot(wait?)` | 現在の画面を image content で返す |
 | `sim_input(commands)` | `click X Y` `text "hello world"` `key ctrl+space` など |
 | `sim_app(action, path?, pid?)` | debugd 経由の `spawn` / `ps` / `kill` |
+| `sim_audio(action, level?)` | debugd 経由の `get` / `mute` / `unmute` / `volume` (0-10)。効き目は `tools/fmrb_audio_probe.rb` で数値で見る |
 
 - **偽グリーンの遮断**: `rake build:linux` は esp32 の build/ が残っていても
   「Linux build complete」と言う。起動前に**両 ELF が本当に x86-64 か**を

@@ -158,6 +158,16 @@ Dir.mktmpdir("fmrb-mcp-sim") do |dir|
     [sim.send(:png_size, png) == [426, 240], sim.send(:png_size, png).inspect]
   end
 
+  puts "  -- audio --"
+  doc = sim.audio(action: "volume", level: 4)
+  check("sim_audio volume sends the audio command with volume=") do
+    [doc.is_a?(Hash), doc.inspect]
+  end
+  err = (sim.audio(action: "volume", level: 12) rescue $!)
+  check("a level outside 0-10 is refused before the debug server") do
+    [err.is_a?(FmrbMcp::Error) && err.message.include?("0 (silence) to 10"), err.inspect]
+  end
+
   puts "  -- through the server --"
   ENV.delete("FMRB_MCP_SIM_CORE_ELF")
   ENV.delete("FMRB_MCP_SIM_GA_ELF")
@@ -188,10 +198,10 @@ Dir.mktmpdir("fmrb-mcp-sim") do |dir|
   line, res = req.call("tools/list")
   raw << line
   listed = res.dig("result", "tools").map { |t| t["name"] }.sort
-  check("all twenty tools are registered") do
+  check("all twenty-two tools are registered") do
     want = %w[flash serial_log serial_start serial_stop
-              sim_app sim_down sim_input sim_screenshot sim_up
-              tab5_app tab5_fs tab5_input tab5_ip tab5_screenshot
+              sim_app sim_audio sim_down sim_input sim_screenshot sim_up
+              tab5_app tab5_audio tab5_fs tab5_input tab5_ip tab5_screenshot
               web_down web_fs web_input web_reload web_screenshot web_up]
     [listed == want, listed.inspect]
   end
