@@ -192,6 +192,46 @@ module FmrbMcp
       { action: action, result: doc }
     end
 
+    # Mute and volume through the debug server, the simulation's stand-in for
+    # the boards' devctl /audio endpoints.
+    def audio(action:, level: nil)
+      args =
+        case action
+        when "get"    then ["audio"]
+        when "mute"   then ["audio", "on=1"]
+        when "unmute" then ["audio", "on=0"]
+        when "volume"
+          unless level.is_a?(Integer) && level.between?(0, 10)
+            raise Error, "volume needs a level from 0 (silence) to 10"
+          end
+          ["audio", "volume=#{level}"]
+        else
+          raise Error, "unknown action #{action.inspect} (get|mute|unmute|volume)"
+        end
+      client = File.join(@repo_root, "fmruby-core", "tool", "debug", "fmrb_dbg_client.py")
+      res = Sub.run({}, ["python3", client, "--json", "localhost", *args],
+                    chdir: @repo_root, timeout: APP_TIMEOUT)
+      unless res[:ok]
+        hint = if res[:output].include?("refused") || res[:output].include?("Connection")
+                 " The debug server lives in the running sim, so sim_up first."
+               else
+                 ""
+               end
+        raise Error, "sim_audio #{action} failed: #{res[:output].strip}#{hint}"
+      end
+      doc = begin
+        JSON.parse(res[:output].lines.last.to_s)
+      rescue JSON::ParserError
+        raise Error, "the debug client answered something that is not JSON: " \
+                     "#{Sub.clamp(res[:output], 2000)}"
+      end
+      if doc["error"]
+        raise Error, "sim_audio #{action} was refused (#{doc['error']}): a core built " \
+                     "before the mute (fmruby-core doc/audio_mute/) does not know the command"
+      end
+      { muted: doc["muted"], volume: doc["volume"] }
+    end
+
     def status
       st = read_state
       { running: core_running?, state: st, expected_size: expected_size_s,

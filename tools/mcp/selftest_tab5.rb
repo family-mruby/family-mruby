@@ -89,6 +89,17 @@ class FakeTab5
       else
         json(c, '{"ok":true}')
       end
+    when %w[GET /audio/mute]
+      return not_found(c) unless dev
+      json(c, %({"ok":true,"muted":#{@muted ? "true" : "false"},"volume":#{@volume || 7}}))
+    when %w[POST /audio/mute]
+      return not_found(c) unless dev
+      @muted = query.to_s.include?("on=1")
+      json(c, %({"ok":true,"muted":#{@muted ? "true" : "false"},"volume":#{@volume || 7}}))
+    when %w[POST /audio/volume]
+      return not_found(c) unless dev
+      @volume = query.to_s[/level=(\d+)/, 1].to_i
+      json(c, %({"ok":true,"muted":#{@muted ? "true" : "false"},"volume":#{@volume}}))
     when %w[GET /fs/list]
       return not_found(c) unless dev
       json(c, '{"ok":true,"entries":[{"name":"demo","dir":true,"size":0},' \
@@ -238,6 +249,23 @@ Dir.mktmpdir("fmrb-mcp-tab5") do |dir|
     [err == true && doc["message"].to_s.include?("needs a path"), doc.inspect]
   end
 
+  puts "  -- audio --"
+  doc, err = payload(srv.call("tab5_audio", { action: "mute", ip: "127.0.0.1" }))
+  check("mute reaches /audio/mute and reports the state") do
+    [!err && doc["muted"] == true && doc["volume"] == 7, doc.inspect]
+  end
+  doc, err = payload(srv.call("tab5_audio", { action: "volume", level: 3, ip: "127.0.0.1" }))
+  check("volume sets the level and keeps the mute") do
+    [!err && doc["volume"] == 3 && doc["muted"] == true, doc.inspect]
+  end
+  res = srv.call("tab5_audio", { action: "volume", level: 11, ip: "127.0.0.1" })
+  text = res.dig("result", "content", 0, "text").to_s + res.dig("error", "message").to_s
+  check("a level outside 0-10 is refused before touching the board") do
+    [res.dig("result", "isError") == true || res.key?("error"), text]
+  end
+  doc, err = payload(srv.call("tab5_audio", { action: "unmute", ip: "127.0.0.1" }))
+  check("unmute comes back at the volume") { [!err && doc["muted"] == false && doc["volume"] == 3, doc.inspect] }
+
   puts "  -- files --"
   doc, err = payload(srv.call("tab5_fs", { action: "ls", device_path: "/app", ip: "127.0.0.1" }))
   check("ls reaches the device and lists entries") do
@@ -259,6 +287,10 @@ Dir.mktmpdir("fmrb-mcp-tab5") do |dir|
 
   puts "  -- a firmware without the development endpoints --"
   fake.release_mode = true
+  doc, err = payload(srv.call("tab5_audio", { action: "get", ip: "127.0.0.1" }))
+  check("tab5_audio on a firmware without /audio says so") do
+    [err == true && doc["message"].to_s.include?("no /audio endpoints"), doc.inspect]
+  end
   doc, err = payload(srv.call("tab5_app", { action: "ps", ip: "127.0.0.1" }))
   check("404 is diagnosed as a release build, not as a broken board") do
     [err == true && doc["message"].to_s.include?("no development remote control"), doc.inspect]
@@ -270,8 +302,8 @@ Dir.mktmpdir("fmrb-mcp-tab5") do |dir|
 
   puts "  -- registration and stdout purity --"
   listed = srv.request("tools/list").dig("result", "tools").map { |t| t["name"] }.sort
-  check("the five Tab5 tools are registered") do
-    want = %w[tab5_app tab5_fs tab5_input tab5_ip tab5_screenshot]
+  check("the six Tab5 tools are registered") do
+    want = %w[tab5_app tab5_audio tab5_fs tab5_input tab5_ip tab5_screenshot]
     [(want - listed).empty?, listed.inspect]
   end
   check("every line the server wrote to stdout is JSON-RPC") do
