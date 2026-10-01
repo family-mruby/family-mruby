@@ -309,7 +309,11 @@ def browser_up(headless, extra_args)
         (extra_args ? "&" + extra_args : "")
   args = [bin, "--user-data-dir=#{profile_dir}", "--no-first-run",
           "--no-default-browser-check", "--disable-gpu"]
-  args << "--headless=new" if headless
+  # A headless page has nobody listening on purpose, and the browser may be
+  # the Windows one, whose output is the user's speakers: keep it silent.
+  # The page still renders its audio (the worklet runs, the core's output
+  # stage is measurable); only the browser's own output is muted.
+  args += ["--headless=new", "--mute-audio"] if headless
   args << url
   pid = Process.spawn(*args, out: "/dev/null", err: "/dev/null")
   Process.detach(pid)

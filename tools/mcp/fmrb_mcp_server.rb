@@ -735,7 +735,7 @@ SIM_AUDIO = MCP::Tool.define(
     scaled (volume) or zeroed (mute) at its last output stage, which
     tools/fmrb_audio_probe.rb measures directly. Both settings are saved
     (core: flash/etc/system_conf.toml, graphics-audio: its own
-    flash/etc/audio_output.txt), so they survive sim_down / sim_up -- but a
+    flash/etc/audio_output_linux.txt), so they survive sim_down / sim_up -- but a
     `rake build:linux` regenerates system_conf.toml from config/ and the core
     then puts graphics-audio back to the defaults at the next boot.
 
