@@ -178,7 +178,7 @@ module FmrbMcp
       end
     end
 
-    # Mute and volume (fmruby-core doc/audio_mute/). The board saves both in
+    # Mute and volume (fmruby-core doc/reference/audio_output.md). The board saves both in
     # its system_conf, so they hold across reboots and app-only flashes.
     def audio(action:, level: nil, ip: nil)
       r = resolve(ip)
@@ -199,7 +199,7 @@ module FmrbMcp
       doc = (JSON.parse(body) rescue nil)
       if status == 404 && !(doc.is_a?(Hash) && doc.key?("ok"))
         raise Error, "#{path} answered 404: this firmware has no /audio endpoints -- " \
-                     "it predates the mute (fmruby-core doc/audio_mute/), or it is a " \
+                     "it predates the mute (fmruby-core doc/reference/audio_output.md), or it is a " \
                      "release build without FMRB_DEV_REMOTE_CTL. Nothing was changed."
       end
       doc = parse_json(status, body, path) unless doc.is_a?(Hash)

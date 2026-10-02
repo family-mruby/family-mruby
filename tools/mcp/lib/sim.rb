@@ -227,7 +227,7 @@ module FmrbMcp
       end
       if doc["error"]
         raise Error, "sim_audio #{action} was refused (#{doc['error']}): a core built " \
-                     "before the mute (fmruby-core doc/audio_mute/) does not know the command"
+                     "before the mute (fmruby-core doc/reference/audio_output.md) does not know the command"
       end
       { muted: doc["muted"], volume: doc["volume"] }
     end

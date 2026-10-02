@@ -67,7 +67,7 @@ Modern (Tab5 / ESP32-P4) を WiFi で操作する。**どのツールも IP を�
 - `tab5_audio` のミュートと音量は端末の `/etc/system_conf.toml` に保存され、
   再起動と app_only の flash を越えて残る (起動音も鳴らない)。**通常の
   flash は system_conf を config/ から書き直すので既定 (ミュートなし) に戻る**。
-  経緯は fmruby-core `doc/audio_mute/`。
+  経緯は fmruby-core `doc/reference/audio_output.md` (経緯は `doc/archive/audio_mute/`)。
 - **クラッシュすると WiFi ごと落ちてこの経路は全滅する**。そのときのログは
   同じサーバの `serial_start` / `serial_log` で採る。
 
