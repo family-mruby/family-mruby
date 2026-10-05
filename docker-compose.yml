@@ -74,6 +74,29 @@ services:
         condition: service_healthy
     command: sh -c "./build/fmruby-core.elf"
 
+  # Zenoh router for the Zenoh client gem (fmruby-core/doc/ruby_asterism).
+  # Apps in the sim reach it by name: tcp/zenohd:7447. Pinned to the same
+  # release as zenoh-pico (fmruby-core/lib/add/ZENOH_PICO_PIN) -- bump both
+  # together. The REST plugin (port 8000) lets the PC read and write keys over
+  # HTTP (tools/fmrb_zenoh.rb); the in-memory storage on fmrb/** keeps the
+  # latest value of each key so a REST GET has something to answer with.
+  # Nothing depends on it: the sim boots the same with this service stopped.
+  # The ports are published on loopback only: the router has no
+  # authentication, so it is not opened to the LAN until a board has to reach
+  # it (Asterism Z2).
+  zenohd:
+    image: eclipse/zenoh:1.10.1
+    container_name: fmruby_zenohd
+    init: true
+    stop_grace_period: 2s
+    command:
+      - --rest-http-port=8000
+      - --no-multicast-scouting
+      - '--cfg=plugins/storage_manager/storages/fmrb:{key_expr:"fmrb/**",volume:"memory"}'
+    ports:
+      - "127.0.0.1:7447:7447"
+      - "127.0.0.1:8000:8000"
+
 volumes:
   fmruby-sockets:
     driver: local
