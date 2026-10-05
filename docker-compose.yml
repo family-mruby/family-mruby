@@ -81,6 +81,9 @@ services:
   # HTTP (tools/fmrb_zenoh.rb); the in-memory storage on fmrb/** keeps the
   # latest value of each key so a REST GET has something to answer with.
   # Nothing depends on it: the sim boots the same with this service stopped.
+  # The ports are published on loopback only: the router has no
+  # authentication, so it is not opened to the LAN until a board has to reach
+  # it (Asterism Z2).
   zenohd:
     image: eclipse/zenoh:1.10.1
     container_name: fmruby_zenohd
@@ -91,8 +94,8 @@ services:
       - --no-multicast-scouting
       - '--cfg=plugins/storage_manager/storages/fmrb:{key_expr:"fmrb/**",volume:"memory"}'
     ports:
-      - "7447:7447"
-      - "8000:8000"
+      - "127.0.0.1:7447:7447"
+      - "127.0.0.1:8000:8000"
 
 volumes:
   fmruby-sockets:
