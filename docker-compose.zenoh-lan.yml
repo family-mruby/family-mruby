@@ -1,0 +1,15 @@
+# Open the zenohd router to the LAN so a board can reach it over WiFi
+# (fmruby-core/doc/ruby_asterism, Z2). docker-compose.yml publishes zenohd on
+# loopback only because the router has no authentication; layer this file on
+# top only while a board needs it:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml up -d
+#
+# Only the Zenoh port (7447) goes to the LAN. The REST port (8000), which
+# can write any key, stays on loopback. On WSL2 (mirrored networking) Windows
+# also needs an inbound Hyper-V firewall rule for TCP 7447.
+services:
+  zenohd:
+    ports: !override
+      - "0.0.0.0:7447:7447"
+      - "127.0.0.1:8000:8000"
