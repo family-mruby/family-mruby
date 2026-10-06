@@ -8,11 +8,20 @@
 #   ruby tools/fmrb_zenoh.rb get fmrb/test/out          # latest value(s)
 #   ruby tools/fmrb_zenoh.rb put fmrb/test/in hello     # publish a value
 #   ruby tools/fmrb_zenoh.rb watch fmrb/test/out        # print changes
+#   ruby tools/fmrb_zenoh.rb query fmrb/node/linux/info # ask the queryables
+#   ruby tools/fmrb_zenoh.rb alive                      # liveliness tokens
 #
 # `get` is a Zenoh query. It is answered by the router's in-memory storage on
 # fmrb/** (configured in docker-compose.yml), which keeps the latest value of
 # every key put under it -- so a key outside fmrb/** reads as empty. Key
 # expressions with wildcards work (fmrb/** lists everything stored).
+#
+# `query` is the same Zenoh query, shown as a question to every queryable
+# that matches (a board's Zenoh::Queryable, and the storage for fmrb/**): it
+# prints each reply, with the elapsed time, and says so when none came.
+# `alive` lists the liveliness tokens the router knows of, read from its
+# admin space (@/<router id>/router/token/<key>); the REST plugin has no
+# liveliness query of its own.
 #
 # A board on WiFi cannot reach the router by default: docker-compose.yml
 # publishes zenohd on loopback only. Layer docker-compose.zenoh-lan.yml on top
@@ -74,6 +83,12 @@ module FmrbZenoh
     raise "PUT #{uri} -> #{res.code} #{res.body}" unless res.is_a?(Net::HTTPSuccess)
   end
 
+  # Liveliness tokens under key (default fmrb/alive/**), from the router's
+  # admin space.
+  def alive(opts, key)
+    get(opts, "@/*/router/token/#{key}").map { |k, _v, _ts| k.sub(%r{\A@/[^/]+/router/token/}, "") }.uniq.sort
+  end
+
   def print_entries(entries)
     entries.each { |k, v, _ts| puts "#{k} = #{v}" }
   end
@@ -86,6 +101,8 @@ module FmrbZenoh
         Usage: ruby tools/fmrb_zenoh.rb [options] get <key>
                ruby tools/fmrb_zenoh.rb [options] put <key> <value>
                ruby tools/fmrb_zenoh.rb [options] watch <key>
+               ruby tools/fmrb_zenoh.rb [options] query <key> [<parameters>]
+               ruby tools/fmrb_zenoh.rb [options] alive [<key>]
 
         Talks to the zenohd REST plugin (docker compose service `zenohd`).
         For a board on WiFi, open the Zenoh port to the LAN first:
@@ -96,6 +113,9 @@ module FmrbZenoh
                  (exit 1 when there is none)
           put    publish <value> (text) on <key>
           watch  poll <key> and print each value that changed, until Ctrl-C
+          query  send a query on <key> (parameters as in key?a=1) and print
+                 every reply (exit 1 when none came)
+          alive  list the liveliness tokens under <key> (default fmrb/alive/**)
 
       USAGE
       o.on("--host HOST", "REST host (default: localhost, or $FMRB_ZENOH_HOST)") { |v| opts[:host] = v }
@@ -123,6 +143,26 @@ module FmrbZenoh
       abort parser.to_s unless args.size == 2
       put(opts, args[0], args[1])
       puts "put #{args[0]} = #{args[1]}"
+    when "query"
+      abort parser.to_s unless [1, 2].include?(args.size)
+      key = args[1] ? "#{args[0]}?#{args[1]}" : args[0]
+      t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      entries = get(opts, key)
+      ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round
+      if entries.empty?
+        warn "(no reply for #{key}, #{ms} ms)"
+        exit 1
+      end
+      print_entries(entries)
+      puts "(#{entries.size} #{entries.size == 1 ? 'reply' : 'replies'}, #{ms} ms)"
+    when "alive"
+      abort parser.to_s unless args.size <= 1
+      keys = alive(opts, args[0] || "fmrb/alive/**")
+      if keys.empty?
+        warn "(no liveliness token)"
+        exit 1
+      end
+      keys.each { |k| puts k }
     when "watch"
       abort parser.to_s unless args.size == 1
       seen = {}
