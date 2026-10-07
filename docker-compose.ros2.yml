@@ -1,0 +1,59 @@
+# ROS 2 (Jazzy) with rmw_zenoh, for talking to Asterism nodes
+# (fmruby-core/doc/ruby_asterism, R1). It joins the zenohd router of
+# docker-compose.yml, the same router the sim and the boards use, so ROS 2
+# tools see the std_msgs/String topics that ros2_talker.app.rb publishes.
+#
+# Bring it up (zenohd and the ros2 shell; add docker-compose.zenoh-lan.yml
+# when a board on WiFi must reach the router):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.ros2.yml up -d zenohd ros2
+#   docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
+#     -f docker-compose.ros2.yml up -d zenohd ros2          # with a board
+#
+# Then run ROS 2 commands in the ros2 container (the image's entrypoint
+# sources /opt/ros/jazzy, and RMW_IMPLEMENTATION is rmw_zenoh_cpp):
+#
+#   docker exec -it fmruby_ros2 ros2 topic echo /chatter std_msgs/msg/String
+#   docker exec -it fmruby_ros2 ros2 topic pub -r 1 /chatter_back \
+#     std_msgs/msg/String "{data: 'hello from ROS 2'}"
+#   docker exec -it fmruby_ros2 ros2 node list
+#   docker exec -it fmruby_ros2 ros2 topic list -t
+#
+# Note: "ros2 node list" / "ros2 topic list" go through the ROS 2 daemon,
+# which caches the graph; pass --no-daemon when a node that just went away
+# is still listed.
+#
+# Stop it afterwards (zenohd too, when it was opened to the LAN):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.ros2.yml stop ros2 zenohd
+#
+# The router: rmw_zenoh normally starts its own router (ros2 run rmw_zenoh_cpp
+# rmw_zenohd). Here the existing zenohd (1.10.1, the version of zenoh-pico)
+# is used instead, and the ROS 2 side connects to it
+# through ZENOH_CONFIG_OVERRIDE. rmw_zenoh 0.2.x (Jazzy) is built on Zenoh
+# 1.x, which keeps the wire compatible within 1.x.
+#
+# Nothing is published to the host: the container talks to zenohd over the
+# compose network only. The image is built locally from ros:jazzy-ros-base
+# (packages are installed inside the image, not on the host).
+services:
+  ros2:
+    build:
+      dockerfile_inline: |
+        FROM ros:jazzy-ros-base
+        RUN apt-get update \
+         && apt-get install -y --no-install-recommends ros-jazzy-rmw-zenoh-cpp \
+         && rm -rf /var/lib/apt/lists/*
+    image: fmruby-ros2-jazzy-zenoh:local
+    container_name: fmruby_ros2
+    init: true
+    stop_grace_period: 2s
+    depends_on:
+      - zenohd
+    environment:
+      RMW_IMPLEMENTATION: rmw_zenoh_cpp
+      ROS_DOMAIN_ID: "0"
+      # rmw_zenoh's default session (peer mode, multicast scouting off),
+      # pointed at the compose zenohd instead of tcp/localhost:7447.
+      ZENOH_CONFIG_OVERRIDE: 'connect/endpoints=["tcp/zenohd:7447"]'
+    command: ["sleep", "infinity"]
