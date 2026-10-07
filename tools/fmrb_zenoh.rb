@@ -19,7 +19,7 @@
 # expressions with wildcards work (fmrb/** lists everything stored).
 #
 # `query` is the same Zenoh query, shown as a question to every queryable
-# that matches (a board's Zenoh::Queryable, and the storage for fmrb/**): it
+# that matches (a board's Asterism::Zenoh::Queryable, and the storage for fmrb/**): it
 # prints each reply, with the elapsed time, and says so when none came.
 # `alive` lists the liveliness tokens the router knows of, read from its
 # admin space (@/<router id>/router/token/<key>); the REST plugin has no
