@@ -19,13 +19,22 @@
 #   docker exec -it fmruby_ros2 ros2 node list
 #   docker exec -it fmruby_ros2 ros2 topic list -t
 #
+# Services (R2; ros2_service.app.rb serves /fmruby_service_<ID>/add_two_ints
+# and calls /add_two_ints):
+#
+#   docker exec -it fmruby_ros2 ros2 service list -t
+#   docker exec -it fmruby_ros2 ros2 service call \
+#     /fmruby_service_linux/add_two_ints example_interfaces/srv/AddTwoInts "{a: 2, b: 3}"
+#   docker exec -it fmruby_ros2 ros2 run demo_nodes_cpp add_two_ints_server
+#
 # Note: "ros2 node list" / "ros2 topic list" go through the ROS 2 daemon,
 # which caches the graph; pass --no-daemon when a node that just went away
 # is still listed.
 #
-# Stop it afterwards (zenohd too, when it was opened to the LAN):
+# Take it down afterwards (zenohd too, when it was opened to the LAN; down
+# also removes the compose network, which a running ros2 container keeps):
 #
-#   docker compose -f docker-compose.yml -f docker-compose.ros2.yml stop ros2 zenohd
+#   docker compose -f docker-compose.yml -f docker-compose.ros2.yml down
 #
 # The router: rmw_zenoh normally starts its own router (ros2 run rmw_zenoh_cpp
 # rmw_zenohd). Here the existing zenohd (1.10.1, the version of zenoh-pico)
@@ -43,6 +52,13 @@ services:
         FROM ros:jazzy-ros-base
         RUN apt-get update \
          && apt-get install -y --no-install-recommends ros-jazzy-rmw-zenoh-cpp \
+         && rm -rf /var/lib/apt/lists/*
+        # R2 (services): example_interfaces/srv/AddTwoInts and
+        # demo_nodes_cpp's add_two_ints_server / add_two_ints_client.
+        # A separate layer, so the rmw_zenoh layer above stays as built.
+        RUN apt-get update \
+         && apt-get install -y --no-install-recommends \
+              ros-jazzy-example-interfaces ros-jazzy-demo-nodes-cpp \
          && rm -rf /var/lib/apt/lists/*
     image: fmruby-ros2-jazzy-zenoh:local
     container_name: fmruby_ros2
