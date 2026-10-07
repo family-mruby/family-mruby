@@ -10,6 +10,8 @@
 #   ruby tools/fmrb_zenoh.rb watch fmrb/test/out        # print changes
 #   ruby tools/fmrb_zenoh.rb query fmrb/node/linux/info # ask the queryables
 #   ruby tools/fmrb_zenoh.rb alive                      # liveliness tokens
+#   ruby tools/fmrb_zenoh.rb call linux/demo/info status  # call an Asterism object
+#   ruby tools/fmrb_zenoh.rb meta linux/demo/apu          # its exposed methods
 #
 # `get` is a Zenoh query. It is answered by the router's in-memory storage on
 # fmrb/** (configured in docker-compose.yml), which keeps the latest value of
@@ -22,6 +24,14 @@
 # `alive` lists the liveliness tokens the router knows of, read from its
 # admin space (@/<router id>/router/token/<key>); the REST plugin has no
 # liveliness query of its own.
+#
+# `call` and `meta` talk to the objects an Asterism application exposes
+# (fmruby-core/doc/ruby_asterism, A1): `call <node>/<app>/<object> <method>
+# [<args JSON array>]` sends a get on asterism/<node>/<app>/<object>/call with
+# the MessagePack payload [method, args, kwargs] in the request body, and
+# decodes the reply (["ok", value] or ["error", class, message]). `meta` asks
+# .../meta for the exposed methods; the object part may be * there.
+# MessagePack is done by tools/fmrb_msgpack.rb (plain Ruby).
 #
 # A board on WiFi cannot reach the router by default: docker-compose.yml
 # publishes zenohd on loopback only. Layer docker-compose.zenoh-lan.yml on top
@@ -38,6 +48,7 @@ require "json"
 require "net/http"
 require "optparse"
 require "uri"
+require_relative "fmrb_msgpack"
 
 module FmrbZenoh
   module_function
@@ -72,6 +83,90 @@ module FmrbZenoh
     JSON.parse(res.body).map { |e| [e["key"], decode(e), e["timestamp"]] }
   end
 
+  # A query with a binary body (the query payload); replies as raw bytes.
+  def query_bytes(opts, key, body)
+    uri = base_uri(opts, key)
+    req = Net::HTTP::Get.new(uri.request_uri)
+    if body
+      req["Content-Type"] = "application/octet-stream"
+      req.body = body
+    end
+    res = Net::HTTP.start(uri.host, uri.port, open_timeout: 3, read_timeout: opts[:timeout]) do |http|
+      http.request(req)
+    end
+    raise "GET #{uri} -> #{res.code} #{res.body}" unless res.is_a?(Net::HTTPSuccess)
+    JSON.parse(res.body).map do |e|
+      v = e["value"].to_s
+      bytes = e["encoding"].to_s.start_with?("zenoh/bytes") ? Base64.strict_decode64(v) : v.b
+      [e["key"], bytes]
+    end
+  end
+
+  def asterism_path!(path)
+    parts = path.split("/")
+    raise "expected <node>/<app>/<object>, got #{path}" unless parts.size == 3 && parts.none?(&:empty?)
+    path
+  end
+
+  def show_value(v)
+    v.is_a?(String) ? v.inspect : JSON.generate(v)
+  rescue JSON::GeneratorError
+    v.inspect
+  end
+
+  # Returns the exit status.
+  def asterism_call(opts, path, method, args, kwargs)
+    payload = FmrbMsgpack.pack([method, args, kwargs])
+    t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    replies = query_bytes(opts, "asterism/#{asterism_path!(path)}/call", payload)
+    ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round
+    if replies.empty?
+      warn "(no answer from #{path}, #{ms} ms)"
+      return 1
+    end
+    status = 0
+    replies.each do |key, bytes|
+      reply = begin
+        FmrbMsgpack.unpack(bytes)
+      rescue FmrbMsgpack::Error => e
+        warn "#{key}: not MessagePack (#{e.message})"
+        status = 1
+        next
+      end
+      if reply.is_a?(Array) && reply[0] == "ok"
+        puts "ok: #{show_value(reply[1])}"
+      elsif reply.is_a?(Array) && reply[0] == "error"
+        puts "error: #{reply[1]}: #{reply[2]}"
+        status = 1
+      else
+        puts "?: #{reply.inspect}"
+        status = 1
+      end
+    end
+    puts "(#{path} #{method}, #{ms} ms)"
+    status
+  end
+
+  def asterism_meta(opts, path)
+    parts = path.split("/")
+    raise "expected <node>/<app>/<object>, got #{path}" unless parts.size == 3
+    t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    replies = query_bytes(opts, "asterism/#{path}/meta", nil)
+    ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round
+    if replies.empty?
+      warn "(no answer from #{path}, #{ms} ms)"
+      return 1
+    end
+    replies.each do |key, bytes|
+      meta = FmrbMsgpack.unpack(bytes)
+      obj = key.sub(%r{\Aasterism/}, "").sub(%r{/meta\z}, "")
+      list = (meta["methods"] || []).map { |name, arity| arity.to_i < 0 ? name : "#{name}/#{arity}" }
+      puts "#{obj}: #{list.join(' ')}"
+    end
+    puts "(#{replies.size} #{replies.size == 1 ? 'object' : 'objects'}, #{ms} ms)"
+    0
+  end
+
   def put(opts, key, value)
     uri = base_uri(opts, key)
     req = Net::HTTP::Put.new(uri.request_uri)
@@ -103,6 +198,8 @@ module FmrbZenoh
                ruby tools/fmrb_zenoh.rb [options] watch <key>
                ruby tools/fmrb_zenoh.rb [options] query <key> [<parameters>]
                ruby tools/fmrb_zenoh.rb [options] alive [<key>]
+               ruby tools/fmrb_zenoh.rb [options] call <node>/<app>/<object> <method> [<args JSON>]
+               ruby tools/fmrb_zenoh.rb [options] meta <node>/<app>/<object>
 
         Talks to the zenohd REST plugin (docker compose service `zenohd`).
         For a board on WiFi, open the Zenoh port to the LAN first:
@@ -116,6 +213,12 @@ module FmrbZenoh
           query  send a query on <key> (parameters as in key?a=1) and print
                  every reply (exit 1 when none came)
           alive  list the liveliness tokens under <key> (default fmrb/alive/**)
+          call   call <method> of an Asterism object with the arguments of
+                 the JSON array (a single JSON value is one argument; --kw
+                 adds keyword arguments) and print the value or the error
+                 (exit 1 on an error or no answer)
+          meta   print the exposed methods (name/number of arguments) of an
+                 Asterism object (<object> may be *)
 
       USAGE
       o.on("--host HOST", "REST host (default: localhost, or $FMRB_ZENOH_HOST)") { |v| opts[:host] = v }
@@ -123,6 +226,7 @@ module FmrbZenoh
       o.on("--interval SEC", Float, "watch: polling interval (default: 0.5)") { |v| opts[:interval] = v }
       o.on("--count N", Integer, "watch: stop after N changes") { |v| opts[:count] = v }
       o.on("--timeout SEC", Integer, "HTTP read timeout (default: 5)") { |v| opts[:timeout] = v }
+      o.on("--kw JSON", "call: keyword arguments as a JSON object") { |v| opts[:kw] = JSON.parse(v) }
       o.on("-h", "--help", "show this help") do
         puts o
         exit 0
@@ -163,6 +267,14 @@ module FmrbZenoh
         exit 1
       end
       keys.each { |k| puts k }
+    when "call"
+      abort parser.to_s unless [2, 3].include?(args.size)
+      call_args = args[2] ? JSON.parse(args[2]) : []
+      call_args = [call_args] unless call_args.is_a?(Array)
+      exit asterism_call(opts, args[0], args[1], call_args, opts[:kw] || {})
+    when "meta"
+      abort parser.to_s unless args.size == 1
+      exit asterism_meta(opts, args[0])
     when "watch"
       abort parser.to_s unless args.size == 1
       seen = {}
