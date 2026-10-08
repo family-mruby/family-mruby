@@ -16,3 +16,4 @@ tmp/
 .rake_tasks~
 *.vsix
 contest/
+asterism-console/
