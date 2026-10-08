@@ -1,0 +1,21 @@
+// zenohd-home: the LAN router of the relay overlay (docker-compose.relay.yml).
+// The boards and the sim keep connecting to it in plain TCP (7447, as
+// before); it connects out to zenohd-cloud over mutual TLS with its own
+// certificate (common name zenohd-home, which the cloud's ACL matches).
+// Key names checked against zenoh 1.10.1's DEFAULT_CONFIG.json5.
+{
+  mode: "router",
+  metadata: { name: "zenohd-home" },
+  connect: { endpoints: ["tls/zenohd-cloud:7448"] },
+  transport: {
+    link: {
+      tls: {
+        root_ca_certificate: "/certs/ca.pem",
+        connect_certificate: "/certs/zenohd-home.pem",
+        connect_private_key: "/certs/zenohd-home.key",
+        enable_mtls: true,
+        close_link_on_expiration: true,
+      },
+    },
+  },
+}

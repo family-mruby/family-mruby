@@ -1,0 +1,90 @@
+# A relay between two Zenoh routers (fmruby-core/doc/ruby_asterism, W1):
+# the zenohd of docker-compose.yml becomes the home (LAN) router and
+# connects out to a second router, zenohd-cloud, over mutual TLS. The cloud
+# router stands for one on the internet: it listens on TLS only and its ACL
+# limits, per certificate name, the keys each side may use.
+#
+#   [home] boards, sim -- zenohd (tcp/7447, plain) --mTLS--> zenohd-cloud (tls/7448)
+#   [outside] CRuby, ros2-cloud, the console's bridge  --mTLS-->  zenohd-cloud
+#
+# Certificates first (once; they go to asterism-console/storage/relay/certs,
+# ignored by git -- or point ASTERISM_RELAY_CERTS at another directory):
+#
+#   (cd asterism-console && script/relay_certs)
+#
+# Then layer this file on top (with docker-compose.zenoh-lan.yml when a board
+# must reach the home router, docker-compose.ros2.yml for ROS 2):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
+#     -f docker-compose.ros2.yml -f docker-compose.relay.yml \
+#     up -d zenohd zenohd-cloud ros2 ros2-cloud
+#
+# Take it down with the same -f set (down then also removes zenohd-cloud,
+# ros2-cloud and the relay_cloud network):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
+#     -f docker-compose.ros2.yml -f docker-compose.relay.yml down
+#
+# Without this file nothing changes: zenohd is the one router, as before.
+# sim_up recreates zenohd from docker-compose.yml alone; run the line above
+# again afterwards.
+#
+# A client on the host reaches the cloud router at tls/localhost:7448 (its
+# certificate is also valid for localhost and 127.0.0.1), with the CA, its own
+# certificate and enable_mtls (asterism-console/README.md has the settings).
+# The port is published on loopback only.
+#
+# ros2-cloud lives on a network of its own (relay_cloud) that only
+# zenohd-cloud joins, so its ROS 2 traffic can reach the home side through the
+# two routers only. It uses the image docker-compose.ros2.yml builds.
+services:
+  zenohd:
+    command:
+      - -c
+      - /relay/home.json5
+      - --rest-http-port=8000
+      - --no-multicast-scouting
+      - '--cfg=plugins/storage_manager/storages/fmrb:{key_expr:"fmrb/**",volume:"memory"}'
+    volumes:
+      - ./docker/zenoh-relay:/relay:ro
+      - ${ASTERISM_RELAY_CERTS:-./asterism-console/storage/relay/certs}:/certs:ro
+    depends_on:
+      - zenohd-cloud
+
+  zenohd-cloud:
+    image: eclipse/zenoh:1.10.1
+    container_name: fmruby_zenohd_cloud
+    init: true
+    stop_grace_period: 2s
+    command: ["-c", "/relay/cloud.json5"]
+    environment:
+      RUST_LOG: ${ZENOHD_CLOUD_LOG:-info}
+    volumes:
+      - ./docker/zenoh-relay:/relay:ro
+      - ${ASTERISM_RELAY_CERTS:-./asterism-console/storage/relay/certs}:/certs:ro
+    ports:
+      - "127.0.0.1:7448:7448"
+    networks:
+      - default
+      - relay_cloud
+
+  ros2-cloud:
+    image: fmruby-ros2-jazzy-zenoh:local
+    container_name: fmruby_ros2_cloud
+    init: true
+    stop_grace_period: 2s
+    depends_on:
+      - zenohd-cloud
+    environment:
+      RMW_IMPLEMENTATION: rmw_zenoh_cpp
+      ROS_DOMAIN_ID: "0"
+      ZENOH_CONFIG_OVERRIDE: >-
+        connect/endpoints=["tls/zenohd-cloud:7448"];transport/link/tls/root_ca_certificate="/certs/ca.pem";transport/link/tls/connect_certificate="/certs/ros2-cloud.pem";transport/link/tls/connect_private_key="/certs/ros2-cloud.key";transport/link/tls/enable_mtls=true
+    volumes:
+      - ${ASTERISM_RELAY_CERTS:-./asterism-console/storage/relay/certs}:/certs:ro
+    networks:
+      - relay_cloud
+    command: ["sleep", "infinity"]
+
+networks:
+  relay_cloud: {}

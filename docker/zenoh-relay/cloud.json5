@@ -1,0 +1,115 @@
+// zenohd-cloud: the router "on the internet" of the relay overlay
+// (docker-compose.relay.yml, fmruby-core/doc/ruby_asterism W1).
+//
+// - Listens on TLS only (7448). Every link is mutual TLS: the other side must
+//   show a certificate signed by the relay CA (/certs/ca.pem).
+// - access_control matches the other side by its certificate's common name
+//   (cert_common_names) and limits the keys it may use. Anything not allowed
+//   is denied, including the admin space (@/**) for everyone but the console.
+// - Key names checked against zenoh 1.10.1's DEFAULT_CONFIG.json5.
+{
+  mode: "router",
+  metadata: { name: "zenohd-cloud" },
+  listen: { endpoints: ["tls/[::]:7448"] },
+  scouting: {
+    multicast: { enabled: false },
+    // Do not tell the home router about the peers here (ROS 2): they must be
+    // reached through the routers, not directly.
+    gossip: { enabled: false },
+  },
+  transport: {
+    link: {
+      tls: {
+        root_ca_certificate: "/certs/ca.pem",
+        listen_certificate: "/certs/zenohd-cloud.pem",
+        listen_private_key: "/certs/zenohd-cloud.key",
+        enable_mtls: true,
+        close_link_on_expiration: true,
+      },
+    },
+  },
+  adminspace: { enabled: true, permissions: { read: true, write: false } },
+  access_control: {
+    enabled: true,
+    default_permission: "deny",
+    rules: [
+      {
+        // The keys a router or client on the relay may use in both
+        // directions: Asterism, ROS 2 (rmw_zenoh: liveliness under
+        // @ros2_lv, data under <domain>/...), and the sim's test keys.
+        id: "relay_keys",
+        messages: [
+          "put", "delete", "declare_subscriber",
+          "query", "reply", "declare_queryable",
+          "liveliness_token", "liveliness_query", "declare_liveliness_subscriber",
+        ],
+        flows: ["egress", "ingress"],
+        permission: "allow",
+        key_exprs: ["asterism/**", "@ros2_lv/**", "0/**", "fmrb/**", "demo/**"],
+      },
+      {
+        // ROS 2 only.
+        id: "ros_keys",
+        messages: [
+          "put", "delete", "declare_subscriber",
+          "query", "reply", "declare_queryable",
+          "liveliness_token", "liveliness_query", "declare_liveliness_subscriber",
+        ],
+        flows: ["egress", "ingress"],
+        permission: "allow",
+        key_exprs: ["@ros2_lv/**", "0/**"],
+      },
+      {
+        // An outside Ruby process: the Asterism object network and its own
+        // corner of demo/.
+        id: "cruby_keys",
+        messages: [
+          "put", "delete", "declare_subscriber",
+          "query", "reply", "declare_queryable",
+          "liveliness_token", "liveliness_query", "declare_liveliness_subscriber",
+        ],
+        flows: ["egress", "ingress"],
+        permission: "allow",
+        key_exprs: ["asterism/**", "demo/cruby/**"],
+      },
+      {
+        // Reading the admin space: the console asks (ingress query) and gets
+        // the answers (egress reply).
+        id: "admin_read",
+        messages: ["query", "reply"],
+        flows: ["egress", "ingress"],
+        permission: "allow",
+        key_exprs: ["@/**"],
+      },
+      {
+        // The home router's admin space, read through this router: the
+        // queryable it declares and its answers come in, the console's
+        // queries go out to it.
+        id: "admin_relay_in",
+        messages: ["declare_queryable", "reply"],
+        flows: ["ingress"],
+        permission: "allow",
+        key_exprs: ["@/**"],
+      },
+      {
+        id: "admin_relay_out",
+        messages: ["query"],
+        flows: ["egress"],
+        permission: "allow",
+        key_exprs: ["@/**"],
+      },
+    ],
+    subjects: [
+      { id: "home_router", cert_common_names: ["zenohd-home"] },
+      { id: "console", cert_common_names: ["console"] },
+      { id: "cruby", cert_common_names: ["cruby"] },
+      { id: "ros2_cloud", cert_common_names: ["ros2-cloud"] },
+    ],
+    policies: [
+      { id: "home", rules: ["relay_keys", "admin_relay_in", "admin_relay_out"], subjects: ["home_router"] },
+      { id: "console", rules: ["relay_keys", "admin_read"], subjects: ["console"] },
+      { id: "cruby", rules: ["cruby_keys"], subjects: ["cruby"] },
+      { id: "ros2", rules: ["ros_keys"], subjects: ["ros2_cloud"] },
+    ],
+  },
+}
