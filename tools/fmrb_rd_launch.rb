@@ -11,7 +11,7 @@ host = ARGV[0]
 path = ARGV[1]
 unless host && path
   abort "usage: fmrb_rd_launch.rb HOST PATH\n" \
-        "  e.g. fmrb_rd_launch.rb 192.168.10.13 /app/modern/mic_spectrum.app.rb"
+        "  e.g. fmrb_rd_launch.rb 192.0.2.13 /app/modern/mic_spectrum.app.rb"
 end
 
 status, body = FmrbRdHttp.request(host, "POST", "/app/launch?path=#{path}")
