@@ -1,0 +1,16 @@
+# Asterism rover (S1): mujoco_ros2_control plugins. MIT License (same as
+# Family mruby). The camera "camera" of model/rover.xml renders 160x120
+# (its MJCF resolution) at 5 Hz; the launch file compresses it to JPEG on
+# /camera/image/compressed.
+/**:
+  ros__parameters:
+    mujoco_plugins:
+      mujoco_camera_plugin:
+        type: "mujoco_ros2_control_plugins/CameraPlugin"
+        camera_publish_rate: 5.0
+        camera:
+          policy: streaming
+          frame_name: camera_optical_frame
+          info_topic: /camera/camera_info
+          image_topic: /camera/image_raw
+          depth_topic: /camera/depth

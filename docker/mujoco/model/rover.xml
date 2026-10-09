@@ -1,0 +1,76 @@
+<!--
+  Asterism rover (S1): a small two-wheeled robot for mujoco_ros2_control.
+  MIT License (same as Family mruby).
+
+  Frame of base_link: origin on the wheel axle, x forward, z up.
+  Keep these in step with rover.urdf and config/controllers.yaml:
+    wheel radius     0.05 m
+    wheel separation 0.24 m (wheel centres at y = +-0.12)
+  The joints and sensors named here are the ones rover.urdf's ros2_control
+  block refers to (mujoco_ros2_control maps them by name).
+-->
+<mujoco model="asterism_rover">
+  <worldbody>
+    <body name="base_link" pos="0 0 0.052">
+      <!-- Ground truth: mujoco_ros2_control publishes this free joint's pose
+           as nav_msgs/Odometry (odom_free_joint_name in rover.urdf). -->
+      <freejoint name="floating_base_joint"/>
+
+      <!-- Chassis: its centre (and the centre of mass) sits behind the axle,
+           so the robot rests on the rear caster. -->
+      <geom name="chassis" type="box" size="0.15 0.10 0.04" pos="-0.03 0 0.03"
+            mass="2.0" rgba="0.95 0.55 0.10 1"/>
+      <!-- Forward marker on top (cosmetic, no collision) -->
+      <geom name="nose" type="box" size="0.02 0.06 0.005" pos="0.10 0 0.075"
+            contype="0" conaffinity="0" mass="0" rgba="0.15 0.15 0.15 1"/>
+
+      <!-- Rear caster: a frictionless ball (condim 1) touching the floor. -->
+      <geom name="rear_caster" type="sphere" size="0.02" pos="-0.13 0 -0.03"
+            condim="1" mass="0.05" rgba="0.3 0.3 0.3 1"/>
+      <!-- Front stop: 5 mm above the floor, only touches when the robot
+           pitches forward under hard braking. -->
+      <geom name="front_stop" type="sphere" size="0.02" pos="0.09 0 -0.025"
+            condim="1" mass="0.05" rgba="0.3 0.3 0.3 1"/>
+
+      <!-- IMU (framequat + gyro + accelerometer on this site) -->
+      <site name="imu_sensor" pos="0 0 0.05" size="0.01" rgba="0 1 0 0.5"/>
+
+      <!-- Front camera, looking along +x. A MuJoCo camera looks along its
+           -z axis with +y up: xyaxes gives x = -y_body, y = +z_body. -->
+      <body name="camera_body" pos="0.12 0 0.09">
+        <geom name="camera_box" type="box" size="0.01 0.02 0.015" contype="0" conaffinity="0"
+              mass="0.02" rgba="0.1 0.1 0.1 1"/>
+        <camera name="camera" mode="fixed" fovy="60" resolution="160 120"
+                pos="0.011 0 0" xyaxes="0 -1 0 0 0 1"/>
+      </body>
+
+      <!-- Wheels: flat ellipsoids (a cylinder's rim contacts slipped more),
+           with stiff contacts (solref) so the tyres do not creep. -->
+      <body name="left_wheel_link" pos="0 0.12 0">
+        <joint name="left_wheel_joint" type="hinge" axis="0 1 0" damping="0.001" armature="0.0005"/>
+        <geom name="left_wheel" type="ellipsoid" size="0.05 0.05 0.0125" quat="0.7071068 0.7071068 0 0"
+              mass="0.2" friction="1.2 0.005 0.0001" solref="0.004 1" solimp="0.95 0.99 0.001" rgba="0.1 0.1 0.1 1"/>
+      </body>
+      <body name="right_wheel_link" pos="0 -0.12 0">
+        <joint name="right_wheel_joint" type="hinge" axis="0 1 0" damping="0.001" armature="0.0005"/>
+        <geom name="right_wheel" type="ellipsoid" size="0.05 0.05 0.0125" quat="0.7071068 0.7071068 0 0"
+              mass="0.2" friction="1.2 0.005 0.0001" solref="0.004 1" solimp="0.95 0.99 0.001" rgba="0.1 0.1 0.1 1"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- Velocity servos: ros2_control's velocity command interface maps to
+       them natively (diff_drive_controller writes wheel speeds in rad/s). -->
+  <actuator>
+    <velocity name="left_wheel_joint" joint="left_wheel_joint" kv="5"
+              forcelimited="true" forcerange="-2 2"/>
+    <velocity name="right_wheel_joint" joint="right_wheel_joint" kv="5"
+              forcelimited="true" forcerange="-2 2"/>
+  </actuator>
+
+  <sensor>
+    <framequat name="imu_sensor_quat" objtype="site" objname="imu_sensor"/>
+    <gyro name="imu_sensor_gyro" site="imu_sensor"/>
+    <accelerometer name="imu_sensor_accel" site="imu_sensor"/>
+  </sensor>
+</mujoco>

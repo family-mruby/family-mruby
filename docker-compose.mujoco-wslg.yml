@@ -1,0 +1,30 @@
+# The MuJoCo viewer window (MuJoCo's simulate app) on WSLg, on top of
+# docker-compose.mujoco.yml (Asterism S1; docker/mujoco/README.md):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.mujoco.yml \
+#     -f docker-compose.mujoco-wslg.yml up -d zenohd mujoco
+#
+# The window goes to WSLg's X server (DISPLAY, /tmp/.X11-unix). It is drawn
+# on the GPU through WSL's D3D12 layer (Mesa's d3d12 driver with the
+# Windows driver libraries in /usr/lib/wsl and the /dev/dxg device); with
+# software rendering the window alone took about 13 cores. Without a GPU,
+# leave out the devices, LD_LIBRARY_PATH and GALLIUM_DRIVER lines (it then
+# falls back to Mesa's llvmpipe on the CPU).
+#
+# The simulator's process is the window's: closing the window should end
+# the simulation (not checked; up -d starts it again). With the window, the
+# camera renders through its GLFW context instead of EGL.
+services:
+  mujoco:
+    devices:
+      - /dev/dxg:/dev/dxg
+    environment:
+      MUJOCO_HEADLESS: "false"
+      DISPLAY: ${DISPLAY:-:0}
+      XDG_RUNTIME_DIR: /mnt/wslg/runtime-dir
+      LD_LIBRARY_PATH: /usr/lib/wsl/lib
+      GALLIUM_DRIVER: d3d12
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /mnt/wslg:/mnt/wslg
+      - /usr/lib/wsl:/usr/lib/wsl:ro

@@ -1,0 +1,54 @@
+# MuJoCo rover over ROS 2 (Jazzy, rmw_zenoh), for Asterism S1
+# (fmruby-core/doc/ruby_asterism/instruction_s1.md, report/s1.md).
+# mujoco_ros2_control runs a small two-wheeled robot (docker/mujoco/) with
+# diff_drive_controller, joint_state_broadcaster and imu_sensor_broadcaster;
+# its camera is published as 160x120 JPEG at 5 Hz. Everything joins the
+# zenohd router of docker-compose.yml, like docker-compose.ros2.yml.
+# Topics, driving it and the viewer: docker/mujoco/README.md.
+#
+# Start (headless; the first run builds the image, a few minutes):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.mujoco.yml up -d zenohd mujoco
+#
+# With a board on WiFi (opens zenohd's 7447 to the LAN), and with the
+# ros2 shell for the ros2 command line:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
+#     -f docker-compose.ros2.yml -f docker-compose.mujoco.yml up -d zenohd ros2 mujoco
+#
+# With the MuJoCo viewer window on WSLg: add docker-compose.mujoco-wslg.yml.
+#
+# Drive and look (the mujoco container has the ros2 command line too):
+#
+#   docker exec -it fmruby_mujoco ros2 control list_controllers
+#   docker exec -it fmruby_mujoco ros2 topic pub -r 10 /cmd_vel \
+#     geometry_msgs/msg/Twist "{linear: {x: 0.2}, angular: {z: 0.0}}"
+#   docker exec -it fmruby_mujoco ros2 topic echo /odom --field pose.pose.position
+#   docker exec -it fmruby_mujoco ros2 topic hz /camera/image/compressed
+#
+# Stop:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.mujoco.yml down
+#
+# The model, configuration and launch file are mounted from docker/mujoco
+# (edit and restart the container; no rebuild). Nothing is published to the
+# host. Rendering: there is no display in the container, so the camera
+# plugin falls back to a surfaceless EGL context, which Mesa (llvmpipe)
+# renders on the CPU; no GPU is passed in.
+services:
+  mujoco:
+    build: docker/mujoco
+    image: fmruby-mujoco-jazzy:local
+    container_name: fmruby_mujoco
+    init: true
+    stop_grace_period: 5s
+    depends_on:
+      - zenohd
+    environment:
+      RMW_IMPLEMENTATION: rmw_zenoh_cpp
+      ROS_DOMAIN_ID: "0"
+      ZENOH_CONFIG_OVERRIDE: 'connect/endpoints=["tcp/zenohd:7447"]'
+      MUJOCO_HEADLESS: ${MUJOCO_HEADLESS:-true}
+    volumes:
+      - ./docker/mujoco:/asterism_rover:ro
+    command: ["bash", "-c", "exec ros2 launch /asterism_rover/launch/rover.launch.py headless:=$${MUJOCO_HEADLESS}"]

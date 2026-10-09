@@ -1,0 +1,123 @@
+<?xml version="1.0"?>
+<!--
+  Asterism rover (S1): the robot description for robot_state_publisher and
+  ros2_control. The physics is rover.xml (MJCF); this file mirrors its links
+  and names. MIT License (same as Family mruby).
+
+  Keep in step with rover.xml and config/controllers.yaml:
+    wheel radius 0.05 m, wheel separation 0.24 m.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="asterism_rover">
+
+  <xacro:arg name="headless" default="true"/>
+  <xacro:arg name="model_dir" default="/asterism_rover/model"/>
+
+  <xacro:property name="wheel_radius" value="0.05"/>
+  <xacro:property name="wheel_width" value="0.025"/>
+  <xacro:property name="wheel_y" value="0.12"/>
+
+  <material name="orange"><color rgba="0.95 0.55 0.10 1"/></material>
+  <material name="black"><color rgba="0.1 0.1 0.1 1"/></material>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="-0.03 0 0.03"/>
+      <geometry><box size="0.30 0.20 0.08"/></geometry>
+      <material name="orange"/>
+    </visual>
+    <!-- No inertial here: the physics is rover.xml's, and KDL refuses an
+         inertia on the root link. -->
+  </link>
+
+  <xacro:macro name="wheel" params="side y">
+    <link name="${side}_wheel_link">
+      <visual>
+        <origin rpy="${pi/2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+        <material name="black"/>
+      </visual>
+      <inertial>
+        <mass value="0.2"/>
+        <inertia ixx="0.000135" ixy="0" ixz="0" iyy="0.00025" iyz="0" izz="0.000135"/>
+      </inertial>
+    </link>
+    <joint name="${side}_wheel_joint" type="continuous">
+      <parent link="base_link"/>
+      <child link="${side}_wheel_link"/>
+      <origin xyz="0 ${y} 0"/>
+      <axis xyz="0 1 0"/>
+    </joint>
+  </xacro:macro>
+  <xacro:wheel side="left" y="${wheel_y}"/>
+  <xacro:wheel side="right" y="${-wheel_y}"/>
+
+  <link name="caster_link">
+    <visual><geometry><sphere radius="0.02"/></geometry><material name="black"/></visual>
+  </link>
+  <joint name="caster_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="caster_link"/>
+    <origin xyz="-0.13 0 -0.03"/>
+  </joint>
+
+  <link name="imu_link"/>
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="0 0 0.05"/>
+  </joint>
+
+  <!-- camera_link: x forward (ROS body convention). camera_optical_frame:
+       z forward, x right, y down (the frame of the published image). -->
+  <link name="camera_link">
+    <visual><geometry><box size="0.02 0.04 0.03"/></geometry><material name="black"/></visual>
+  </link>
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+    <origin xyz="0.12 0 0.09"/>
+  </joint>
+  <link name="camera_optical_frame"/>
+  <joint name="camera_optical_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_optical_frame"/>
+    <origin xyz="0.011 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+  </joint>
+
+  <ros2_control name="MujocoSystem" type="system">
+    <hardware>
+      <plugin>mujoco_ros2_control/MujocoSystemInterface</plugin>
+      <param name="mujoco_model">$(arg model_dir)/scene.xml</param>
+      <param name="headless">$(arg headless)</param>
+      <!-- Ground truth for checking the wheel odometry: the free joint's
+           pose and twist as nav_msgs/Odometry. -->
+      <param name="odom_free_joint_name">floating_base_joint</param>
+      <param name="odom_topic">/ground_truth/odom</param>
+    </hardware>
+    <joint name="left_wheel_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="right_wheel_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <sensor name="imu_sensor">
+      <param name="mujoco_type">imu</param>
+      <param name="mujoco_sensor_name">imu_sensor</param>
+      <state_interface name="orientation.x"/>
+      <state_interface name="orientation.y"/>
+      <state_interface name="orientation.z"/>
+      <state_interface name="orientation.w"/>
+      <state_interface name="angular_velocity.x"/>
+      <state_interface name="angular_velocity.y"/>
+      <state_interface name="angular_velocity.z"/>
+      <state_interface name="linear_acceleration.x"/>
+      <state_interface name="linear_acceleration.y"/>
+      <state_interface name="linear_acceleration.z"/>
+    </sensor>
+  </ros2_control>
+
+</robot>

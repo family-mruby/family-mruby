@@ -1,0 +1,46 @@
+# Asterism rover (S1): controller_manager and controllers for
+# mujoco_ros2_control's ros2_control_node. MIT License (same as Family mruby).
+# Wheel radius and separation must match model/rover.xml.
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+
+joint_state_broadcaster:
+  ros__parameters:
+    type: joint_state_broadcaster/JointStateBroadcaster
+    update_rate: 50
+
+diff_drive_controller:
+  ros__parameters:
+    type: diff_drive_controller/DiffDriveController
+    left_wheel_names: ["left_wheel_joint"]
+    right_wheel_names: ["right_wheel_joint"]
+    wheel_separation: 0.24
+    wheel_radius: 0.05
+    base_frame_id: base_link
+    odom_frame_id: odom
+    enable_odom_tf: true
+    # Odometry from the wheel encoders (position state interface)
+    position_feedback: true
+    open_loop: false
+    publish_rate: 20.0
+    # Jazzy's diff_drive_controller takes TwistStamped only; the launch file
+    # runs twist_stamper from /cmd_vel (Twist). Stop when no command for 0.5 s.
+    cmd_vel_timeout: 0.5
+    linear.x.max_velocity: 1.0
+    linear.x.min_velocity: -1.0
+    angular.z.max_velocity: 3.0
+    angular.z.min_velocity: -3.0
+    # Acceleration limits keep the wheels within their grip (a step in the
+    # wheel speed makes them spin on the floor and the odometry drift).
+    linear.x.max_acceleration: 0.5
+    linear.x.max_deceleration: -0.5
+    angular.z.max_acceleration: 2.0
+    angular.z.max_deceleration: -2.0
+
+imu_sensor_broadcaster:
+  ros__parameters:
+    type: imu_sensor_broadcaster/IMUSensorBroadcaster
+    update_rate: 50
+    sensor_name: imu_sensor
+    frame_id: imu_link
