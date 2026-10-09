@@ -34,6 +34,18 @@
 # certificate and enable_mtls (asterism-console/README.md has the settings).
 # The port is published on loopback only.
 #
+# The console's registry (asterism-console, W2) can make the cloud router's
+# configuration instead of the hand-written docker/zenoh-relay/cloud.json5:
+# it writes asterism-console/storage/relay/generated/cloud.json5 (bin/rails
+# relay:generate, or "Apply" on its relay page, which also restarts
+# zenohd-cloud). Point the cloud router at it when creating the containers:
+#
+#   ASTERISM_RELAY_GENERATED=./asterism-console/storage/relay/generated \
+#   ASTERISM_RELAY_CLOUD_CONFIG=/generated/cloud.json5 \
+#     docker compose ... -f docker-compose.relay.yml up -d zenohd zenohd-cloud ...
+#
+# Unset, both default to the hand-written file as before.
+#
 # ros2-cloud lives on a network of its own (relay_cloud) that only
 # zenohd-cloud joins, so its ROS 2 traffic can reach the home side through the
 # two routers only. It uses the image docker-compose.ros2.yml builds.
@@ -56,11 +68,12 @@ services:
     container_name: fmruby_zenohd_cloud
     init: true
     stop_grace_period: 2s
-    command: ["-c", "/relay/cloud.json5"]
+    command: ["-c", "${ASTERISM_RELAY_CLOUD_CONFIG:-/relay/cloud.json5}"]
     environment:
       RUST_LOG: ${ZENOHD_CLOUD_LOG:-info}
     volumes:
       - ./docker/zenoh-relay:/relay:ro
+      - ${ASTERISM_RELAY_GENERATED:-./docker/zenoh-relay}:/generated:ro
       - ${ASTERISM_RELAY_CERTS:-./asterism-console/storage/relay/certs}:/certs:ro
     ports:
       - "127.0.0.1:7448:7448"
