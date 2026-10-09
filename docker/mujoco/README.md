@@ -133,3 +133,24 @@ r = mujoco.Renderer(m, 480, 640); r.update_scene(d); Image.fromarray(r.render())
 An `EGLError` traceback printed when Python exits (MuJoCo freeing its EGL
 context after Mesa has gone) is harmless; the picture is already written.
 Files written this way belong to root.
+
+## Without ROS 2: the same robot as Asterism objects (S2)
+
+The asterism repository's `examples/mujoco/` runs this robot's MJCF
+(`rover.xml`, `scene.xml`, copied there) with MuJoCo's C library called
+from CRuby through Fiddle, and exposes it as Asterism objects
+(`mujoco/rover/drive`, `state`, `world`). It needs no image and no
+container besides zenohd: MuJoCo's official release is fetched on the host
+into `asterism/examples/mujoco/vendor/` (pinned version and sha256).
+
+```
+docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml up -d zenohd
+ruby asterism/examples/mujoco/fetch.rb           # once
+ruby asterism/examples/mujoco/rover.rb --router tcp/127.0.0.1:7447
+ruby asterism/examples/mujoco/drive.rb --router tcp/127.0.0.1:7447 [--keys]
+```
+
+From Family mruby: `/app/test/asterism_rover.app.rb` (arrow keys). The
+zenoh-lan file is for a board on WiFi. This and the ROS 2 rover above are
+two separate simulations of the same robot; they do not share a world.
+Details: `fmruby-core/doc/ruby_asterism/report/s2.md`.
