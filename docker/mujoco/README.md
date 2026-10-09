@@ -60,7 +60,7 @@ docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
   -f docker-compose.mujoco.yml up -d zenohd mujoco
 
 # is it up? (three controllers, all active)
-docker exec fmruby_mujoco ros2 control list_controllers
+docker exec fmruby_mujoco /ros_entrypoint.sh ros2 control list_controllers
 
 # stop (everything of this compose project, the network too)
 docker compose -f docker-compose.yml -f docker-compose.mujoco.yml down
@@ -77,9 +77,9 @@ The model and configuration are mounted, not copied: after an edit,
 From the ROS 2 side (the container has the ros2 command line):
 
 ```
-docker exec -it fmruby_mujoco ros2 topic pub -r 10 /cmd_vel \
+docker exec -it fmruby_mujoco /ros_entrypoint.sh ros2 topic pub -r 10 /cmd_vel \
   geometry_msgs/msg/Twist "{linear: {x: 0.2}, angular: {z: 0.0}}"
-docker exec -it fmruby_mujoco ros2 topic echo /odom --field pose.pose.position
+docker exec -it fmruby_mujoco /ros_entrypoint.sh ros2 topic echo /odom --field pose.pose.position
 ```
 
 From CRuby (the asterism checkout next to this repository):
