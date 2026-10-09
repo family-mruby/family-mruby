@@ -96,6 +96,119 @@ it shows the odometry). The board reads the router's address from
 To start again from the origin, restart the container
 (`docker restart fmruby_mujoco`).
 
+## The demo: drive from a board, watch on the console (S3)
+
+A Modern board (P4) drives the rover with its arrow keys and shows the
+rover's camera and odometry on its own screen; asterism-console shows the
+same drive (graph, camera, odometry plot), records it to MCAP and rewinds
+it. Measurements: `fmruby-core/doc/ruby_asterism/report/s3.md`.
+
+Commands run from the root of this repository; asterism-console is the
+checkout next to `fmruby-core` (`asterism-console/`). Addresses below are
+examples: `192.0.2.10` is this PC on the LAN, `192.0.2.20` the board (its
+mDNS name `fmruby-aaaaaa.local` works too).
+
+**One driver at a time.** The board app sends `/cmd_vel` only while it is
+moving the rover and sends one stop when it stops; do not drive from CRuby
+or `ros2 topic pub` at the same time.
+
+### 1. The rover, with the router open to the LAN
+
+```
+docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
+  -f docker-compose.mujoco.yml up -d zenohd mujoco
+docker exec fmruby_mujoco /ros_entrypoint.sh ros2 control list_controllers   # three, all active
+```
+
+To watch the simulation as well, start it with the viewer instead (see
+"The MuJoCo viewer on WSLg" below: add `-f docker-compose.mujoco-wslg.yml`
+to the same `up`).
+
+### 2. asterism-console
+
+In two terminals:
+
+```
+cd asterism-console
+bin/rails console:user EMAIL=me@example.org ADMIN=1   # once; asks for a password
+bin/rails server
+```
+
+```
+cd asterism-console
+bin/bridge
+```
+
+Open http://127.0.0.1:3000 and sign in. The graph shows the rover's ROS 2
+nodes (`/mujoco_ros2_control_node`, `/diff_drive_controller`,
+`/camera_jpeg`, `/camera_watch` and the rest).
+
+### 3. The board app
+
+The board needs a firmware whose `/usr/share/asterism/msgs` has
+`geometry_msgs` (asterism 0.4.1 or later; otherwise push
+`fmruby-core/flash/usr/share/asterism/msgs` there). Tell it where the
+router is, send the app and start it:
+
+```
+BOARD=192.0.2.20
+echo "tcp/192.0.2.10:7447" > /tmp/zenoh_echo.txt
+ruby tools/fmrb_rd_fs.rb $BOARD put /tmp/zenoh_echo.txt /home/zenoh_echo.txt
+ruby tools/fmrb_rd_fs.rb $BOARD put fmruby-core/flash/app/test/rover_cam.app.rb /app/test/rover_cam.app.rb
+ruby tools/fmrb_rd_fs.rb $BOARD put fmruby-core/flash/app/test/rover_cam.app.toml /app/test/rover_cam.app.toml
+ruby tools/fmrb_rd_launch.rb $BOARD /app/test/rover_cam.app.rb
+```
+
+(Or launch "Rover Camera" from the board's launcher after a right-click
+rescan.) The window shows the camera (160x120, about 5 Hz) on the left; on
+the right the odometry (x, y, heading, speeds), the camera's rate, its
+delay, how long one picture takes to draw, and the update loop's time.
+
+On WSL2 with mirrored networking, Windows needs an inbound rule for TCP
+7447 (see `docker-compose.zenoh-lan.yml`).
+
+### 4. Watch it on the console
+
+- **Graph**: click the board's node (`/fmruby_cam_fmruby_aaaaaa`): it
+  publishes `/cmd_vel` and subscribes `/odom` and
+  `/camera/image/compressed`.
+- **Camera**: under "Watch a key", watch `0/camera/image/compressed/**`.
+- **Odometry**: open "Plots" in a second tab, pick the source
+  `/odom`, add `pose.pose.position.x, pose.pose.position.y`.
+
+### 5. Record, drive, rewind
+
+1. "Recordings": tick `/cmd_vel`, `/odom`, `/ground_truth/odom` and
+   `/camera/image/compressed`, tick "The network structure", set
+   "At most (seconds)" (60 is plenty), "Start recording".
+2. Drive on the board: Up four times (0.2 m/s), wait about 5 s, Space;
+   Left twice (0.6 rad/s), wait about 2.6 s, Space. That is about 1 m
+   forward and 90 degrees left. The board, the graph, the camera and the
+   plot all move together.
+3. "Stop" (or let the time limit end it), then open the recording:
+   - click the `/odom` row, tick `pose.pose.position.x` and
+     `pose.pose.orientation.z`, "Plot";
+   - click the `/camera/image/compressed` row anywhere on the time axis:
+     the cursor moves, the picture at the cursor and "At the cursor" (the
+     odometry, the true pose, the command at that time) follow; "Prev" /
+     "Next" step one frame; "Play" plays it in the page;
+   - "Network at the cursor" rewinds the graph to that time (the board's
+     node is there while the recording runs).
+4. To compare the odometry with the truth after the drive:
+   `docker exec fmruby_mujoco /ros_entrypoint.sh ros2 topic echo --once /odom --field pose.pose`
+   and the same for `/ground_truth/odom`. (`docker exec` does not source
+   the ROS 2 setup by itself; `/ros_entrypoint.sh` does.)
+
+### 6. Tidy up
+
+```
+ruby tools/fmrb_rd_ps.rb $BOARD                 # find the app's pid, then
+ruby tools/fmrb_rd_kill.rb $BOARD <pid>         # (or Ctrl+Q on the board)
+# Ctrl-C the bridge and the server
+docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
+  -f docker-compose.mujoco.yml down
+```
+
 ## The MuJoCo viewer on WSLg
 
 The viewer is MuJoCo's simulate window, opened by the same process. On
