@@ -1,0 +1,87 @@
+# A wss:// door to the zenohd router for the browser build of Family mruby
+# served over https (fmruby-core/doc/ruby_asterism, B2). A page served over
+# https may not open ws:// to anything but its own computer (loopback), so a
+# browser elsewhere reaches the router through a proxy that ends TLS and
+# hands the WebSocket on to zenohd's ws/ listener:
+#
+#   browser --wss://<host>:7450--> zenohd-wss (Caddy) --ws--> zenohd:7449
+#
+# The ws/ listener comes from docker-compose.zenoh-ws.yml, so layer this file
+# after it (and after docker-compose.zenoh-lan.yml when that is used too):
+#
+#   ZENOH_WSS_HOST=<host> docker compose -f docker-compose.yml \
+#     -f docker-compose.zenoh-lan.yml -f docker-compose.zenoh-ws.yml \
+#     -f docker-compose.zenoh-wss.yml up -d zenohd zenohd-wss
+#
+# The page names it like any router, ws/<host>:7450 (zenoh-pico has no wss
+# locator; the page picks wss:// itself when it is served over https and the
+# host is not a loopback one). So <host> must be a name other than localhost
+# or 127.0.0.1 -- on the computer itself a page would use ws/localhost:7449
+# directly, which the browsers allow.
+#
+# Settings (environment variables):
+#
+#   ZENOH_WSS_HOST      required: the name the browser uses for this computer,
+#                       which is also the name on the certificate
+#   ZENOH_WSS_BIND      optional: where the port is published (default
+#                       127.0.0.1; 0.0.0.0 lets other computers in -- the
+#                       router has no authentication, so only on a network
+#                       you trust)
+#   ZENOH_WSS_UPSTREAM  optional: the router's ws/ listener (default
+#                       zenohd:7449; any host:port the container can reach)
+#
+# The certificate is for checking at home only: Caddy makes it from a CA of
+# its own (kept in the zenohd-wss-data volume, so it stays the same across
+# restarts). A browser does not show a certificate warning for a WebSocket,
+# it only refuses the connection, so open https://<host>:7450/ once in the
+# same browser and accept the certificate there (the page says so when it
+# has been accepted). Or trust Caddy's CA instead:
+#
+#   docker cp fmruby_zenohd_wss:/data/caddy/pki/authorities/local/root.crt .
+#
+# A router on the internet would have a real certificate (Caddy gets one by
+# itself when the name is public and ports 80/443 reach it) -- not this file.
+#
+# Without this file nothing changes. Not for use with docker-compose.relay.yml
+# (that one gives zenohd a configuration of its own, without the ws/ listener).
+services:
+  zenohd-wss:
+    image: caddy:2-alpine
+    container_name: fmruby_zenohd_wss
+    init: true
+    stop_grace_period: 2s
+    depends_on:
+      - zenohd
+    configs:
+      - source: zenohd_wss_caddyfile
+        target: /etc/caddy/Caddyfile
+    volumes:
+      - zenohd-wss-data:/data
+    ports:
+      - "${ZENOH_WSS_BIND:-127.0.0.1}:7450:7450"
+
+configs:
+  zenohd_wss_caddyfile:
+    content: |
+      {
+        local_certs
+        skip_install_trust
+        auto_https disable_redirects
+        admin off
+      }
+      https://${ZENOH_WSS_HOST:?set ZENOH_WSS_HOST to the name the browser uses for this computer}:7450 {
+        tls internal
+        @websocket {
+          header Connection *Upgrade*
+          header Upgrade websocket
+        }
+        handle @websocket {
+          reverse_proxy ${ZENOH_WSS_UPSTREAM:-zenohd:7449}
+        }
+        handle {
+          respond "zenohd wss relay: this browser now accepts the certificate; the page can connect to ws/${ZENOH_WSS_HOST}:7450" 200
+        }
+      }
+
+volumes:
+  zenohd-wss-data:
