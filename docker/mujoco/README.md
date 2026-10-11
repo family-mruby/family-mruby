@@ -286,9 +286,9 @@ rake wasm:serve      # http://localhost:8006/
 ```
 
 Open http://localhost:8006/wasm/web/index.html?app=/app/test/rover_pilot.app.rb
-(the router defaults to `ws/localhost:7449`; the node is `wasm`). The window
+(the router defaults to `ws/localhost:7449`; the node is `wasm-<6 hex>`, made on the first visit and kept by the browser). The window
 ("Rover Pilot") shows the camera on the left and, on the right,
-`wasm -> brain fmruby-aaaaaa` (or "looking for */brain/rover" until a brain
+`wasm-aaaaaa -> brain fmruby-aaaaaa` (or "looking for */brain/rover" until a brain
 is there), the speeds it sends, the brain's state (asked every 300 ms), the
 round trip of the calls, the camera's rate and delay, and the last answer.
 
@@ -314,8 +314,8 @@ JPEG's size instead of the picture).
 ### 5. Watch, record, rewind
 
 - **Graph**: the board's node with `brain/rover`, the browser's node
-  `wasm`, the ROS 2 nodes `/fmruby_brain_fmruby_aaaaaa` (`/cmd_vel` out,
-  `/odom` in) and `/fmruby_pilot_wasm` (`/camera/image/compressed` and
+  `wasm-aaaaaa`, the ROS 2 nodes `/fmruby_brain_fmruby_aaaaaa` (`/cmd_vel` out,
+  `/odom` in) and `/fmruby_pilot_wasm_aaaaaa` (`/camera/image/compressed` and
   `/odom` in).
 - **Logs**: the brain puts a line on `asterism/<board>/brain/log` for each
   call and each job's end: `go(1.0) from wasm -> job 14 running`,
