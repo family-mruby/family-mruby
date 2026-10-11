@@ -209,6 +209,143 @@ docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
   -f docker-compose.mujoco.yml down
 ```
 
+## Two machines: a board as the brain, the browser as the pilot (S4)
+
+A Modern board (P4) is the rover's brain: it alone sends `/cmd_vel`, reads
+`/odom`, and offers the rover to the network as one Asterism object,
+`<board>/brain/rover`. The browser build of Family mruby is the pilot: it
+finds the brain, calls that object from its keys, and shows the rover's
+camera (straight from ROS 2) and the brain's state. asterism-console shows
+both at once: the calls (in its log page, with who made them) and the
+brain's topics (in the graph), and records them. Measurements:
+`fmruby-core/doc/ruby_asterism/report/s4.md`.
+
+| Call | |
+|---|---|
+| `rover.drive(v, w)` | speeds (m/s, rad/s); the brain stops the rover 0.5 s after the last call |
+| `rover.go(m)` / `rover.turn(deg)` | a job, answered at once with its number; the brain stops on `/odom` |
+| `rover.stop` | the job and the speeds |
+| `rover.state` | pose, speeds, command, the job (number, kind, done, progress, status), the last caller |
+
+The newest call wins (a job or a drive cancels the job that runs). Every
+method also takes `from: "<node>"`, the caller's name, which the brain
+shows and logs.
+
+As in the S3 demo, commands run from the root of this repository and
+addresses are examples: `192.0.2.10` is this PC on the LAN, `192.0.2.20`
+the board (`fmruby-aaaaaa.local`, its node name `fmruby-aaaaaa`). Do not
+drive the rover from anything else while the brain runs.
+
+### 1. The rover and the router (LAN for the board, WebSocket for the browser)
+
+```
+docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
+  -f docker-compose.zenoh-ws.yml -f docker-compose.mujoco.yml up -d zenohd mujoco
+docker exec fmruby_mujoco /ros_entrypoint.sh ros2 control list_controllers   # three, all active
+docker logs fmruby_zenohd | grep listen                                      # tcp/[::]:7447 and ws/[::]:7449
+```
+
+The ws file comes after the zenoh-lan file (zenoh-lan replaces the list of
+ports). The browser reaches 7449 on 127.0.0.1 only, so it runs on this PC.
+
+### 2. asterism-console
+
+As in the S3 demo (two terminals, `bin/rails server` and `bin/bridge`, then
+http://127.0.0.1:3000). To call the brain from the console, add a row in
+"Call permissions": node `fmruby-aaaaaa`, app `brain`, object `rover`,
+method `state` (or `*` to drive from the console too).
+
+### 3. The brain on the board
+
+```
+BOARD=192.0.2.20
+echo "tcp/192.0.2.10:7447" > /tmp/zenoh_echo.txt
+ruby tools/fmrb_rd_fs.rb $BOARD put /tmp/zenoh_echo.txt /home/zenoh_echo.txt
+ruby tools/fmrb_rd_fs.rb $BOARD put fmruby-core/flash/app/test/rover_brain.app.rb /app/test/rover_brain.app.rb
+ruby tools/fmrb_rd_fs.rb $BOARD put fmruby-core/flash/app/test/rover_brain.app.toml /app/test/rover_brain.app.toml
+ruby tools/fmrb_rd_launch.rb $BOARD /app/test/rover_brain.app.rb
+```
+
+The window ("Rover Brain") shows `fmruby-aaaaaa/brain/rover connected`,
+the pose and speeds from `/odom`, what runs (idle / drive / go / turn) and
+the command, the job with a progress bar, and who called last. In the
+console's graph the board's node holds the app `brain` with the object
+`rover`, and the ROS 2 node `/fmruby_brain_fmruby_aaaaaa` publishes
+`/cmd_vel` and subscribes `/odom`. "Call" on `state` there answers.
+
+### 4. The pilot in the browser
+
+The browser build with the Asterism gems (`fmruby-core/doc/ruby_asterism/browser.md`):
+
+```
+cd fmruby-core
+source ~/emsdk/emsdk_env.sh
+rake wasm:mruby      # once, or after a rake clean_all
+rake wasm:web
+rake wasm:serve      # http://localhost:8006/
+```
+
+Open http://localhost:8006/wasm/web/index.html?app=/app/test/rover_pilot.app.rb
+(the router defaults to `ws/localhost:7449`; the node is `wasm`). The window
+("Rover Pilot") shows the camera on the left and, on the right,
+`wasm -> brain fmruby-aaaaaa` (or "looking for */brain/rover" until a brain
+is there), the speeds it sends, the brain's state (asked every 300 ms), the
+round trip of the calls, the camera's rate and delay, and the last answer.
+
+Keys (click the window first):
+
+| Key | |
+|---|---|
+| Up / Down | speed +0.05 / -0.05 m/s (up to 0.5) |
+| Left / Right | turn +0.3 / -0.3 rad/s (up to 1.5) |
+| `g` | `go(1.0)`: 1 m along the heading |
+| `t` | `turn(90)`: 90 degrees to the left |
+| Space (or `s`) | `stop` |
+
+While the speeds are not zero the pilot calls `drive` 5 times a second; a
+press changes the speed by a step, it does not need to be held (a browser
+gives no reliable key repeat, and the S3 app works the same way). `g`, `t`
+and Space set the pilot's own speeds to zero first, so no drive cancels the
+job. Closing the pilot (Ctrl+Q, or the tab) stops the rover within 0.5 s.
+
+The same app runs in the Family mruby sim and on a board (the sim shows the
+JPEG's size instead of the picture).
+
+### 5. Watch, record, rewind
+
+- **Graph**: the board's node with `brain/rover`, the browser's node
+  `wasm`, the ROS 2 nodes `/fmruby_brain_fmruby_aaaaaa` (`/cmd_vel` out,
+  `/odom` in) and `/fmruby_pilot_wasm` (`/camera/image/compressed` and
+  `/odom` in).
+- **Logs**: the brain puts a line on `asterism/<board>/brain/log` for each
+  call and each job's end: `go(1.0) from wasm -> job 14 running`,
+  `job 14 go 1.0 done at 0.991 (...)`, `drive(0.2, 0.0) from wasm`,
+  `stop from wasm`, `drive: no call for 500 ms, stopped`. (diff_drive_controller's
+  "Velocity command timed out. Braking." after each stop is expected: the
+  brain falls silent once the rover stands.)
+- **Record**: "Recordings", tick `/cmd_vel`, `/odom`, `/ground_truth/odom`
+  and `/camera/image/compressed`, write `asterism/*/brain/log` under
+  "Asterism keys", tick "The network structure", 60 seconds, "Start
+  recording". Then in the browser: `g`, wait 5 s, `t`, wait 3 s, Up four
+  times, Left, wait 3 s, Space.
+- **Rewind**: open the recording; click the brain's log row at a call (the
+  message and "At the cursor" show the call, the picture and `/cmd_vel` of
+  that moment); plot `/odom`'s `pose.pose.position.x`; "Network at the
+  cursor" for the graph.
+- **The truth after a job**: `docker exec fmruby_mujoco /ros_entrypoint.sh
+  ros2 topic echo --once /ground_truth/odom --field pose.pose` before and
+  after `g` (or `t`).
+
+### 6. Tidy up
+
+```
+ruby tools/fmrb_rd_ps.rb $BOARD                 # the brain's pid, then
+ruby tools/fmrb_rd_kill.rb $BOARD <pid>
+# close the browser tab, Ctrl-C rake wasm:serve, the bridge and the server
+docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
+  -f docker-compose.zenoh-ws.yml -f docker-compose.mujoco.yml down
+```
+
 ## The MuJoCo viewer on WSLg
 
 The viewer is MuJoCo's simulate window, opened by the same process. On
