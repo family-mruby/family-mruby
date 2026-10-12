@@ -96,6 +96,14 @@ module FmrbMcp
 
     def screenshot(ip: nil)
       r = resolve(ip)
+      # A board with no remote desktop ("mode":"none", its own small server)
+      # may still hand out its raw frame buffer at /fb ("fb":true; the
+      # AtomS3R). There is no stream to grab a JPEG from there.
+      if r[:status].is_a?(Hash) && r[:status]["mode"] == "none"
+        return fb_screenshot(r) if r[:status]["fb"]
+        raise Error, "#{r[:ip]} has no remote desktop and no /fb (/status says " \
+                     "\"mode\":\"none\"): its screen cannot be grabbed from here"
+      end
       out = File.join(@state_dir, "tab5_screen.jpg")
       File.unlink(out) rescue nil
       res = Sub.run({}, ["ruby", File.join(tools_dir, "fmrb_rd_snap.rb"), r[:ip], out],
@@ -107,6 +115,59 @@ module FmrbMcp
       { ip: r[:ip], path: out, bytes: jpeg.bytesize,
         frame_size: jpeg_frame_size(jpeg), data: Base64.strict_encode64(jpeg),
         notes: r[:notes] }
+    end
+
+    # One frame from /fb: RGB565 as the board keeps it (little-endian words),
+    # the size in X-Width / X-Height. Turned into a PNG here, which needs only
+    # zlib -- no image library on either side.
+    def fb_screenshot(r)
+      require "net/http"
+      res = begin
+        Net::HTTP.start(r[:ip], 80, open_timeout: 5, read_timeout: SNAP_TIMEOUT) do |h|
+          h.get("/fb")
+        end
+      rescue StandardError => e
+        raise Tab5Unreachable, "#{r[:ip]} did not answer /fb: #{e.message}"
+      end
+      unless res.code == "200"
+        raise Error, "/fb answered HTTP #{res.code}: #{Sub.clamp(res.body.to_s, 200)}"
+      end
+      w = res["X-Width"].to_i
+      h = res["X-Height"].to_i
+      fmt = res["X-Format"].to_s
+      raw = res.body.to_s.b
+      unless fmt == "rgb565le" && w.positive? && h.positive? && raw.bytesize == w * h * 2
+        raise Error, "/fb sent #{raw.bytesize} bytes as #{fmt.inspect} #{w}x#{h}; " \
+                     "expected rgb565le, width x height x 2"
+      end
+      png = png_from_rgb565le(raw, w, h)
+      out = File.join(@state_dir, "tab5_screen.png")
+      File.binwrite(out, png)
+      { ip: r[:ip], path: out, bytes: png.bytesize, frame_size: "#{w}x#{h}",
+        mime_type: "image/png", data: Base64.strict_encode64(png), notes: r[:notes] }
+    end
+
+    def png_from_rgb565le(raw, w, h)
+      require "zlib"
+      words = raw.unpack("v*")
+      scan = +"".b
+      h.times do |y|
+        scan << "\x00".b
+        row = words[y * w, w]
+        scan << row.map { |p|
+          r5 = (p >> 11) & 0x1f
+          g6 = (p >> 5) & 0x3f
+          b5 = p & 0x1f
+          [(r5 << 3) | (r5 >> 2), (g6 << 2) | (g6 >> 4), (b5 << 3) | (b5 >> 2)]
+        }.flatten.pack("C*")
+      end
+      chunk = lambda do |type, data|
+        [data.bytesize].pack("N") + type + data + [Zlib.crc32(type + data)].pack("N")
+      end
+      "\x89PNG\r\n\x1a\n".b +
+        chunk.call("IHDR".b, [w, h, 8, 2, 0, 0, 0].pack("NNCCCCC")) +
+        chunk.call("IDAT".b, Zlib::Deflate.deflate(scan)) +
+        chunk.call("IEND".b, "".b)
     end
 
     # The frame's size, read from the JPEG itself: the screen is 426x240

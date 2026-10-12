@@ -319,6 +319,11 @@ TAB5_SCREENSHOT = MCP::Tool.define(
     change. If the screen looks unchanged, take another one before concluding
     that the input did nothing.
 
+    A board with no remote desktop but a screen of its own (the AtomS3R, on
+    an ip you pass) answers with its raw frame buffer instead: the picture
+    comes back as a PNG at the screen's own size (128x128 there), and
+    frame_size says so.
+
     #{TAB5_NOTE}
   DESC
   annotations: { read_only_hint: true, destructive_hint: false, open_world_hint: true },
@@ -330,8 +335,8 @@ TAB5_SCREENSHOT = MCP::Tool.define(
   begin
     shot = TAB5.screenshot(ip: ip)
     MCP::Tool::Response.new([
-      { type: "image", data: shot[:data], mimeType: "image/jpeg" },
-      { type: "text", text: JSON.pretty_generate(shot.reject { |k, _| k == :data }) },
+      { type: "image", data: shot[:data], mimeType: shot[:mime_type] || "image/jpeg" },
+      { type: "text", text: JSON.pretty_generate(shot.reject { |k, _| k == :data || k == :mime_type }) },
     ])
   rescue FmrbMcp::Error => e
     tool_error("fmrb-mcp error", e.message)
