@@ -27,10 +27,12 @@
 #
 # `call` and `meta` talk to the objects an Asterism application exposes
 # (fmruby-core/doc/ruby_asterism, A1): `call <node>/<app>/<object> <method>
-# [<args JSON array>]` sends a get on asterism/<node>/<app>/<object>/call with
-# the MessagePack payload [method, args, kwargs] in the request body, and
-# decodes the reply (["ok", value] or ["error", class, message]). `meta` asks
-# .../meta for the exposed methods; the object part may be * there.
+# [<args JSON array>]` sends a get on asterism/<node>/<app>/<object>/call/<caller>
+# (Asterism protocol 1; the caller is --caller, default "fmrb-tool") with the
+# MessagePack payload {"method", "args", "kwargs"} in the request body, and
+# decodes the reply ({"value" => v} or {"error" => {"kind", "class",
+# "message"}}). `meta` asks .../meta for the exposed methods; the object part
+# may be * there.
 # MessagePack is done by tools/fmrb_msgpack.rb (plain Ruby).
 #
 # A board on WiFi cannot reach the router by default: docker-compose.yml
@@ -116,9 +118,12 @@ module FmrbZenoh
 
   # Returns the exit status.
   def asterism_call(opts, path, method, args, kwargs)
-    payload = FmrbMsgpack.pack([method, args, kwargs])
+    req = { "method" => method }
+    req["args"] = args unless args.empty?
+    req["kwargs"] = kwargs unless kwargs.empty?
+    payload = FmrbMsgpack.pack(req)
     t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    replies = query_bytes(opts, "asterism/#{asterism_path!(path)}/call", payload)
+    replies = query_bytes(opts, "asterism/#{asterism_path!(path)}/call/#{opts[:caller] || 'fmrb-tool'}", payload)
     ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0) * 1000).round
     if replies.empty?
       warn "(no answer from #{path}, #{ms} ms)"
@@ -133,11 +138,12 @@ module FmrbZenoh
         status = 1
         next
       end
-      if reply.is_a?(Array) && reply[0] == "ok"
-        puts "ok: #{show_value(reply[1])}"
-      elsif reply.is_a?(Array) && reply[0] == "error"
-        puts "error: #{reply[1]}: #{reply[2]}"
+      if reply.is_a?(Hash) && reply["error"].is_a?(Hash)
+        e = reply["error"]
+        puts "error (#{e['kind']}): #{e['class']}: #{e['message']}"
         status = 1
+      elsif reply.is_a?(Hash) && reply.key?("value")
+        puts "ok: #{show_value(reply['value'])}"
       else
         puts "?: #{reply.inspect}"
         status = 1
@@ -160,7 +166,7 @@ module FmrbZenoh
     replies.each do |key, bytes|
       meta = FmrbMsgpack.unpack(bytes)
       obj = key.sub(%r{\Aasterism/}, "").sub(%r{/meta\z}, "")
-      list = (meta["methods"] || []).map { |name, arity| arity.to_i < 0 ? name : "#{name}/#{arity}" }
+      list = (meta["methods"] || []).map { |m| m["arity"].to_i < 0 ? m["name"] : "#{m['name']}/#{m['arity']}" }
       puts "#{obj}: #{list.join(' ')}"
     end
     puts "(#{replies.size} #{replies.size == 1 ? 'object' : 'objects'}, #{ms} ms)"
@@ -227,6 +233,7 @@ module FmrbZenoh
       o.on("--count N", Integer, "watch: stop after N changes") { |v| opts[:count] = v }
       o.on("--timeout SEC", Integer, "HTTP read timeout (default: 5)") { |v| opts[:timeout] = v }
       o.on("--kw JSON", "call: keyword arguments as a JSON object") { |v| opts[:kw] = JSON.parse(v) }
+      o.on("--caller NAME", "call: the caller's node ID in the key (default: fmrb-tool)") { |v| opts[:caller] = v }
       o.on("-h", "--help", "show this help") do
         puts o
         exit 0

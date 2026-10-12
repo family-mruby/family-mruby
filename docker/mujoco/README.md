@@ -227,9 +227,11 @@ brain's topics (in the graph), and records them. Measurements:
 | `rover.stop` | the job and the speeds |
 | `rover.state` | pose, speeds, command, the job (number, kind, done, progress, status), the last caller |
 
-The newest call wins (a job or a drive cancels the job that runs). Every
-method also takes `from: "<node>"`, the caller's name, which the brain
-shows and logs.
+The newest call wins (a job or a drive cancels the job that runs). The
+brain knows who called from the call itself (asterism 0.7.0, protocol 1:
+the caller's node ID is in the call's key; the object is exposed with
+`caller: :from`), and shows and logs it. A call that passes `from:`
+itself is refused.
 
 As in the S3 demo, commands run from the root of this repository and
 addresses are examples: `192.0.2.10` is this PC on the LAN, `192.0.2.20`
