@@ -189,10 +189,10 @@ resume 時に `ci->proc` が NULL になるのはこれが原因と推定。
 
 当面の応急措置として、Tick task は無効化したまま運用する。
 
-### 現在の運用状態 (2026-04-18、RubyKaigi 発表直前)
+### 現在の運用状態 (2026-04-18)
 
-RubyKaigi 2026 の発表が目前のため、この Tick 問題は Known Issue としてこの状態の
-ままとし、発表後に根本対応する。現行コードベースの実情は以下:
+この Tick 問題は当面 Known Issue としてこの状態のままとし、根本対応は後で行う。
+現行コードベースの実情は以下:
 
 - [`lib/replace/picoruby-machine/ports/esp32/machine.c`](../fmruby-core/lib/replace/picoruby-machine/ports/esp32/machine.c) の `mrb_hal_task_init` は
   no-op 化済み (debug コメント付き) → Tick task は作られない
