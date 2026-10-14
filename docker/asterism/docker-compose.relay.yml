@@ -12,18 +12,18 @@
 #
 #   (cd asterism-console && script/relay_certs)
 #
-# Then layer this file on top (with docker-compose.zenoh-lan.yml when a board
-# must reach the home router, docker-compose.ros2.yml for ROS 2):
+# Then layer this file on top (with docker/asterism/docker-compose.zenoh-lan.yml when a board
+# must reach the home router, docker/asterism/docker-compose.ros2.yml for ROS 2):
 #
-#   docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
-#     -f docker-compose.ros2.yml -f docker-compose.relay.yml \
+#   docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml \
+#     -f docker/asterism/docker-compose.ros2.yml -f docker/asterism/docker-compose.relay.yml \
 #     up -d zenohd zenohd-cloud ros2 ros2-cloud
 #
 # Take it down with the same -f set (down then also removes zenohd-cloud,
 # ros2-cloud and the relay_cloud network):
 #
-#   docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
-#     -f docker-compose.ros2.yml -f docker-compose.relay.yml down
+#   docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml \
+#     -f docker/asterism/docker-compose.ros2.yml -f docker/asterism/docker-compose.relay.yml down
 #
 # Without this file nothing changes: zenohd is the one router, as before.
 # sim_up recreates zenohd from docker-compose.yml alone; run the line above
@@ -42,13 +42,17 @@
 #
 #   ASTERISM_RELAY_GENERATED=./asterism-console/storage/relay/generated \
 #   ASTERISM_RELAY_CLOUD_CONFIG=/generated/cloud.json5 \
-#     docker compose ... -f docker-compose.relay.yml up -d zenohd zenohd-cloud ...
+#     docker compose ... -f docker/asterism/docker-compose.relay.yml up -d zenohd zenohd-cloud ...
 #
 # Unset, both default to the hand-written file as before.
 #
 # ros2-cloud lives on a network of its own (relay_cloud) that only
 # zenohd-cloud joins, so its ROS 2 traffic can reach the home side through the
-# two routers only. It uses the image docker-compose.ros2.yml builds.
+# two routers only. It uses the image docker/asterism/docker-compose.ros2.yml builds.
+#
+# Run from the repository root with docker-compose.yml as the first -f (the
+# relative paths below resolve against the root); docker/asterism/README.md
+# lists the combinations.
 services:
   zenohd:
     command:

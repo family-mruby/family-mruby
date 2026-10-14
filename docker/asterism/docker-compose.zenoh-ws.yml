@@ -4,13 +4,14 @@
 # a ws/ listener (port 7449) next to the usual tcp/ one (7447). No plugin is
 # needed; the WebSocket link is part of zenohd.
 #
-#   docker compose -f docker-compose.yml -f docker-compose.zenoh-ws.yml up -d zenohd
+#   docker compose -f docker-compose.yml \
+#     -f docker/asterism/docker-compose.zenoh-ws.yml up -d zenohd
 #
-# With a board on the LAN as well, put this file LAST (docker-compose.zenoh-
-# lan.yml replaces the port list, so a file before it would lose 7449):
+# With a board on the LAN as well, put this file LAST (docker-compose.zenoh-lan.yml
+# replaces the port list, so a file before it would lose 7449):
 #
-#   docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
-#     -f docker-compose.zenoh-ws.yml up -d zenohd
+#   docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml \
+#     -f docker/asterism/docker-compose.zenoh-ws.yml up -d zenohd
 #
 # The browser build then connects to ws/localhost:7449 (its default; another
 # router is given with ?zenoh=ws/<host>:<port> in the page's URL).
@@ -22,8 +23,12 @@
 # A listener given on the command line replaces zenohd's default one, so the
 # tcp/ endpoint is listed again, and the command repeats docker-compose.yml's
 # (an overlay replaces a command, it cannot append to it). Keep the two in
-# step. Not for use with docker-compose.relay.yml, which gives zenohd a
+# step. Not for use with docker/asterism/docker-compose.relay.yml, which gives zenohd a
 # configuration file of its own.
+#
+# Run from the repository root with docker-compose.yml as the first -f (the
+# relative paths below resolve against the root); docker/asterism/README.md
+# lists the combinations.
 services:
   zenohd:
     command:

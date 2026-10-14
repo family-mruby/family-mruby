@@ -36,12 +36,12 @@
 # MessagePack is done by tools/fmrb_msgpack.rb (plain Ruby).
 #
 # A board on WiFi cannot reach the router by default: docker-compose.yml
-# publishes zenohd on loopback only. Layer docker-compose.zenoh-lan.yml on top
+# publishes zenohd on loopback only. Layer docker/asterism/docker-compose.zenoh-lan.yml on top
 # to open the Zenoh port (7447) to the LAN while a board needs it; the board
 # then connects to tcp/<this PC's LAN address>:7447 (flash/app/test/
 # zenoh_echo.app.rb reads that line from /home/zenoh_echo.txt):
 #
-#   docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml up -d zenohd
+#   docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml up -d zenohd
 #
 # Background: fmruby-core/doc/ruby_asterism/ (plan.md, report/z1.md, z2.md).
 
@@ -209,7 +209,7 @@ module FmrbZenoh
 
         Talks to the zenohd REST plugin (docker compose service `zenohd`).
         For a board on WiFi, open the Zenoh port to the LAN first:
-          docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml up -d zenohd
+          docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml up -d zenohd
         and point the board at tcp/<this PC's LAN address>:7447.
 
           get    print the latest stored value of each key matching <key>

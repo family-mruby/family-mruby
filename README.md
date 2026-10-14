@@ -172,6 +172,8 @@ docker compose up
 
 This will launch sdl2-display, fmruby-graphics-audio, and fmruby-core in Linux simulation mode using the locally built binaries.
 
+Optional overlays live under `docker/`: General MIDI output in `docker/midi/`, and the Zenoh router variants, ROS 2 and the MuJoCo rover in `docker/asterism/` (see its README). Run them from the repository root with `docker-compose.yml` as the first `-f`.
+
 ## Disclaimer
 
 - This software is under active development. Some applications may not launch, and unexpected errors may occur.

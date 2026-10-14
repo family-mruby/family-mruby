@@ -3,12 +3,13 @@
 # docker-compose.yml, the same router the sim and the boards use, so ROS 2
 # tools see the std_msgs/String topics that ros2_talker.app.rb publishes.
 #
-# Bring it up (zenohd and the ros2 shell; add docker-compose.zenoh-lan.yml
+# Bring it up (zenohd and the ros2 shell; add docker/asterism/docker-compose.zenoh-lan.yml
 # when a board on WiFi must reach the router):
 #
-#   docker compose -f docker-compose.yml -f docker-compose.ros2.yml up -d zenohd ros2
-#   docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
-#     -f docker-compose.ros2.yml up -d zenohd ros2          # with a board
+#   docker compose -f docker-compose.yml \
+#     -f docker/asterism/docker-compose.ros2.yml up -d zenohd ros2
+#   docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml \
+#     -f docker/asterism/docker-compose.ros2.yml up -d zenohd ros2          # with a board
 #
 # Then run ROS 2 commands in the ros2 container (the image's entrypoint
 # sources /opt/ros/jazzy, and RMW_IMPLEMENTATION is rmw_zenoh_cpp):
@@ -34,7 +35,7 @@
 # Take it down afterwards (zenohd too, when it was opened to the LAN; down
 # also removes the compose network, which a running ros2 container keeps):
 #
-#   docker compose -f docker-compose.yml -f docker-compose.ros2.yml down
+#   docker compose -f docker-compose.yml -f docker/asterism/docker-compose.ros2.yml down
 #
 # The router: rmw_zenoh normally starts its own router (ros2 run rmw_zenoh_cpp
 # rmw_zenohd). Here the existing zenohd (1.10.1, the version of zenoh-pico)
@@ -45,6 +46,10 @@
 # Nothing is published to the host: the container talks to zenohd over the
 # compose network only. The image is built locally from ros:jazzy-ros-base
 # (packages are installed inside the image, not on the host).
+#
+# Run from the repository root with docker-compose.yml as the first -f (the
+# relative paths below resolve against the root); docker/asterism/README.md
+# lists the combinations.
 services:
   ros2:
     build:

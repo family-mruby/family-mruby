@@ -1,5 +1,5 @@
 // zenohd-cloud: the router "on the internet" of the relay overlay
-// (docker-compose.relay.yml, fmruby-core/doc/ruby_asterism W1).
+// (docker/asterism/docker-compose.relay.yml, fmruby-core/doc/ruby_asterism W1).
 //
 // - Listens on TLS only (7448). Every link is mutual TLS: the other side must
 //   show a certificate signed by the relay CA (/certs/ca.pem).

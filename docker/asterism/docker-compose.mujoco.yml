@@ -3,20 +3,22 @@
 # mujoco_ros2_control runs a small two-wheeled robot (docker/mujoco/) with
 # diff_drive_controller, joint_state_broadcaster and imu_sensor_broadcaster;
 # its camera is published as 160x120 JPEG at 5 Hz. Everything joins the
-# zenohd router of docker-compose.yml, like docker-compose.ros2.yml.
+# zenohd router of docker-compose.yml, like docker/asterism/docker-compose.ros2.yml.
 # Topics, driving it and the viewer: docker/mujoco/README.md.
 #
 # Start (headless; the first run builds the image, a few minutes):
 #
-#   docker compose -f docker-compose.yml -f docker-compose.mujoco.yml up -d zenohd mujoco
+#   docker compose -f docker-compose.yml \
+#     -f docker/asterism/docker-compose.mujoco.yml up -d zenohd mujoco
 #
 # With a board on WiFi (opens zenohd's 7447 to the LAN), and with the
 # ros2 shell for the ros2 command line:
 #
-#   docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
-#     -f docker-compose.ros2.yml -f docker-compose.mujoco.yml up -d zenohd ros2 mujoco
+#   docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml \
+#     -f docker/asterism/docker-compose.ros2.yml \
+#     -f docker/asterism/docker-compose.mujoco.yml up -d zenohd ros2 mujoco
 #
-# With the MuJoCo viewer window on WSLg: add docker-compose.mujoco-wslg.yml.
+# With the MuJoCo viewer window on WSLg: add docker/asterism/docker-compose.mujoco-wslg.yml.
 #
 # Drive and look (the mujoco container has the ros2 command line too):
 #
@@ -28,13 +30,18 @@
 #
 # Stop:
 #
-#   docker compose -f docker-compose.yml -f docker-compose.mujoco.yml down
+#   docker compose -f docker-compose.yml \
+#     -f docker/asterism/docker-compose.mujoco.yml down
 #
 # The model, configuration and launch file are mounted from docker/mujoco
 # (edit and restart the container; no rebuild). Nothing is published to the
 # host. Rendering: there is no display in the container, so the camera
 # plugin falls back to a surfaceless EGL context, which Mesa (llvmpipe)
 # renders on the CPU; no GPU is passed in.
+#
+# Run from the repository root with docker-compose.yml as the first -f (the
+# relative paths below resolve against the root); docker/asterism/README.md
+# lists the combinations.
 services:
   mujoco:
     build: docker/mujoco

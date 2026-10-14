@@ -3,11 +3,15 @@
 # loopback only because the router has no authentication; layer this file on
 # top only while a board needs it:
 #
-#   docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml up -d
+#   docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml up -d
 #
 # Only the Zenoh port (7447) goes to the LAN. The REST port (8000), which
 # can write any key, stays on loopback. On WSL2 (mirrored networking) Windows
 # also needs an inbound Hyper-V firewall rule for TCP 7447.
+#
+# Run from the repository root with docker-compose.yml as the first -f (the
+# relative paths below resolve against the root); docker/asterism/README.md
+# lists the combinations.
 services:
   zenohd:
     ports: !override

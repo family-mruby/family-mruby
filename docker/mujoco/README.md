@@ -53,17 +53,18 @@ From the root of this repository. The first `up` builds the image
 
 ```
 # headless (the camera renders with Mesa on the CPU through EGL)
-docker compose -f docker-compose.yml -f docker-compose.mujoco.yml up -d zenohd mujoco
+docker compose -f docker-compose.yml \
+  -f docker/asterism/docker-compose.mujoco.yml up -d zenohd mujoco
 
 # a board on WiFi too: open zenohd to the LAN
-docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
-  -f docker-compose.mujoco.yml up -d zenohd mujoco
+docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml \
+  -f docker/asterism/docker-compose.mujoco.yml up -d zenohd mujoco
 
 # is it up? (three controllers, all active)
 docker exec fmruby_mujoco /ros_entrypoint.sh ros2 control list_controllers
 
 # stop (everything of this compose project, the network too)
-docker compose -f docker-compose.yml -f docker-compose.mujoco.yml down
+docker compose -f docker-compose.yml -f docker/asterism/docker-compose.mujoco.yml down
 ```
 
 The Family mruby sim (`sim_up`, or the main `docker-compose.yml`) recreates
@@ -115,13 +116,13 @@ or `ros2 topic pub` at the same time.
 ### 1. The rover, with the router open to the LAN
 
 ```
-docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
-  -f docker-compose.mujoco.yml up -d zenohd mujoco
+docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml \
+  -f docker/asterism/docker-compose.mujoco.yml up -d zenohd mujoco
 docker exec fmruby_mujoco /ros_entrypoint.sh ros2 control list_controllers   # three, all active
 ```
 
 To watch the simulation as well, start it with the viewer instead (see
-"The MuJoCo viewer on WSLg" below: add `-f docker-compose.mujoco-wslg.yml`
+"The MuJoCo viewer on WSLg" below: add `-f docker/asterism/docker-compose.mujoco-wslg.yml`
 to the same `up`).
 
 ### 2. asterism-console
@@ -165,7 +166,7 @@ the right the odometry (x, y, heading, speeds), the camera's rate, its
 delay, how long one picture takes to draw, and the update loop's time.
 
 On WSL2 with mirrored networking, Windows needs an inbound rule for TCP
-7447 (see `docker-compose.zenoh-lan.yml`).
+7447 (see `docker/asterism/docker-compose.zenoh-lan.yml`).
 
 ### 4. Watch it on the console
 
@@ -205,8 +206,8 @@ On WSL2 with mirrored networking, Windows needs an inbound rule for TCP
 ruby tools/fmrb_rd_ps.rb $BOARD                 # find the app's pid, then
 ruby tools/fmrb_rd_kill.rb $BOARD <pid>         # (or Ctrl+Q on the board)
 # Ctrl-C the bridge and the server
-docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
-  -f docker-compose.mujoco.yml down
+docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml \
+  -f docker/asterism/docker-compose.mujoco.yml down
 ```
 
 ## Two machines: a board as the brain, the browser as the pilot (S4)
@@ -241,8 +242,9 @@ drive the rover from anything else while the brain runs.
 ### 1. The rover and the router (LAN for the board, WebSocket for the browser)
 
 ```
-docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
-  -f docker-compose.zenoh-ws.yml -f docker-compose.mujoco.yml up -d zenohd mujoco
+docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml \
+  -f docker/asterism/docker-compose.zenoh-ws.yml \
+  -f docker/asterism/docker-compose.mujoco.yml up -d zenohd mujoco
 docker exec fmruby_mujoco /ros_entrypoint.sh ros2 control list_controllers   # three, all active
 docker logs fmruby_zenohd | grep listen                                      # tcp/[::]:7447 and ws/[::]:7449
 ```
@@ -344,8 +346,9 @@ JPEG's size instead of the picture).
 ruby tools/fmrb_rd_ps.rb $BOARD                 # the brain's pid, then
 ruby tools/fmrb_rd_kill.rb $BOARD <pid>
 # close the browser tab, Ctrl-C rake wasm:serve, the bridge and the server
-docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml \
-  -f docker-compose.zenoh-ws.yml -f docker-compose.mujoco.yml down
+docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml \
+  -f docker/asterism/docker-compose.zenoh-ws.yml \
+  -f docker/asterism/docker-compose.mujoco.yml down
 ```
 
 ## The MuJoCo viewer on WSLg
@@ -354,15 +357,16 @@ The viewer is MuJoCo's simulate window, opened by the same process. On
 WSL2 with WSLg:
 
 ```
-docker compose -f docker-compose.yml -f docker-compose.mujoco.yml down   # if it runs headless
-docker compose -f docker-compose.yml -f docker-compose.mujoco.yml \
-  -f docker-compose.mujoco-wslg.yml up -d zenohd mujoco
+# if it runs headless:
+docker compose -f docker-compose.yml -f docker/asterism/docker-compose.mujoco.yml down
+docker compose -f docker-compose.yml -f docker/asterism/docker-compose.mujoco.yml \
+  -f docker/asterism/docker-compose.mujoco-wslg.yml up -d zenohd mujoco
 ```
 
 - The window appears on the Windows desktop after a few seconds. Space
   pauses, the right arrow steps while paused; drag to turn the view, right
   drag to move, the wheel to zoom.
-- `docker-compose.mujoco-wslg.yml` passes WSLg's X socket and the WSL GPU
+- `docker/asterism/docker-compose.mujoco-wslg.yml` passes WSLg's X socket and the WSL GPU
   (`/dev/dxg`, `/usr/lib/wsl`, Mesa's d3d12 driver). Measured: the
   simulator's process at about 90 % of one core with the GPU, about 13
   cores without it. On a machine without a GPU for WSL, remove the
@@ -396,7 +400,7 @@ container besides zenohd: MuJoCo's official release is fetched on the host
 into `asterism/examples/mujoco/vendor/` (pinned version and sha256).
 
 ```
-docker compose -f docker-compose.yml -f docker-compose.zenoh-lan.yml up -d zenohd
+docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml up -d zenohd
 ruby asterism/examples/mujoco/fetch.rb           # once
 ruby asterism/examples/mujoco/rover.rb --router tcp/127.0.0.1:7447
 ruby asterism/examples/mujoco/drive.rb --router tcp/127.0.0.1:7447 [--keys]

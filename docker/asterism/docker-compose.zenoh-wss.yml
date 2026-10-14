@@ -6,12 +6,13 @@
 #
 #   browser --wss://<host>:7450--> zenohd-wss (Caddy) --ws--> zenohd:7449
 #
-# The ws/ listener comes from docker-compose.zenoh-ws.yml, so layer this file
-# after it (and after docker-compose.zenoh-lan.yml when that is used too):
+# The ws/ listener comes from docker/asterism/docker-compose.zenoh-ws.yml, so layer this file
+# after it (and after docker/asterism/docker-compose.zenoh-lan.yml when that is used too):
 #
 #   ZENOH_WSS_HOST=<host> docker compose -f docker-compose.yml \
-#     -f docker-compose.zenoh-lan.yml -f docker-compose.zenoh-ws.yml \
-#     -f docker-compose.zenoh-wss.yml up -d zenohd zenohd-wss
+#     -f docker/asterism/docker-compose.zenoh-lan.yml \
+#     -f docker/asterism/docker-compose.zenoh-ws.yml \
+#     -f docker/asterism/docker-compose.zenoh-wss.yml up -d zenohd zenohd-wss
 #
 # The page names it like any router, ws/<host>:7450 (zenoh-pico has no wss
 # locator; the page picks wss:// itself when it is served over https and the
@@ -42,8 +43,12 @@
 # A router on the internet would have a real certificate (Caddy gets one by
 # itself when the name is public and ports 80/443 reach it) -- not this file.
 #
-# Without this file nothing changes. Not for use with docker-compose.relay.yml
+# Without this file nothing changes. Not for use with docker/asterism/docker-compose.relay.yml
 # (that one gives zenohd a configuration of its own, without the ws/ listener).
+#
+# Run from the repository root with docker-compose.yml as the first -f (the
+# relative paths below resolve against the root); docker/asterism/README.md
+# lists the combinations.
 services:
   zenohd-wss:
     image: caddy:2-alpine

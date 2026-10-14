@@ -108,7 +108,7 @@ ruby tools/fmrb_midi_monitor.rb [--hex] [--log out.jsonl] [--duration 秒]
   PulseAudio で鳴らす形。パッケージは `sudo apt-get install -y fluidsynth
   fluid-soundfont-gm` (sudo が要るのでユーザに依頼する)。ホストに入れたく
   なければ `docker compose -f docker-compose.yml -f docker-compose.wsl.yml
-  -f docker-compose.midi.yml up -d` (midi-gm サービスが同じことをする)。
+  -f docker/midi/docker-compose.midi.yml up -d` (midi-gm サービスが同じことをする)。
 - **モニタを起動していなくても core 側は詰まらない** (FIFO は O_NONBLOCK。
   後からモニタを起動すると溜まった分が読める)。
 - 詳細と経緯は `fmruby-core/doc/midi/report/p5s.md`。

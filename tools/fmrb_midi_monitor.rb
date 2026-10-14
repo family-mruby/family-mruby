@@ -21,7 +21,7 @@
 #
 # Only run ONE reader at a time. A FIFO hands each byte to whichever reader
 # gets there first, so a second monitor - or the midi-gm container from
-# docker-compose.midi.yml - splits the stream and both ends hear a song with
+# docker/midi/docker-compose.midi.yml - splits the stream and both ends hear a song with
 # holes in it.
 
 require "optparse"

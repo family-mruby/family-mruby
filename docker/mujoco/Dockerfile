@@ -1,13 +1,13 @@
 # ROS 2 Jazzy + mujoco_ros2_control for the Asterism S1 rover
 # (fmruby-core/doc/ruby_asterism/instruction_s1.md). Built by
-# docker-compose.mujoco.yml; the model, configuration and launch file are
+# docker/asterism/docker-compose.mujoco.yml; the model, configuration and launch file are
 # mounted from this directory at run time, not copied in.
 #
 # MIT License (same as Family mruby). The packages installed below keep
 # their own licenses (MuJoCo and mujoco_ros2_control: Apache-2.0).
 FROM ros:jazzy-ros-base
 
-# rmw_zenoh (the router is the compose zenohd, as in docker-compose.ros2.yml).
+# rmw_zenoh (the router is the compose zenohd, as in docker/asterism/docker-compose.ros2.yml).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ros-jazzy-rmw-zenoh-cpp \
  && rm -rf /var/lib/apt/lists/*

@@ -1,6 +1,6 @@
 src/
 fmruby-core/
-asterism/
+/asterism/
 asterism-zenoh/
 picoruby-asterism-zenoh/
 fmruby-graphics-audio/

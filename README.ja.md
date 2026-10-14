@@ -172,6 +172,8 @@ docker compose up
 
 sdl2-display、fmruby-graphics-audio、fmruby-core がLinuxシミュレーションモードで起動し、ローカルビルドしたバイナリを使用します。
 
+追加で重ねる compose ファイルは `docker/` の下にあります。General MIDI 出力は `docker/midi/`、Zenoh ルータの変種・ROS 2・MuJoCo の台車は `docker/asterism/` (一覧はその README)。いずれもリポジトリの直下で、`docker-compose.yml` を最初の `-f` にして使います。
+
 ## 注意事項
 
 - 開発中のため、起動しないアプリケーションや、想定しないエラーが発生する可能性があります。

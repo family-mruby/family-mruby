@@ -1,7 +1,7 @@
 # General MIDI output for the simulation.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.wsl.yml \
-#                  -f docker-compose.midi.yml up -d
+#                  -f docker/midi/docker-compose.midi.yml up -d
 #
 # Then open the MIDI APU app and press "7 Out" to send the music to the
 # serial MIDI port instead of the APU. The bytes go through
@@ -11,12 +11,15 @@
 # behind while the network is removed, and the next up fails with
 # "network ... not found":
 #   docker compose -f docker-compose.yml -f docker-compose.wsl.yml \
-#                  -f docker-compose.midi.yml down
+#                  -f docker/midi/docker-compose.midi.yml down
 # Exporting COMPOSE_FILE once avoids having to remember:
-#   export COMPOSE_FILE=docker-compose.yml:docker-compose.wsl.yml:docker-compose.midi.yml
+#   export COMPOSE_FILE=docker-compose.yml:docker-compose.wsl.yml:docker/midi/docker-compose.midi.yml
 #
 # Without this service the same thing works from the host:
 #   ruby tools/fmrb_midi_monitor.rb --fluidsynth
+#
+# Run from the repository root with docker-compose.yml as the first -f (the
+# relative paths below resolve against the root).
 services:
   midi-gm:
     build:

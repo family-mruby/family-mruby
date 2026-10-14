@@ -10,7 +10,7 @@
 #
 # The work is done by tools/ros2_types.rb of the asterism repository (the
 # source of the types since C2; ruby-asterism/asterism). This wrapper builds
-# the ROS 2 Jazzy image of docker-compose.ros2.yml when it is missing and
+# the ROS 2 Jazzy image of docker/asterism/docker-compose.ros2.yml when it is missing and
 # passes it on. The asterism checkout is ../asterism next to fmruby-core
 # (ASTERISM_DIR overrides); the refreshed files land there, to be committed
 # in asterism and then pinned by fmruby-core (lib/add/ASTERISM_PIN).
@@ -22,7 +22,7 @@ SCRIPT = File.join(ASTERISM, "tools", "ros2_types.rb")
 abort "asterism checkout not found at #{ASTERISM} (set ASTERISM_DIR)" unless File.file?(SCRIPT)
 
 unless system("docker image inspect #{IMAGE} > /dev/null 2>&1")
-  system("docker compose -f #{ROOT}/docker-compose.yml -f #{ROOT}/docker-compose.ros2.yml build ros2") ||
+  system("docker compose -f #{ROOT}/docker-compose.yml -f #{ROOT}/docker/asterism/docker-compose.ros2.yml build ros2") ||
     abort("failed to build #{IMAGE}")
 end
 
