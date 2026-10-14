@@ -39,7 +39,7 @@
 # publishes zenohd on loopback only. Layer docker/asterism/docker-compose.zenoh-lan.yml on top
 # to open the Zenoh port (7447) to the LAN while a board needs it; the board
 # then connects to tcp/<this PC's LAN address>:7447 (flash/app/test/
-# zenoh_echo.app.rb reads that line from /home/zenoh_echo.txt):
+# zenoh_echo.app.rb reads it as router = "..." in /home/asterism/config.toml):
 #
 #   docker compose -f docker-compose.yml -f docker/asterism/docker-compose.zenoh-lan.yml up -d zenohd
 #

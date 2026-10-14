@@ -92,7 +92,8 @@ ruby ../asterism/examples/ros2_rover.rb --router tcp/127.0.0.1:7447 --keys   # w
 
 From Family mruby: `/app/test/ros2_drive.app.rb` (arrow keys, space stops;
 it shows the odometry). The board reads the router's address from
-`/home/zenoh_echo.txt` as the other Asterism test apps do.
+`router = "..."` in `/home/asterism/config.toml` as the other Asterism test
+apps do.
 
 To start again from the origin, restart the container
 (`docker restart fmruby_mujoco`).
@@ -153,8 +154,9 @@ router is, send the app and start it:
 
 ```
 BOARD=192.0.2.20
-echo "tcp/192.0.2.10:7447" > /tmp/zenoh_echo.txt
-ruby tools/fmrb_rd_fs.rb $BOARD put /tmp/zenoh_echo.txt /home/zenoh_echo.txt
+echo 'router = "tcp/192.0.2.10:7447"' > /tmp/config.toml
+ruby tools/fmrb_rd_fs.rb $BOARD mkdir /home/asterism   # an error if it is there already: fine
+ruby tools/fmrb_rd_fs.rb $BOARD put /tmp/config.toml /home/asterism/config.toml
 ruby tools/fmrb_rd_fs.rb $BOARD put fmruby-core/flash/app/test/rover_cam.app.rb /app/test/rover_cam.app.rb
 ruby tools/fmrb_rd_fs.rb $BOARD put fmruby-core/flash/app/test/rover_cam.app.toml /app/test/rover_cam.app.toml
 ruby tools/fmrb_rd_launch.rb $BOARD /app/test/rover_cam.app.rb
@@ -263,8 +265,9 @@ method `state` (or `*` to drive from the console too).
 
 ```
 BOARD=192.0.2.20
-echo "tcp/192.0.2.10:7447" > /tmp/zenoh_echo.txt
-ruby tools/fmrb_rd_fs.rb $BOARD put /tmp/zenoh_echo.txt /home/zenoh_echo.txt
+echo 'router = "tcp/192.0.2.10:7447"' > /tmp/config.toml
+ruby tools/fmrb_rd_fs.rb $BOARD mkdir /home/asterism   # an error if it is there already: fine
+ruby tools/fmrb_rd_fs.rb $BOARD put /tmp/config.toml /home/asterism/config.toml
 ruby tools/fmrb_rd_fs.rb $BOARD put fmruby-core/flash/app/test/rover_brain.app.rb /app/test/rover_brain.app.rb
 ruby tools/fmrb_rd_fs.rb $BOARD put fmruby-core/flash/app/test/rover_brain.app.toml /app/test/rover_brain.app.toml
 ruby tools/fmrb_rd_launch.rb $BOARD /app/test/rover_brain.app.rb
