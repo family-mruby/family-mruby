@@ -536,7 +536,12 @@ SIM_NOTE = <<~NOTE
 
   Coordinates and resolution follow the hardware target in fmruby-core/.env:
   Retro (NARYAv3 and friends) is 320x240, Modern (TAB5, NARYAv4) is 426x240.
-  sim_up reports the size it actually came up at.
+  sim_up reports the size it actually came up at. On Modern, while a
+  fullscreen app in the high-resolution mode is on top (the editor in
+  fullscreen, and apps whose .app.toml says fullscreen_hires, e.g. mahjong),
+  the frame buffer is 640x360 instead: sim_screenshot returns 640x360 frames
+  and sim_input takes 640x360 coordinates until it leaves (F11, Ctrl+Tab
+  park, quit or kill). Take a screenshot to see which size is current.
 NOTE
 
 SIM_UP = MCP::Tool.define(
@@ -557,6 +562,12 @@ SIM_UP = MCP::Tool.define(
     A stack that is already running is reused as-is, never recreated -- the
     user may have a GUI run open. When that happens you are told, and a
     resolution mismatch on a reused stack is reported rather than fixed.
+
+    It also refuses an sdl2-display image built from other sources than the
+    working tree's (shm_display.h, fmrb_hid_event.h, sdl2-display/main.c):
+    `docker compose up` reuses an image instead of rebuilding it, and an old
+    image reads the shared memory at the wrong offsets. The error names the
+    command (docker compose build sdl2-display).
 
     gui: true uses a real X11 window instead of the headless SDL driver.
 
@@ -664,7 +675,8 @@ SIM_INPUT = MCP::Tool.define(
 
     Worth knowing before you trust a result:
       - Coordinates are frame-buffer coordinates; the size is whatever sim_up
-        or sim_screenshot reported (320x240 Retro, 426x240 Modern).
+        or sim_screenshot reported (320x240 Retro, 426x240 Modern, 640x360
+        while a Modern fullscreen app is in the high-resolution mode).
       - Key handling in app code must read ev[:scancode]; ev[:keycode] here is
         an SDL keysym and differs from the device.
       - Alt is dead in the simulation. Menus reached with Alt cannot be
