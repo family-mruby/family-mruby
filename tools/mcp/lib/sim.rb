@@ -16,6 +16,11 @@
 #      the NEXT boot, so the first run after switching hardware targets comes
 #      up at the previous resolution. A start that comes up at the wrong size
 #      restarts itself once.
+#   4. The sdl2-display container runs an image built from three files of
+#      fmruby-graphics-audio, and `docker compose up` never rebuilds an image
+#      that exists. An image older than shm_display.h reads the shared memory
+#      at the wrong offsets. Every start compares the image's copies with the
+#      working tree first.
 #
 # And one rule about other people's work: a stack that was already running is
 # reused, never recreated, and sim_down refuses to take it away unless it was
@@ -76,6 +81,7 @@ module FmrbMcp
     def up(gui: false)
       check_builds!
       notes = []
+      check_display_image!(notes)
       lock.hold("the Linux sim", hint: "wait for the other session's sim operation to finish") do
         result = start_once(gui, notes)
 
@@ -271,6 +277,44 @@ module FmrbMcp
                    "before anything is started. In each repository:\n" \
                    "  rake clean_all && rake build:linux\n" \
                    "(clean_all, not clean: switching targets needs the full clean.)"
+    end
+
+    # The files sdl2-display/Dockerfile copies into the image, and where the
+    # image keeps them.
+    DISPLAY_IMAGE_FILES = {
+      "main/common/shm_display.h" => "/app/include/shm_display.h",
+      "main/include/fmrb_hid_event.h" => "/app/include/fmrb_hid_event.h",
+      "sdl2-display/main.c" => "/app/main.c",
+    }.freeze
+
+    def display_image_name
+      res = Sub.run({}, ["docker", "compose", "config", "--images"], chdir: @repo_root, timeout: 60)
+      name = res[:ok] ? res[:output].lines.map(&:strip).find { |l| l.end_with?("sdl2-display") } : nil
+      name || "#{File.basename(@repo_root)}-sdl2-display"
+    rescue Error
+      "#{File.basename(@repo_root)}-sdl2-display"
+    end
+
+    # An image that does not exist yet is fine: compose builds it on the way
+    # up. One that exists but was built from other sources is not -- compose
+    # would run it as it is.
+    def check_display_image!(notes)
+      image = display_image_name
+      ga = File.join(@repo_root, "fmruby-graphics-audio")
+      res = Sub.run({}, ["docker", "run", "--rm", "--entrypoint", "cat", image,
+                         *DISPLAY_IMAGE_FILES.values], chdir: @repo_root, timeout: 120)
+      unless res[:ok]
+        notes << "no #{image} image to compare with yet; compose builds it"
+        return
+      end
+      local = DISPLAY_IMAGE_FILES.keys.map { |f| File.binread(File.join(ga, f)) }.join
+      return if res[:output].b == local.b
+
+      raise Error, "the #{image} image was built from other sources than the working " \
+                   "tree (#{DISPLAY_IMAGE_FILES.keys.join(', ')} in fmruby-graphics-audio). " \
+                   "`docker compose up` reuses an image as it is, and one built from an older " \
+                   "shm_display.h reads the frames and the sound at the wrong offsets. " \
+                   "Rebuild it, then sim_up again:\n  docker compose build sdl2-display"
     end
 
     def elf_machine(path)

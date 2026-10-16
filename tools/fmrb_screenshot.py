@@ -21,17 +21,30 @@ SHM_PATH = "/dev/shm/fmrb_display"
 # SHM object is not visible in the WSL distro's /dev/shm. Fall back to reading
 # it from inside a container that mounts it.
 DOCKER_CONTAINER = "fmruby_graphics_audio"
-READY_MAGIC = 0x464D5242  # "FMRB"
-FB_MAX_W = 480
-FB_MAX_H = 320
+# fmrb_shm_t layout 2 (FMRB_SHM_LAYOUT_VERSION in shm_display.h).
+READY_MAGIC = 0x464D5232  # "FMR2"
+LEGACY_MAGIC_V1 = 0x464D5242  # "FMRB", layout 1 (480x320 slots)
+LAYOUT_VERSION = 2
+FB_MAX_W = 640
+FB_MAX_H = 360
 FB_SIZE = FB_MAX_W * FB_MAX_H
 
 # fmrb_shm_t offsets (natural C alignment, no packing):
 #   0: u32 ready_magic, 4: u8 display_initialized, 5: u8 shutdown_requested,
-#   6: u16 display_width, 8: u16 display_height, 10..12: u8 depth/scale_x/y,
-#   13: u8 framebuf[2][FB_SIZE], then u32 write_index padded to 4-byte align.
-FB_OFF = 13
+#   6: u16 display_width, 8: u16 display_height (the base screen),
+#   10..12: u8 depth/scale_x/scale_y, 13: u8 layout_version, 16: u32 shm_size,
+#   20: u16 frame_width[2], 24: u16 frame_height[2] (each slot's own size:
+#   the screen is 640x360 while a fullscreen app holds the high-resolution
+#   screen), 28: u8 framebuf[2][FB_SIZE], then u32 write_index (4-aligned).
+LAYOUT_OFF = 13
+FRAME_W_OFF = 20
+FRAME_H_OFF = 24
+FB_OFF = 28
 WIDX_OFF = (FB_OFF + 2 * FB_SIZE + 3) & ~3
+
+
+class LayoutMismatch(Exception):
+    pass
 
 
 def read_shm_bytes():
@@ -41,9 +54,9 @@ def read_shm_bytes():
     except FileNotFoundError:
         pass
     r = subprocess.run(
-        ["docker", "exec", DOCKER_CONTAINER, "cat", SHM_PATH],
+        ["docker", "exec", DOCKER_CONTAINER, "head", "-c", str(WIDX_OFF + 8), SHM_PATH],
         capture_output=True)
-    if r.returncode != 0 or len(r.stdout) < WIDX_OFF + 8:
+    if r.returncode != 0 or len(r.stdout) < 8:
         raise FileNotFoundError(SHM_PATH)
     return r.stdout
 
@@ -51,15 +64,26 @@ def read_shm_bytes():
 def read_shm():
     data = read_shm_bytes()
     magic, = struct.unpack_from("<I", data, 0)
-    if magic != READY_MAGIC:
+    if magic == LEGACY_MAGIC_V1:
+        raise LayoutMismatch(
+            "the running graphics-audio publishes SHM layout 1; this tool reads "
+            "layout %d. Rebuild graphics-audio (rake build:linux) and restart "
+            "the stack." % LAYOUT_VERSION)
+    if magic != READY_MAGIC or len(data) < WIDX_OFF + 8:
         return None
-    width, height = struct.unpack_from("<HH", data, 6)
-    if not (0 < width <= FB_MAX_W and 0 < height <= FB_MAX_H):
-        return None
+    if data[LAYOUT_OFF] != LAYOUT_VERSION:
+        raise LayoutMismatch("SHM layout %d, this tool reads layout %d"
+                             % (data[LAYOUT_OFF], LAYOUT_VERSION))
     write_index, = struct.unpack_from("<I", data, WIDX_OFF)
-    # display_shm.cpp: the writer fills framebuf[write_index & 1] and then
-    # flips write_index, so the last completed frame is the other buffer.
+    # display_shm.cpp: the writer fills framebuf[write_index & 1], records
+    # that slot's size and then flips write_index, so the last completed
+    # frame is the other slot.
     buf = (write_index & 1) ^ 1
+    width, = struct.unpack_from("<H", data, FRAME_W_OFF + 2 * buf)
+    height, = struct.unpack_from("<H", data, FRAME_H_OFF + 2 * buf)
+    if not (0 < width <= FB_MAX_W and 0 < height <= FB_MAX_H
+            and width * height <= FB_SIZE):
+        return None
     off = FB_OFF + buf * FB_SIZE
     return width, height, data[off:off + width * height]
 
@@ -105,6 +129,9 @@ def main():
             frame = read_shm()
         except FileNotFoundError:
             frame = None
+        except LayoutMismatch as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
         if frame:
             break
         if time.time() >= deadline:
