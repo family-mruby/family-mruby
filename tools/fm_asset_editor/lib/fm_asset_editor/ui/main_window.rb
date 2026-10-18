@@ -813,8 +813,9 @@ module FmAssetEditor
           return
         end
 
+        retro = retro_note
         if @hover.nil?
-          @status_label.text = ' '
+          @status_label.text = retro || ' '
           return
         end
 
@@ -825,7 +826,17 @@ module FmAssetEditor
           code = @document.format.code_at(x, y)
           text << format("  code %d (0x%02X)", code, code)
         end
+        text << "  #{retro}" if retro
         @status_label.text = text
+      end
+
+      # Larger than Retro loads (Bmp::RETRO_MAX_SIDE): a Modern-only file.
+      def retro_note
+        w = @document.width
+        h = @document.height
+        return nil unless w > Bmp::RETRO_MAX_SIDE || h > Bmp::RETRO_MAX_SIDE
+
+        "#{w}x#{h}: Modern only (Retro loads #{Bmp::RETRO_MAX_SIDE} px at most)"
       end
 
       def set_zoom(zoom)

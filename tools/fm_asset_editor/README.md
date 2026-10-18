@@ -41,7 +41,9 @@ WSL2 では `DBUS_SESSION_BUS_ADDRESS` が設定されているのに実体の�
 | スプライト / アイコン | `usr/share/sprites/*.bmp`, `usr/share/icon/*.bmp`, `app/game/**/*.bmp`, graphics-audio の `flash/sprites/launcher/*.bmp` | **画素の値がそのまま RGB332 の色**。0 は透明。ファイル内のパレットは読み込み側 (`fmruby-graphics-audio/main/common/fmrb_bmp332.c`) が見ていない (閲覧ソフト向けの飾り) |
 | BASIC 文字シート | `usr/share/basic/font_b.bmp`, `tile_a.bmp` | 128x128 に 8x8 のマスが 16x16。文字コードは 行*16+列。値は 0〜3 の **色属性の番号** (0 消灯 / 1,2 属性 / 3 が墨。同梱の絵は 3 で描かれている) |
 
-読み込み側が受け付けるのは **8bpp 無圧縮・幅も高さも 256 まで**。汎用ソフトは
+読み込み側が受け付けるのは **8bpp 無圧縮・幅も高さも 2048 まで** (Modern・
+シミュレータ・ブラウザ版。麻雀の手牌のシートは幅 420)。**Retro (WROVER) は
+256 まで**なので、256 を超えるファイルを開くと、状態の行に Modern 専用と出る。汎用ソフトは
 書き出し時にパレット番号を並べ替えたり 24bit に昇格したりするので、これらを
 黙って壊しうる。この道具は必ず上の形で書き戻す。
 

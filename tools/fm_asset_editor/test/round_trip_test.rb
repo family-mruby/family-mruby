@@ -295,8 +295,18 @@ Dir.mktmpdir do |tmp|
     backend.nil? ? ENV.delete('GSETTINGS_BACKEND') : ENV['GSETTINGS_BACKEND'] = backend
   end
 
-  # The size the loader refuses must be refused here too.
-  big = FmAssetEditor::Formats::Sprite332.blank(257, 4)
+  # The size the loader refuses must be refused here too (2048 on Modern;
+  # a 420 px sheet, as the mahjong hand sheet, is fine).
+  wide = FmAssetEditor::Formats::Sprite332.blank(420, 4)
+  check('a 420 px sheet was refused', failures) do
+    begin
+      wide.save(out)
+      true
+    rescue FmAssetEditor::Bmp::Error
+      false
+    end
+  end
+  big = FmAssetEditor::Formats::Sprite332.blank(FmAssetEditor::Bmp::MAX_SIDE + 1, 4)
   check('an oversized sprite was written anyway', failures) do
     begin
       big.save(out)

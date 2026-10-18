@@ -20,7 +20,12 @@ module FmAssetEditor
     PALETTE_ENTRIES = 256
     PIXEL_OFFSET = FILE_HEADER_SIZE + DIB_HEADER_SIZE + PALETTE_ENTRIES * 4 # 1078
     PIXELS_PER_METER = 2835 # what the existing generators write
-    MAX_SIDE = 256          # the loader rejects anything larger
+    # The largest side a machine loads. Modern (display_local), the simulator
+    # and the browser build take sheets up to 2048 px (the mahjong hand sheet
+    # is 420 px wide); Retro's graphics side (WROVER) stops at 256, so a
+    # larger file is for Modern only (RETRO_MAX_SIDE, shown in the status line).
+    MAX_SIDE = 2048
+    RETRO_MAX_SIDE = 256
 
     # pixels:      flat Array of palette bytes, top-down, width * height entries
     # palette:     Array of [r, g, b], up to 256 entries (missing ones write as 0)
