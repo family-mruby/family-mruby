@@ -52,240 +52,245 @@ module FmAssetEditor
         @window = window(title, 1024, 820) {
           margined true
 
-          horizontal_box {
-            @grid_body = vertical_box {
-              @canvas = scrolling_area(@grid.width, @grid.height) {
-                on_draw do |params|
-                  @grid.draw(params[:context], params)
-                end
-                on_mouse_event do |event|
-                  handle_canvas_mouse(event)
-                end
-                on_mouse_exit do
-                  @hover = nil
-                  @grid.cursor = nil
-                  refresh_status
-                  @canvas.queue_redraw_all
-                end
-                on_key_event do |event|
-                  handle_key(event)
-                end
-              }
-            }
-
-            # Shown when the editor is started with nothing to open, and from
-            # File > New. It is a pane like the others rather than a window of
-            # its own: one window, one place to look.
-            @start_body = vertical_box {
-              label('What would you like to make?') { stretchy false }
-              horizontal_box {
-                stretchy false
-                label('Sprite') { stretchy false }
-                @new_width_spinbox = spinbox(1, Bmp::MAX_SIDE) { value 16 }
-                label('x') { stretchy false }
-                @new_height_spinbox = spinbox(1, Bmp::MAX_SIDE) { value 16 }
-                button('Create') {
-                  on_clicked do
-                    adopt(Formats::Sprite332.blank(@new_width_spinbox.value, @new_height_spinbox.value))
+          # The status line goes under everything, across the window: in the
+          # right-hand panel its text (which changes with every mouse move)
+          # set the panel's width, so the panel kept changing size.
+          vertical_box {
+            horizontal_box {
+              @grid_body = vertical_box {
+                @canvas = scrolling_area(@grid.width, @grid.height) {
+                  on_draw do |params|
+                    @grid.draw(params[:context], params)
+                  end
+                  on_mouse_event do |event|
+                    handle_canvas_mouse(event)
+                  end
+                  on_mouse_exit do
+                    @hover = nil
+                    @grid.cursor = nil
+                    refresh_status
+                    @canvas.queue_redraw_all
+                  end
+                  on_key_event do |event|
+                    handle_key(event)
                   end
                 }
               }
-              button('BASIC character sheet (128x128)') {
-                stretchy false
-                on_clicked { adopt(Formats::BasicSheet.blank) }
-              }
-              button('MML tune') {
-                stretchy false
-                on_clicked { adopt(Formats::MmlTune.blank) }
-              }
-              button('Open a file...') {
-                stretchy false
-                on_clicked { open_dialog }
-              }
-              label('') # takes the space left over, so the buttons stay at the top
-            }
 
-            @mml_body = vertical_box {
-              @mml_entry = non_wrapping_multiline_entry {
-                text @mml_document.text
-                on_changed do |entry|
-                  next if @syncing_text
-
-                  @mml_document.text = entry.text
-                  refresh_tune
-                end
+              # Shown when the editor is started with nothing to open, and from
+              # File > New. It is a pane like the others rather than a window of
+              # its own: one window, one place to look.
+              @start_body = vertical_box {
+                label('What would you like to make?') { stretchy false }
+                horizontal_box {
+                  stretchy false
+                  label('Sprite') { stretchy false }
+                  @new_width_spinbox = spinbox(1, Bmp::MAX_SIDE) { value 16 }
+                  label('x') { stretchy false }
+                  @new_height_spinbox = spinbox(1, Bmp::MAX_SIDE) { value 16 }
+                  button('Create') {
+                    on_clicked do
+                      adopt(Formats::Sprite332.blank(@new_width_spinbox.value, @new_height_spinbox.value))
+                    end
+                  }
+                }
+                button('BASIC character sheet (128x128)') {
+                  stretchy false
+                  on_clicked { adopt(Formats::BasicSheet.blank) }
+                }
+                button('MML tune') {
+                  stretchy false
+                  on_clicked { adopt(Formats::MmlTune.blank) }
+                }
+                button('Open a file...') {
+                  stretchy false
+                  on_clicked { open_dialog }
+                }
+                label('') # takes the space left over, so the buttons stay at the top
               }
-              @roll_area = area {
-                on_draw do |params|
-                  @roll_width = params[:area_width]
-                  @roll.draw(params[:context], params[:area_width], params[:area_height])
-                end
-                on_mouse_down do |event|
-                  @seek_was_playing = @playback.playing?
-                  @playback.stop if @seek_was_playing
-                  seek_to(event[:x])
-                end
-                on_mouse_drag do |event|
-                  seek_to(event[:x])
-                end
-                on_mouse_up do
-                  play_tune if @seek_was_playing
-                  @seek_was_playing = false
-                end
-              }
-            }
 
-            vertical_box {
-              stretchy false
+              @mml_body = vertical_box {
+                @mml_entry = non_wrapping_multiline_entry {
+                  text @mml_document.text
+                  on_changed do |entry|
+                    next if @syncing_text
 
-              group('Asset') {
-                stretchy false
-                vertical_box {
-                  @format_label = label('')
-                  @size_label = label('')
-                  @path_label = label('')
-                  @note_label = label('')
+                    @mml_document.text = entry.text
+                    refresh_tune
+                  end
+                }
+                @roll_area = area {
+                  on_draw do |params|
+                    @roll_width = params[:area_width]
+                    @roll.draw(params[:context], params[:area_width], params[:area_height])
+                  end
+                  on_mouse_down do |event|
+                    @seek_was_playing = @playback.playing?
+                    @playback.stop if @seek_was_playing
+                    seek_to(event[:x])
+                  end
+                  on_mouse_drag do |event|
+                    seek_to(event[:x])
+                  end
+                  on_mouse_up do
+                    play_tune if @seek_was_playing
+                    @seek_was_playing = false
+                  end
                 }
               }
 
-              @grid_controls = vertical_box {
-                group('Tool') {
+              vertical_box {
+                stretchy false
+
+                group('Asset') {
                   stretchy false
                   vertical_box {
-                    radio_buttons {
-                      items TOOLS.keys
-                      selected 0
-                      on_selected do |radio|
-                        @tool = TOOLS.values[radio.selected]
-                      end
-                    }
+                    @format_label = label('')
+                    @size_label = label('')
+                    @path_label = label('')
+                    @note_label = label('')
                   }
                 }
 
-                group('View') {
-                  stretchy false
-                  vertical_box {
-                    horizontal_box {
-                      stretchy false
-                      label('Zoom') { stretchy false }
-                      @zoom_spinbox = spinbox(GridView::MIN_ZOOM, GridView::MAX_ZOOM) {
-                        value @grid.zoom
-                        on_changed do |spinbox|
-                          set_zoom(spinbox.value)
+                @grid_controls = vertical_box {
+                  group('Tool') {
+                    stretchy false
+                    vertical_box {
+                      radio_buttons {
+                        items TOOLS.keys
+                        selected 0
+                        on_selected do |radio|
+                          @tool = TOOLS.values[radio.selected]
                         end
                       }
-                      label('Guide') { stretchy false }
-                      @guide_spinbox = spinbox(0, 64) {
-                        value @grid.cell.to_i
-                        on_changed do |spinbox|
-                          @grid.cell_override = spinbox.value.zero? ? nil : spinbox.value
+                    }
+                  }
+
+                  group('View') {
+                    stretchy false
+                    vertical_box {
+                      horizontal_box {
+                        stretchy false
+                        label('Zoom') { stretchy false }
+                        @zoom_spinbox = spinbox(GridView::MIN_ZOOM, GridView::MAX_ZOOM) {
+                          value @grid.zoom
+                          on_changed do |spinbox|
+                            set_zoom(spinbox.value)
+                          end
+                        }
+                        label('Guide') { stretchy false }
+                        @guide_spinbox = spinbox(0, 64) {
+                          value @grid.cell.to_i
+                          on_changed do |spinbox|
+                            @grid.cell_override = spinbox.value.zero? ? nil : spinbox.value
+                            @canvas.queue_redraw_all
+                          end
+                        }
+                      }
+                      checkbox('Pixel grid') {
+                        stretchy false
+                        checked @grid.show_grid
+                        on_toggled do |box|
+                          @grid.show_grid = box.checked?
                           @canvas.queue_redraw_all
                         end
                       }
                     }
-                    checkbox('Pixel grid') {
-                      stretchy false
-                      checked @grid.show_grid
-                      on_toggled do |box|
-                        @grid.show_grid = box.checked?
-                        @canvas.queue_redraw_all
-                      end
-                    }
                   }
-                }
 
-                # The palette group is the only stretchy child of the panel, so
-                # it takes whatever height is left; the view lays all 256
-                # swatches out in that space rather than scrolling.
-                group('Colour') {
-                  vertical_box {
-                    @palette_area = area {
-                      on_draw do |params|
-                        @palette.draw(params[:context], params[:area_width], params[:area_height])
-                      end
-                      on_mouse_down do |event|
-                        value = @palette.value_at(event[:x], event[:y])
-                        select_value(value) unless value.nil?
-                      end
-                    }
-
-                    horizontal_box {
-                      stretchy false
-                      label('R') { stretchy false }
-                      @red_spinbox = spinbox(0, 7) {
-                        on_changed { levels_changed }
-                      }
-                      label('G') { stretchy false }
-                      @green_spinbox = spinbox(0, 7) {
-                        on_changed { levels_changed }
-                      }
-                      label('B') { stretchy false }
-                      @blue_spinbox = spinbox(0, 3) {
-                        on_changed { levels_changed }
-                      }
-                    }
-
-                    horizontal_box {
-                      stretchy false
-                      label('Hex') { stretchy false }
-                      @hex_entry = entry {
-                        on_changed { hex_changed }
-                      }
-                    }
-
-                    @selected_label = label('') { stretchy false }
-                  }
-                }
-              }
-
-              @mml_controls = vertical_box {
-                group('Tune') {
-                  stretchy false
-                  vertical_box {
-                    horizontal_box {
-                      stretchy false
-                      label('BPM') { stretchy false }
-                      @bpm_spinbox = spinbox(Mml::Tune::BPM_RANGE.first, Mml::Tune::BPM_RANGE.last) {
-                        value @mml_document.tune.bpm
-                        on_changed do |spinbox|
-                          next if @syncing_text
-
-                          @mml_document.set_setting('bpm', spinbox.value)
-                          sync_mml_text
+                  # The palette group is the only stretchy child of the panel, so
+                  # it takes whatever height is left; the view lays all 256
+                  # swatches out in that space rather than scrolling.
+                  group('Colour') {
+                    vertical_box {
+                      @palette_area = area {
+                        on_draw do |params|
+                          @palette.draw(params[:context], params[:area_width], params[:area_height])
+                        end
+                        on_mouse_down do |event|
+                          value = @palette.value_at(event[:x], event[:y])
+                          select_value(value) unless value.nil?
                         end
                       }
-                      @loop_checkbox = checkbox('Loop') {
+
+                      horizontal_box {
                         stretchy false
-                        checked @mml_document.tune.loop?
-                        on_toggled do |box|
-                          next if @syncing_text
+                        label('R') { stretchy false }
+                        @red_spinbox = spinbox(0, 7) {
+                          on_changed { levels_changed }
+                        }
+                        label('G') { stretchy false }
+                        @green_spinbox = spinbox(0, 7) {
+                          on_changed { levels_changed }
+                        }
+                        label('B') { stretchy false }
+                        @blue_spinbox = spinbox(0, 3) {
+                          on_changed { levels_changed }
+                        }
+                      }
 
-                          @mml_document.set_setting('loop', box.checked? ? 'on' : 'off')
-                          sync_mml_text
-                        end
+                      horizontal_box {
+                        stretchy false
+                        label('Hex') { stretchy false }
+                        @hex_entry = entry {
+                          on_changed { hex_changed }
+                        }
+                      }
+
+                      @selected_label = label('') { stretchy false }
+                    }
+                  }
+                }
+
+                @mml_controls = vertical_box {
+                  group('Tune') {
+                    stretchy false
+                    vertical_box {
+                      horizontal_box {
+                        stretchy false
+                        label('BPM') { stretchy false }
+                        @bpm_spinbox = spinbox(Mml::Tune::BPM_RANGE.first, Mml::Tune::BPM_RANGE.last) {
+                          value @mml_document.tune.bpm
+                          on_changed do |spinbox|
+                            next if @syncing_text
+
+                            @mml_document.set_setting('bpm', spinbox.value)
+                            sync_mml_text
+                          end
+                        }
+                        @loop_checkbox = checkbox('Loop') {
+                          stretchy false
+                          checked @mml_document.tune.loop?
+                          on_toggled do |box|
+                            next if @syncing_text
+
+                            @mml_document.set_setting('loop', box.checked? ? 'on' : 'off')
+                            sync_mml_text
+                          end
+                        }
+                      }
+                      horizontal_box {
+                        stretchy false
+                        button('Play') { on_clicked { play_tune } }
+                        button('Stop') { on_clicked { stop_tune } }
+                        button('Export WAV...') { on_clicked { export_wav } }
+                      }
+                      @time_label = label('') { stretchy false }
+                    }
+                  }
+
+                  group('Notes') {
+                    vertical_box {
+                      @problem_entry = non_wrapping_multiline_entry {
+                        read_only true
                       }
                     }
-                    horizontal_box {
-                      stretchy false
-                      button('Play') { on_clicked { play_tune } }
-                      button('Stop') { on_clicked { stop_tune } }
-                      button('Export WAV...') { on_clicked { export_wav } }
-                    }
-                    @time_label = label('') { stretchy false }
                   }
                 }
 
-                group('Notes') {
-                  vertical_box {
-                    @problem_entry = non_wrapping_multiline_entry {
-                      read_only true
-                    }
-                  }
-                }
               }
-
-              @status_label = label('') { stretchy false }
             }
+            @status_label = label('') { stretchy false }
           }
         }
       end
