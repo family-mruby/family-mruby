@@ -28,6 +28,8 @@
 #      (selftest_sim.rb; the parts that need docker are acceptance work)
 #  10. the browser tools, against a fake bundle and a fake CLI tool
 #      (selftest_web.rb; the parts that need a browser are acceptance work)
+#  11. the native-program tools, against a fake CLI tool
+#      (selftest_native.rb; driving the real program is acceptance work)
 require "json"
 require "tmpdir"
 require "open3"
@@ -384,6 +386,15 @@ Dir.mktmpdir("fmrb-mcp-selftest") do |dir|
   unless status.success?
     $failures += 1
     puts "  FAIL the browser selftest reported failures"
+  end
+
+  puts "11. the native-program tools without the program"
+  native = File.expand_path("selftest_native.rb", __dir__)
+  out, status = Open3.capture2e("ruby", native)
+  puts out.chomp
+  unless status.success?
+    $failures += 1
+    puts "  FAIL the native selftest reported failures"
   end
 
   puts

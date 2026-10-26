@@ -4,12 +4,23 @@
 # launch apps, stop it.
 #
 # Usage:
-#   fmrb_native.rb up [--gui] [--engine mruby] [--scale N]
+#   fmrb_native.rb up [--gui] [--engine mruby] [--machine NAME|PATH]
+#                     [--set KEY=VALUE]... [--alsa-file] [--scale N]
 #                     [--user-dir DIR] [--cache-dir DIR] [--timeout SEC]
 #                                   start it and wait for "Boot complete".
 #                                   Headless by default (SDL_VIDEODRIVER=dummy,
 #                                   SDL_AUDIODRIVER=disk into <run>/audio.raw);
 #                                   --gui opens the window (WSLg) instead.
+#                                   --machine picks the machine definition
+#                                   (sdl, cardputer_zero_hdmi, ... in
+#                                   fmruby-core/config/machines/, or a file);
+#                                   a machine this system cannot run is
+#                                   refused, and the reason is printed.
+#                                   --set changes one field of it.
+#                                   --alsa-file plays through ALSA instead,
+#                                   into alsa-lib's file plugin (an
+#                                   asoundrc of its own, ALSA_CONFIG_PATH):
+#                                   the samples land in <run>/audio.raw too.
 #   fmrb_native.rb down             ask it to quit (SIGTERM if it does not)
 #   fmrb_native.rb shot [OUT.png]   the composited frame as a PNG at its own
 #                                   size (426x240, 640x360 in the high-res mode)
@@ -21,7 +32,7 @@
 #   fmrb_native.rb audio [SEC]      peak / RMS / non-zero samples of the last SEC
 #                                   seconds (default 2) of the disk audio output
 #   fmrb_native.rb log [N]          the last N lines (default 40) of its log
-#   fmrb_native.rb status           running or not, frame size, pid
+#   fmrb_native.rb status           running or not, machine, frame size, pid
 #
 # The run directory (sockets, pid, log, audio) is /tmp/fmrb-native-<uid>,
 # or FMRB_NATIVE_RUN_DIR / --run-dir before the command. The program's own
@@ -90,17 +101,39 @@ def user_dir_default
   File.join(base, "family-mruby-dev")
 end
 
+# alsa-lib's configuration for --alsa-file: the default PCM is the file
+# plugin over the null device, writing raw S16 (what the program opens:
+# 15720 Hz mono), so `audio` reads it like the SDL disk output.
+def alsa_file_conf(out)
+  <<~CONF
+    # written by tools/fmrb_native.rb up --alsa-file
+    pcm.!default {
+      type file
+      slave.pcm "fmrb_null"
+      file "#{out}"
+      format "raw"
+    }
+    pcm.fmrb_null {
+      type null
+    }
+  CONF
+end
+
 def cmd_up(args)
   gui = false
   engine = "standard"
   extra = []
   timeout = 60
   user_dir = nil
+  alsa_file = false
   until args.empty?
     a = args.shift
     case a
     when "--gui" then gui = true
     when "--engine" then engine = args.shift
+    when "--machine" then extra += ["--machine", args.shift]
+    when "--set" then extra += ["--set", args.shift]
+    when "--alsa-file" then alsa_file = true
     when "--scale" then extra += ["--scale", args.shift]
     when "--user-dir" then user_dir = File.expand_path(args.shift); extra += ["--user-dir", user_dir]
     when "--cache-dir" then extra += ["--cache-dir", File.expand_path(args.shift)]
@@ -121,6 +154,12 @@ def cmd_up(args)
     env["SDL_AUDIODRIVER"] = "disk"
     env["SDL_DISKAUDIOFILE"] = path("audio.raw")
   end
+  if alsa_file
+    FileUtils.rm_f(path("audio.raw"))
+    File.write(path("asound.conf"), alsa_file_conf(path("audio.raw")))
+    env["ALSA_CONFIG_PATH"] = path("asound.conf")
+    extra += ["--set", "audio.backend=alsa", "--set", "audio.device=default"]
+  end
   # Remembered for `input`, which reads the keyboard layout from that /etc.
   File.write(path("user_dir"), (user_dir || user_dir_default) + "\n")
   started = Time.now
@@ -130,7 +169,11 @@ def cmd_up(args)
   booted = false
   deadline = started + timeout
   while Time.now < deadline
-    abort "fmrb_native: exited during boot; see #{log}\n#{tail(log, 20)}" unless alive?(child)
+    unless alive?(child)
+      refusal = File.exist?(log) ? File.readlines(log).grep(/native: refused:/).last : nil
+      abort "fmrb_native: #{refusal.strip.sub(/\Anative: /, '')}" if refusal
+      abort "fmrb_native: exited during boot; see #{log}\n#{tail(log, 20)}"
+    end
     if File.exist?(log) && File.read(log).include?("Boot complete")
       booted = true
       break
@@ -138,8 +181,9 @@ def cmd_up(args)
     sleep 0.2
   end
   abort "fmrb_native: no \"Boot complete\" within #{timeout}s; see #{log}" unless booted
-  printf("up: pid %d, boot complete in %.1f s (%s, %s)\n", child, Time.now - started,
-         engine, gui ? "window" : "headless")
+  machine = File.read(log)[/native: machine (\S+)/, 1] || "?"
+  printf("up: pid %d, boot complete in %.1f s (machine %s, %s, %s%s)\n", child, Time.now - started,
+         machine, engine, gui ? "window" : "headless", alsa_file ? ", ALSA into the file plugin" : "")
   puts "  user dir: #{user_dir || user_dir_default}"
   puts "  log: #{log}"
 end
@@ -219,7 +263,7 @@ end
 def cmd_audio(args)
   secs = (args.shift || 2).to_f
   file = path("audio.raw")
-  abort "audio: no #{file} (headless runs write it)" unless File.exist?(file)
+  abort "audio: no #{file} (headless runs and --alsa-file write it)" unless File.exist?(file)
   bytes = (secs * AUDIO_RATE).to_i * 2
   size = File.size(file)
   data = File.open(file, "rb") do |f|
@@ -251,9 +295,9 @@ def cmd_status
     return
   end
   head, = ctl("info")
-  m = /\AOK (\d+) (\d+) (\d+) (\d+)\z/.match(head)
+  m = /\AOK (\d+) (\d+) (\d+) (\d+) (\S+)\z/.match(head)
   if m
-    puts "status: running, pid #{m[4]}, frame #{m[1]}x#{m[2]} (seq #{m[3]})"
+    puts "status: running, pid #{m[4]}, machine #{m[5]}, frame #{m[1]}x#{m[2]} (seq #{m[3]})"
   else
     puts "status: running, pid #{p} (#{head})"
   end

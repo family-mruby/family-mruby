@@ -23,12 +23,14 @@ require_relative "lib/serial_manager"
 require_relative "lib/tab5"
 require_relative "lib/sim"
 require_relative "lib/web"
+require_relative "lib/native"
 
 REPO_ROOT = File.expand_path("../..", __dir__)
 MANAGER = FmrbMcp::SerialManager.new(repo_root: REPO_ROOT)
 TAB5 = FmrbMcp::Tab5.new(repo_root: REPO_ROOT, state_dir: MANAGER.state_dir)
 SIM = FmrbMcp::Sim.new(repo_root: REPO_ROOT, state_dir: MANAGER.state_dir)
 WEB = FmrbMcp::Web.new(repo_root: REPO_ROOT, state_dir: MANAGER.state_dir)
+NATIVE = FmrbMcp::Native.new(repo_root: REPO_ROOT, state_dir: MANAGER.state_dir)
 
 MCP.configure do |config|
   config.exception_reporter = ->(exception, context) do
@@ -772,6 +774,182 @@ SIM_AUDIO = MCP::Tool.define(
   respond { SIM.audio(action: action, level: level) }
 end
 
+# --- the native Linux program ----------------------------------------------
+
+NATIVE_NOTE = <<~NOTE
+  The native program is the Modern machine's firmware built as one x86-64
+  Linux process (fmruby-core/native/, doc/linux_native/): no docker, no
+  second chip, the same core, display task and apps as the Tab5. It runs
+  headless here (an SDL window with the dummy driver) and can run AT THE
+  SAME TIME as the sim and the browser build -- its sockets
+  (/tmp/fmrb-native-<uid>) and debug port (5565) are its own. Build it first
+  in fmruby-core: rake native:mruby (once), rake native:core.
+
+  Which screen, input and sound backends it uses is a machine definition
+  (fmruby-core/config/machines/: sdl, cardputer_zero, cardputer_zero_hdmi,
+  linux_pc_drm), picked with native_up's machine. On this PC only "sdl"
+  runs; the others need a framebuffer, a DRM display, evdev devices or a
+  sound card and are refused at start with the reason (that refusal is the
+  check that they are wired up). Screen 426x240, or 640x360 while a
+  fullscreen high-resolution app is up, as on the Tab5.
+NOTE
+
+NATIVE_UP = MCP::Tool.define(
+  name: "native_up",
+  title: "Start the native Linux program",
+  description: <<~DESC,
+    Start the native program headless and return its first frame.
+
+      machine    the machine definition, by name (sdl, cardputer_zero_hdmi,
+                 ...) or path; default sdl. A machine this system cannot run
+                 is refused with the reason, and this tool returns that as
+                 its error.
+      engine     standard (Spinel kernel and editor, the default) or mruby
+                 (native/build-mruby, rake native:core NATIVE_ENGINE=mruby)
+      set        ["display.rotate=90", ...]: fields over the definition
+      alsa_file  play through ALSA into alsa-lib's file plugin instead of
+                 SDL (an asoundrc of its own): the sound lands in
+                 /tmp/fmrb-native-<uid>/audio.raw, which
+                 `ruby tools/fmrb_native.rb audio` measures
+      gui        open a real window (WSLg) instead
+
+    A program that is already running is reused as it is (the options are
+    then not applied; you are told).
+
+    #{NATIVE_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: true, open_world_hint: true },
+  input_schema: {
+    properties: {
+      machine: { type: "string", description: "machine definition name or path (default sdl)" },
+      engine: { type: "string", enum: %w[standard mruby], description: "standard (default) or mruby" },
+      set: { type: "array", items: { type: "string" }, description: "KEY=VALUE fields over the definition" },
+      alsa_file: { type: "boolean", description: "sound through ALSA into a file (default false)" },
+      gui: { type: "boolean", description: "open a window (default false, headless)" },
+    },
+    required: [],
+  },
+) do |machine: nil, engine: nil, set: nil, alsa_file: false, gui: false, server_context: nil, **_extra|
+  begin
+    r = NATIVE.up(machine: machine, engine: engine, gui: gui, set: set, alsa_file: alsa_file)
+    content = [{ type: "image", data: r[:data], mimeType: "image/png" },
+               { type: "text", text: JSON.pretty_generate(r.reject { |k, _| k == :data }) }]
+    MCP::Tool::Response.new(content)
+  rescue FmrbMcp::Error => e
+    tool_error("fmrb-mcp error", e.message)
+  rescue StandardError => e
+    warn "fmrb-mcp: #{e.class}: #{e.message}"
+    tool_error(e.class.name, e.message)
+  end
+end
+
+NATIVE_DOWN = MCP::Tool.define(
+  name: "native_down",
+  title: "Stop the native Linux program",
+  description: <<~DESC,
+    Ask the native program to quit (SIGTERM, then SIGKILL, if it does not).
+
+    If it was already running when the native tools first saw it, this
+    refuses: it is the user's or another session's, possibly a window they
+    are using. force: true stops it anyway -- ask first.
+
+    #{NATIVE_NOTE}
+  DESC
+  annotations: { destructive_hint: true, idempotent_hint: true },
+  input_schema: {
+    properties: { force: { type: "boolean", description: "stop a program this server did not start" } },
+    required: [],
+  },
+) do |force: false, server_context: nil, **_extra|
+  respond { NATIVE.down(force: force) }
+end
+
+NATIVE_SCREENSHOT = MCP::Tool.define(
+  name: "native_screenshot",
+  title: "See the native program's screen",
+  description: <<~DESC,
+    The composited frame as an image, at its own size (426x240, 640x360 in
+    the high-resolution mode) -- the RGB565 the display task made, not the
+    scaled window, so colours are exact where the sim's shots pass through
+    RGB332. The PNG is also written to a file (the path is in the text part).
+
+    Drawing reaches the screen when the app presents; take another shot
+    before deciding an input did nothing.
+
+    #{NATIVE_NOTE}
+  DESC
+  annotations: { read_only_hint: true, destructive_hint: false, idempotent_hint: true },
+  input_schema: { properties: {}, required: [] },
+) do |server_context: nil, **_extra|
+  begin
+    shot = NATIVE.screenshot
+    MCP::Tool::Response.new([
+      { type: "image", data: shot[:data], mimeType: "image/png" },
+      { type: "text", text: JSON.pretty_generate(shot.reject { |k, _| k == :data }) },
+    ])
+  rescue FmrbMcp::Error => e
+    tool_error("fmrb-mcp error", e.message)
+  rescue StandardError => e
+    warn "fmrb-mcp: #{e.class}: #{e.message}"
+    tool_error(e.class.name, e.message)
+  end
+end
+
+NATIVE_INPUT = MCP::Tool.define(
+  name: "native_input",
+  title: "Click and type in the native program",
+  description: <<~DESC,
+    Synthetic mouse and keyboard events on the program's inject socket, the
+    sim's vocabulary (tools/fmrb_input.rb), one string left to right:
+
+      move X Y | click X Y | down X Y | up X Y | key NAME | key shift+NAME
+      text "STRING" | sleep MS
+
+    Coordinates are frame coordinates (426x240, or 640x360 in the
+    high-resolution mode). Keys follow keyboard_layout of the program's own
+    /etc/system_conf.toml (~/.local/share/family-mruby-dev/etc). As on the
+    sim, Alt is not carried by injected keys and a key cannot be held.
+
+    #{NATIVE_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: false, open_world_hint: true },
+  input_schema: {
+    properties: { commands: { type: "string", description: "e.g. \"click 30 5 sleep 600 click 30 31\"" } },
+    required: ["commands"],
+  },
+) do |commands:, server_context: nil, **_extra|
+  respond { NATIVE.input(commands) }
+end
+
+NATIVE_APP = MCP::Tool.define(
+  name: "native_app",
+  title: "Start, list and stop apps in the native program",
+  description: <<~DESC,
+    Apps by path through the program's debug server (TCP 5565):
+
+      action: "spawn", path: "/app/demo/kamon.app.rb"   -> returns a pid
+      action: "ps"
+      action: "kill",  pid: 5
+
+    Paths are the machine's (/app, /home, /usr/share). /app, /usr and the
+    rest of the distribution are the repository's flash/, read-only; /home
+    and /etc are the user's (~/.local/share/family-mruby-dev).
+
+    #{NATIVE_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: false, open_world_hint: true },
+  input_schema: {
+    properties: {
+      action: { type: "string", enum: %w[spawn ps kill], description: "spawn, ps or kill" },
+      path: { type: "string", description: "app path for spawn" },
+      pid: { type: "integer", description: "pid for kill (from action: ps)" },
+    },
+    required: ["action"],
+  },
+) do |action:, path: nil, pid: nil, server_context: nil, **_extra|
+  respond { NATIVE.app(action: action, path: path, pid: pid) }
+end
+
 # --- the browser build (wasm) ----------------------------------------------
 
 WEB_NOTE = <<~NOTE
@@ -1049,11 +1227,18 @@ server = MCP::Server.new(
     tidies up. A page the user already has open is driven as it is. It is the
     only place to check the web page's own behaviour -- storage that outlives
     a reload, the settings, the audio worklet.
+
+    Native Linux program: native_up starts the firmware as one x86-64 process
+    (machine definition sdl by default; the device machines are refused here
+    with the reason) and shows the first frame, native_screenshot,
+    native_input and native_app drive it, native_down stops it. It runs side
+    by side with the sim and the browser build.
   TXT
   tools: [SERIAL_START, SERIAL_LOG, SERIAL_STOP, FLASH,
           TAB5_IP, TAB5_SCREENSHOT, TAB5_INPUT, TAB5_APP, TAB5_FS, TAB5_AUDIO,
           SIM_UP, SIM_DOWN, SIM_SCREENSHOT, SIM_INPUT, SIM_APP, SIM_AUDIO,
-          WEB_UP, WEB_DOWN, WEB_SCREENSHOT, WEB_INPUT, WEB_FS, WEB_RELOAD],
+          WEB_UP, WEB_DOWN, WEB_SCREENSHOT, WEB_INPUT, WEB_FS, WEB_RELOAD,
+          NATIVE_UP, NATIVE_DOWN, NATIVE_SCREENSHOT, NATIVE_INPUT, NATIVE_APP],
 )
 
 at_exit { MANAGER.shutdown(archive: true) }

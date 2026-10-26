@@ -1,7 +1,7 @@
 # fmrb-mcp — Family mruby の開発ツールを MCP サーバとして提供する
 
 シリアルと flash (P1)、Tab5 の WiFi 遠隔 (P2)、Linux sim (P3)、
-ブラウザ版 (wasm) の 22 ツール。
+ブラウザ版 (wasm)、ネイティブ版 (Linux の 1 プロセス) の 27 ツール。
 計画は `doc/mcp_tools/plan.md`、各段の実装報告は `doc/mcp_tools/report/`。
 
 ## なぜあるか
@@ -130,6 +130,29 @@ WebAssembly に落とした core を実ブラウザで動かし、外から操�
   そのまま使うので、`text` は設定された配列に従う。sim と違って alt+ も効く。
 - ファイル選択の一覧は**クリックだけでは開かない** (選択と決定が別。
   `click` の後に `key enter`)。
+
+## ネイティブ版 (Linux の 1 プロセス)
+
+Modern の firmware を x86-64 の Linux プログラムにしたもの
+(fmruby-core/native/、doc/linux_native/)。docker もブラウザも使わない。
+中身は `tools/fmrb_native.rb` (shell からも同じことができる)。
+
+| tool | 動作 |
+|---|---|
+| `native_up(machine?, engine?, set?, alsa_file?, gui?)` | ヘッドレスで起動して**最初の 1 枚を image content で返す**。動いていれば再利用 |
+| `native_down(force?)` | 止める。自分が起動したものでなければ force が要る |
+| `native_screenshot()` | 合成済みの画面 (RGB565 そのまま。sim と違い RGB332 を通らない) |
+| `native_input(commands)` | sim と同じ語彙 (`click X Y` `text "..."` `key ...`) |
+| `native_app(action, path?, pid?)` | debugd (TCP 5565) 経由の `spawn` / `ps` / `kill` |
+
+- **sim・ブラウザ版と同時に動かせる**。ソケット (`/tmp/fmrb-native-<uid>`) と
+  debug の口 (5565) が別。
+- `machine` で**機種の定義**を選ぶ (fmruby-core/config/machines/ の名前か
+  パス、既定 `sdl`)。WSL2 で動くのは `sdl` だけで、ほかは装置が無いことを
+  理由つきで断る。その断りがそのままツールのエラーになる。
+- `alsa_file: true` で音を ALSA の file プラグインに流す (専用の asoundrc)。
+  音の値は `ruby tools/fmrb_native.rb audio` で測る。
+- 事前に fmruby-core で `rake native:mruby` (1 回) と `rake native:core`。
 
 ## 導入
 
