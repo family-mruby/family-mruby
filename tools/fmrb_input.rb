@@ -26,12 +26,20 @@
 #   fmrb_input.rb --layout jp ...         # keyboard layout for text/key
 #                                         # (default: keyboard_layout from
 #                                         #  config/system_conf_linux.toml)
+#   fmrb_input.rb --socket PATH ...       # send to another socket: the native
+#                                         # program's (tools/fmrb_native.rb
+#                                         # passes <run dir>/inject). Also
+#                                         # FMRB_INPUT_SOCKET; the option wins.
 #   fmrb_input.rb sleep MS                # pause between commands
 #   Multiple commands: fmrb_input.rb click 30 220 sleep 500 key enter
 
 require "socket"
 
 SOCKET_PATH = "/var/run/fmrb/fmrb_inject"
+# Where this run sends: the simulation's socket unless --socket or
+# FMRB_INPUT_SOCKET names another (the native program binds its own, so the
+# two can run side by side).
+$socket_path = ENV["FMRB_INPUT_SOCKET"].to_s.empty? ? SOCKET_PATH : ENV["FMRB_INPUT_SOCKET"]
 DOCKER_CONTAINER = "fmruby_graphics_audio"
 
 EV_KEY_DOWN = 0x01
@@ -211,6 +219,10 @@ def parse_commands(argv)
     $char_keys = load_keymap($layout)
     argv.slice!(at, 2)
   end
+  if (at = argv.index("--socket"))
+    $socket_path = argv[at + 1] or abort "--socket: missing path"
+    argv.slice!(at, 2)
+  end
 
   out = []
   i = 0
@@ -303,9 +315,9 @@ SENDER_SNIPPET = <<~PYTHON
 PYTHON
 
 def send_events(events)
-  if File.exist?(SOCKET_PATH)
+  if File.exist?($socket_path)
     sock = Socket.new(Socket::AF_UNIX, Socket::SOCK_DGRAM, 0)
-    dest = Socket.pack_sockaddr_un(SOCKET_PATH)
+    dest = Socket.pack_sockaddr_un($socket_path)
     events.each do |delay, packet|
       sleep(delay / 1000.0) if delay > 0
       sock.send(packet, 0, dest)
@@ -313,6 +325,8 @@ def send_events(events)
     return 0
   end
 
+  # Only the simulation's socket can be reached through its container.
+  abort "#{$socket_path}: no such socket (is the native program running?)" if $socket_path != SOCKET_PATH
   feed = events.map { |delay, packet| "#{delay},#{packet.unpack1('H*')}\n" }.join
   IO.popen(["docker", "exec", "-i", DOCKER_CONTAINER, "python3", "-c", SENDER_SNIPPET],
            "w") { |io| io.write(feed) }
