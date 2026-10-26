@@ -20,6 +20,10 @@
 #                                         # home end pageup pagedown insert delete
 #                                         # zenkaku katakana (JP kana input)
 #   fmrb_input.rb key shift+NAME          # with shift modifier
+#   fmrb_input.rb keydown NAME / keyup NAME
+#                                         # press / release separately, for a
+#                                         # key held for a time (keydown esc
+#                                         # sleep 1500 keyup esc)
 #   fmrb_input.rb wheel N                 # mouse wheel, N notches
 #                                         # (+ = away from you = scroll up)
 #   fmrb_input.rb text "STRING"           # type a string (ascii)
@@ -279,6 +283,10 @@ def parse_commands(argv)
       out << [pending_sleep, ev_key(EV_KEY_DOWN, sc, kc, mod)]
       pending_sleep = 0
       out << [KEY_DELAY_MS, ev_key(EV_KEY_UP, sc, kc, mod)]
+    when "keydown", "keyup"
+      sc, kc, mod = key_lookup(take.call(1)[0])
+      out << [pending_sleep, ev_key(cmd == "keydown" ? EV_KEY_DOWN : EV_KEY_UP, sc, kc, mod)]
+      pending_sleep = 0
     when "text"
       take.call(1)[0].each_char do |c|
         sc, shift = char_key(c)
