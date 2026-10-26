@@ -15,6 +15,14 @@ fmruby-core/CLAUDE.md を参照する
 
 fmruby-graphics-audio/CLAUDE.md を参照する
 
+# 回帰の確認 (まずこれ)
+
+変更の確認は、**先に fmruby-core の回帰の道具** (`rake regress` ほか、
+一覧は fmruby-core/CLAUDE.md の「テスト」、使い方は
+fmruby-core/doc/regression/usage.md) を流し、要約を読んで落ちたものだけ
+見る。下の MCP ツールで sim・実機を手で動かすのは、道具が受け持たない
+確認 (新しい画面の目視、実機の操作、耳・目での確認) のときに限る。
+
 # 検証ツール (MCP サーバ fmrb)
 
 sim・実機の検証操作は MCP サーバ **fmrb** (tools/mcp/、リポジトリ直下の
