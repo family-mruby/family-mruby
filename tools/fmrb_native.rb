@@ -33,6 +33,11 @@
 #                                   seconds (default 2) of the disk audio output
 #   fmrb_native.rb log [N]          the last N lines (default 40) of its log
 #   fmrb_native.rb status           running or not, machine, frame size, pid
+#   fmrb_native.rb stats [reset]    the blocking-call gate's counters (calls,
+#                                   jobs in flight, helper threads, cancels)
+#                                   and burst_ms, the longest time one task
+#                                   kept all others waiting; reset starts
+#                                   that maximum over
 #
 # The run directory (sockets, pid, log, audio) is /tmp/fmrb-native-<uid>,
 # or FMRB_NATIVE_RUN_DIR / --run-dir before the command. The program's own
@@ -303,6 +308,12 @@ def cmd_status
   end
 end
 
+def cmd_stats(args)
+  head, = ctl(args.first == "reset" ? "stats reset" : "stats")
+  abort "fmrb_native: #{head}" unless head.start_with?("OK ")
+  puts head.sub(/\AOK /, "")
+end
+
 def main
   args = ARGV.dup
   if (at = args.index("--run-dir"))
@@ -319,6 +330,7 @@ def main
   when "audio" then cmd_audio(args)
   when "log" then cmd_log(args)
   when "status" then cmd_status
+  when "stats" then cmd_stats(args)
   when nil, "-h", "--help" then usage
   else abort "unknown command: #{cmd} (see --help)"
   end
