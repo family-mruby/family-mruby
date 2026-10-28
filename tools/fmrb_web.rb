@@ -27,6 +27,23 @@
 #   fmrb_web.rb reload                          # reload the page (boots again)
 #   fmrb_web.rb reset                           # what the page's Erase button
 #                                               # does: files and settings gone
+#   fmrb_web.rb view [OUT.png]                  # what the page shows: with the
+#                                               # CRT look on, its view at
+#                                               # device pixels (doc/web_crt/)
+#   fmrb_web.rb crt [on|off|defaults|KEY=N]...  # the Look selector and its
+#                                               # sliders (scan mask glow curve
+#                                               # vignette, 0..100; stored like
+#                                               # a hand's choice), then print
+#                                               # the state and draw counters
+#                                               # (bench=N: time N draws)
+#   fmrb_web.rb zoom fit|1|2|3|forget           # the Zoom selector (stored);
+#                                               # forget drops the stored one
+#   fmrb_web.rb dom click|move|down|up X Y      # a real DOM mouse event at CSS
+#                                               # pixel X Y of the shown screen
+#                                               # (through the page's own
+#                                               # coordinate mapping, the CRT
+#                                               # curve included; `click`
+#                                               # writes the ring directly)
 #
 # Commands chain left to right, like fmrb_input.rb:
 #   fmrb_web.rb click 30 8 sleep 500 key enter sleep 1000 screenshot out.png
@@ -138,6 +155,10 @@ end
 
 # Turn the command line into ring events, one flush per command group so a
 # `sleep` between two clicks really waits on the page's side.
+# Words that start a command: an optional file name stops before them.
+COMMAND_WORDS = %w[move click down up wheel key text sleep screenshot ls cat get
+                   put rm reload reset status view crt dom zoom].freeze
+
 def run_commands(argv)
   events = []
   sent = 0
@@ -209,10 +230,57 @@ def run_commands(argv)
     when "screenshot"
       flush.call
       out = argv[i + 1] && !argv[i + 1].start_with?("-") &&
-            !%w[move click down up wheel key text sleep screenshot ls cat get
-                put rm reload reset status].include?(argv[i + 1]) ? argv[i + 1] : nil
+            !COMMAND_WORDS.include?(argv[i + 1]) ? argv[i + 1] : nil
       shot(out)
       i += out ? 2 : 1
+    when "view"
+      flush.call
+      out = argv[i + 1] && !argv[i + 1].start_with?("-") &&
+            !COMMAND_WORDS.include?(argv[i + 1]) ? argv[i + 1] : nil
+      res = request({ "op" => "view" })
+      png = Base64.decode64(res["png"])
+      out ||= File.join(CORE, "wasm", "build", "view.png")
+      File.binwrite(out, png)
+      puts "#{out} (#{res["look"]}, #{res["width"]}x#{res["height"]}, #{png.bytesize} bytes)"
+      i += out == argv[i + 1] ? 2 : 1
+    when "crt"
+      flush.call
+      cmd = { "op" => "crt" }
+      values = {}
+      j = i + 1
+      while j < argv.length && !COMMAND_WORDS.include?(argv[j])
+        case argv[j]
+        when "on" then cmd["look"] = "crt"
+        when "off" then cmd["look"] = "flat"
+        when "defaults" then cmd["defaults"] = true
+        when /\Abench=(\d+)\z/ then cmd["bench"] = $1.to_i
+        when /\A(\w+)=(\d+)\z/ then values[$1] = $2.to_i
+        else abort "crt: unknown argument #{argv[j]} (on, off, defaults, KEY=N)"
+        end
+        j += 1
+      end
+      cmd["values"] = values unless values.empty?
+      puts JSON.generate(request(cmd))
+      i = j
+    when "zoom"
+      flush.call
+      arg = argv[i + 1]
+      cmd = { "op" => "zoom" }
+      if arg == "forget" then cmd["forget"] = true
+      elsif %w[fit 1 2 3].include?(arg) then cmd["value"] = arg
+      else abort "zoom: fit, 1, 2, 3 or forget"
+      end
+      res = request(cmd)
+      puts "zoom=#{res["zoom"]} stored=#{res["stored"].inspect}"
+      i += 2
+    when "dom"
+      flush.call
+      kind = argv[i + 1]
+      abort "dom: click, move, down or up" unless %w[click move down up].include?(kind)
+      kind = { "down" => "mousedown", "up" => "mouseup" }.fetch(kind, kind)
+      res = request({ "op" => "dom", "kind" => kind, "x" => argv[i + 2].to_f, "y" => argv[i + 3].to_f })
+      puts "dom #{res["types"].join(",")} -> machine #{res["machine"] ? res["machine"].join(",") : "outside the picture (dropped)"}"
+      i += 4
     when "status"
       flush.call
       st = request({ "op" => "status" })
