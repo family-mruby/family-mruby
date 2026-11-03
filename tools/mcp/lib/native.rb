@@ -112,7 +112,7 @@ module FmrbMcp
       { sent: words, output: res[:output].strip }
     end
 
-    def app(action:, path: nil, pid: nil)
+    def app(action:, path: nil, pid: nil, restart: false, max: nil)
       args =
         case action
         when "ps" then ["app", "ps"]
@@ -122,8 +122,17 @@ module FmrbMcp
         when "kill"
           raise Error, "kill needs a pid (see action: \"ps\")" if pid.nil?
           ["app", "kill", pid.to_i.to_s]
+        when "checkpoint"
+          raise Error, "checkpoint needs a pid (see action: \"ps\")" if pid.nil?
+          a = ["app", "checkpoint", pid.to_i.to_s]
+          a << "--restart" if restart
+          a += ["--max", max.to_i.to_s] if max
+          a
+        when "restore"
+          raise Error, "restore needs an image path, e.g. /tmp/ckpt_counter.ckpt" if path.nil? || path.empty?
+          ["app", "restore", path]
         else
-          raise Error, "unknown action #{action.inspect} (spawn|ps|kill)"
+          raise Error, "unknown action #{action.inspect} (spawn|ps|kill|checkpoint|restore)"
         end
       res = run(args, timeout: CMD_TIMEOUT)
       unless res[:ok]

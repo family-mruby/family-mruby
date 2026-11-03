@@ -114,6 +114,15 @@ Dir.mktmpdir("fmrb-mcp-native") do |dir|
       b[:result]["argv"] == ["app", "kill", "7"], [a, b].inspect]
   end
 
+  check("app checkpoint passes the pid, restart and max; restore the image") do
+    a = native.app(action: "checkpoint", pid: 5, restart: true, max: 8000)
+    b = native.app(action: "checkpoint", pid: 6)
+    c = native.app(action: "restore", path: "/tmp/ckpt_counter.ckpt")
+    [a[:result]["argv"] == ["app", "checkpoint", "5", "--restart", "--max", "8000"] &&
+      b[:result]["argv"] == ["app", "checkpoint", "6"] &&
+      c[:result]["argv"] == ["app", "restore", "/tmp/ckpt_counter.ckpt"], [a, b, c].inspect]
+  end
+
   check("app spawn without a path says what is missing") do
     begin
       native.app(action: "spawn")

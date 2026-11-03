@@ -29,6 +29,18 @@
 #                                   layout of the user's /etc/system_conf.toml
 #   fmrb_native.rb app ps | spawn PATH | kill PID
 #                                   through the debug server (port 5565)
+#   fmrb_native.rb app checkpoint PID [--restart] [--max MS]
+#                                   write app PID to a checkpoint image and
+#                                   close it (doc/checkpoint); --restart starts
+#                                   the image again at once. Waits for the
+#                                   app's answer (MS, default 5000) and prints
+#                                   {status: written, path} | {status: refused,
+#                                   reason} | {status: timeout}. Only an app on
+#                                   mruby whose .app.toml says movable = true
+#                                   is written; another is refused and goes on
+#   fmrb_native.rb app restore PATH start an app from its image (a .ckpt,
+#                                   /tmp/<name>.ckpt inside the program: its
+#                                   /tmp is the program's own, not the PC's)
 #   fmrb_native.rb audio [SEC]      peak / RMS / non-zero samples of the last SEC
 #                                   seconds (default 2) of the disk audio output
 #   fmrb_native.rb log [N]          the last N lines (default 40) of its log
@@ -258,11 +270,35 @@ def cmd_app(args)
     when "kill"
       p = args.shift or abort "app kill: needs a pid (see app ps)"
       ["kill", "pid=#{p.to_i}"]
-    else abort "app: ps | spawn PATH | kill PID"
+    when "checkpoint"
+      checkpoint_kv(args)
+    when "restore"
+      p = args.shift or abort "app restore: needs an image (e.g. /tmp/ckpt_counter.ckpt)"
+      abort "app restore: #{p} is not a checkpoint image (.ckpt)" unless p.end_with?(".ckpt")
+      ["spawn", "path=#{p}"]
+    else abort "app: ps | spawn PATH | kill PID | checkpoint PID [--restart] [--max MS] | restore PATH"
     end
   out, status = Open3.capture2e("python3", DBG_CLIENT, "--json", "localhost:#{DEBUG_PORT}", *kv)
   abort "app #{action}: #{out.strip}" unless status.success?
   puts out.lines.last.to_s.strip
+end
+
+# app checkpoint PID [--restart] [--max MS] -> the debug server's checkpoint
+def checkpoint_kv(args)
+  pid = nil
+  restart = false
+  max = nil
+  while (a = args.shift)
+    case a
+    when "--restart" then restart = true
+    when "--max" then max = Integer(args.shift || abort("app checkpoint: --max needs milliseconds"))
+    else pid = Integer(a, exception: false) or abort "app checkpoint: #{a}: not a pid"
+    end
+  end
+  abort "app checkpoint: needs a pid (see app ps)" unless pid
+  kv = ["checkpoint", "pid=#{pid}", "restart=#{restart ? 1 : 0}"]
+  kv << "max=#{max}" if max
+  kv
 end
 
 def cmd_audio(args)

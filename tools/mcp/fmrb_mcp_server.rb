@@ -930,24 +930,40 @@ NATIVE_APP = MCP::Tool.define(
       action: "spawn", path: "/app/demo/kamon.app.rb"   -> returns a pid
       action: "ps"
       action: "kill",  pid: 5
+      action: "checkpoint", pid: 5, restart: true      -> {status, path | reason}
+      action: "restore", path: "/tmp/ckpt_counter.ckpt" -> returns a pid
 
     Paths are the machine's (/app, /home, /usr/share). /app, /usr and the
     rest of the distribution are the repository's flash/, read-only; /home
     and /etc are the user's (~/.local/share/family-mruby-dev).
+
+    checkpoint moves an app (fmruby-core doc/checkpoint): the app is stopped
+    at a safe point, written to /tmp/<name>.ckpt and closed; with restart the
+    image is started again at once and goes on from where it was (its
+    counters, Tasks and Machine.board_millis). It waits for the app's answer
+    (max ms, default 5000): status "written" with the path, "refused" with the
+    reason (the app goes on), or "timeout". Only an app on the mruby VM whose
+    .app.toml says movable = true is written (/app/test/ckpt_counter.app.rb
+    is one); an app with a window is refused for now. restore starts an
+    image again later. That /tmp is the program's own memory, not the PC's:
+    the image is reachable by path inside the program only.
 
     #{NATIVE_NOTE}
   DESC
   annotations: { destructive_hint: false, idempotent_hint: false, open_world_hint: true },
   input_schema: {
     properties: {
-      action: { type: "string", enum: %w[spawn ps kill], description: "spawn, ps or kill" },
-      path: { type: "string", description: "app path for spawn" },
-      pid: { type: "integer", description: "pid for kill (from action: ps)" },
+      action: { type: "string", enum: %w[spawn ps kill checkpoint restore],
+                description: "spawn, ps, kill, checkpoint or restore" },
+      path: { type: "string", description: "app path for spawn, image path (.ckpt) for restore" },
+      pid: { type: "integer", description: "pid for kill and checkpoint (from action: ps)" },
+      restart: { type: "boolean", description: "checkpoint: start the image again at once (default false)" },
+      max: { type: "integer", description: "checkpoint: how long to wait for the app's answer, ms (default 5000)" },
     },
     required: ["action"],
   },
-) do |action:, path: nil, pid: nil, server_context: nil, **_extra|
-  respond { NATIVE.app(action: action, path: path, pid: pid) }
+) do |action:, path: nil, pid: nil, restart: false, max: nil, server_context: nil, **_extra|
+  respond { NATIVE.app(action: action, path: path, pid: pid, restart: restart, max: max) }
 end
 
 # --- the browser build (wasm) ----------------------------------------------
