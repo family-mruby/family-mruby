@@ -123,6 +123,22 @@ Dir.mktmpdir("fmrb-mcp-native") do |dir|
       c[:result]["argv"] == ["app", "restore", "/tmp/ckpt_counter.ckpt"], [a, b, c].inspect]
   end
 
+  check("app move passes the pid, the other run directory and the hold; checkpoint the hold") do
+    a = native.app(action: "move", pid: 5, to: "/tmp/fmrb-native-b", hold: 4000)
+    b = native.app(action: "checkpoint", pid: 6, hold: 1500)
+    [a[:result]["argv"] == ["app", "move", "5", "--to", "/tmp/fmrb-native-b", "--hold", "4000"] &&
+      b[:result]["argv"] == ["app", "checkpoint", "6", "--hold", "1500"], [a, b].inspect]
+  end
+
+  check("app move without to says how to start the other program") do
+    begin
+      native.app(action: "move", pid: 5)
+      [false, "no error raised"]
+    rescue FmrbMcp::Error => e
+      [e.message.include?("--run-dir"), e.message]
+    end
+  end
+
   check("app spawn without a path says what is missing") do
     begin
       native.app(action: "spawn")

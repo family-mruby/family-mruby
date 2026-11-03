@@ -7,6 +7,7 @@
 #   fmrb_native.rb up [--gui] [--engine mruby] [--machine NAME|PATH]
 #                     [--set KEY=VALUE]... [--alsa-file] [--scale N]
 #                     [--user-dir DIR] [--cache-dir DIR] [--timeout SEC]
+#                     [--debug-port N]
 #                                   start it and wait for "Boot complete".
 #                                   Headless by default (SDL_VIDEODRIVER=dummy,
 #                                   SDL_AUDIODRIVER=disk into <run>/audio.raw);
@@ -17,6 +18,11 @@
 #                                   a machine this system cannot run is
 #                                   refused, and the reason is printed.
 #                                   --set changes one field of it.
+#                                   --debug-port moves its debug server off
+#                                   5565 (a second program beside the first:
+#                                   give it a --run-dir and a --user-dir of
+#                                   its own too); the run directory remembers
+#                                   it for the other commands.
 #                                   --alsa-file plays through ALSA instead,
 #                                   into alsa-lib's file plugin (an
 #                                   asoundrc of its own, ALSA_CONFIG_PATH):
@@ -28,8 +34,9 @@
 #                                   program's inject socket, with the keyboard
 #                                   layout of the user's /etc/system_conf.toml
 #   fmrb_native.rb app ps | spawn PATH | kill PID
-#                                   through the debug server (port 5565)
-#   fmrb_native.rb app checkpoint PID [--restart] [--max MS]
+#                                   through the debug server (port 5565, or
+#                                   the one up was given)
+#   fmrb_native.rb app checkpoint PID [--restart] [--hold MS] [--max MS]
 #                                   write app PID to a checkpoint image and
 #                                   close it (doc/checkpoint); --restart starts
 #                                   the image again at once. Waits for the
@@ -37,10 +44,35 @@
 #                                   {status: written, path} | {status: refused,
 #                                   reason} | {status: timeout}. Only an app on
 #                                   mruby whose .app.toml says movable = true
-#                                   is written; another is refused and goes on
+#                                   is written; another is refused and goes on.
+#                                   --hold MS: written but not closed: held
+#                                   where it stopped ({status: held, path,
+#                                   size}) until app finish, or MS run out
+#                                   (then it goes on by itself)
+#   fmrb_native.rb app finish PID close|continue [REASON]
+#                                   close a held app, or let it go on
 #   fmrb_native.rb app restore PATH start an app from its image (a .ckpt,
 #                                   /tmp/<name>.ckpt inside the program: its
-#                                   /tmp is the program's own, not the PC's)
+#                                   /tmp is the program's own, not the PC's);
+#                                   answers once it is restored: {status:
+#                                   restored, pid} | {status: refused, reason}
+#   fmrb_native.rb app move PID --to RUN_DIR [--hold MS] [--damage]
+#                                   move app PID into the program of RUN_DIR
+#                                   (another native program, started with
+#                                   --run-dir and --debug-port): written and
+#                                   held here, the image (and its .toml) is
+#                                   carried there in pieces, started there,
+#                                   and closed here once it is up there, or
+#                                   let go on here when it was refused there
+#                                   or nobody answered (MS, default 10000).
+#                                   Prints {status: moved, pid (there), ...}
+#                                   or {status: stayed, reason, ...}.
+#                                   --damage cuts the image short on the way
+#                                   (for the regression check: refused there)
+#   fmrb_native.rb file get PATH OUT | put SRC PATH
+#                                   a file under the program's /tmp/ out to
+#                                   the PC, or in from it (in pieces, through
+#                                   the debug server)
 #   fmrb_native.rb audio [SEC]      peak / RMS / non-zero samples of the last SEC
 #                                   seconds (default 2) of the disk audio output
 #   fmrb_native.rb log [N]          the last N lines (default 40) of its log
@@ -64,8 +96,14 @@ HERE = File.dirname(File.expand_path(__FILE__))
 CORE = File.expand_path(File.join(HERE, "..", "fmruby-core"))
 DBG_CLIENT = File.join(CORE, "tool", "debug", "fmrb_dbg_client.py")
 INPUT_TOOL = File.join(HERE, "fmrb_input.rb")
-DEBUG_PORT = (ENV["FMRB_DEBUG_TCP_PORT"] || 5565).to_i
 AUDIO_RATE = 15_720
+DEFAULT_DEBUG_PORT = 5565
+# A move holds the app this long by default while its image is carried.
+MOVE_HOLD_MS = 10_000
+# Bytes of a file per debug request (a frame is 4 KB with its header).
+PIECE = 3072
+
+require_relative "fmrb_msgpack"
 
 def usage
   puts File.read(__FILE__)[/\A(#!.*\n)?((?:#.*\n)+)/, 2].gsub(/^# ?/, "")
@@ -76,6 +114,103 @@ def run_dir
 end
 
 def path(name) = File.join(run_dir, name)
+
+# The debug port of the program of a run directory: FMRB_DEBUG_TCP_PORT, else
+# the one `up` was given (remembered there), else 5565.
+def debug_port(dir = run_dir)
+  return ENV["FMRB_DEBUG_TCP_PORT"].to_i if dir == run_dir && !ENV["FMRB_DEBUG_TCP_PORT"].to_s.empty?
+  Integer(File.read(File.join(dir, "debug_port")).strip)
+rescue Errno::ENOENT, ArgumentError
+  DEFAULT_DEBUG_PORT
+end
+
+# The debug server's protocol (doc/remote_debug/vm_remote_debug_protocol.md):
+# frames of a u32 length and a msgpack body; a request is [0, seq, cmd,
+# payload], its response [1, seq, err, payload]. One connection for many
+# requests (a file in pieces), which the Python client's command line is not.
+class DebugLink
+  class Error < StandardError; end
+
+  def initialize(port, timeout: 5)
+    @port = port
+    @timeout = timeout
+    @seq = 0
+    @sock = Socket.tcp("127.0.0.1", port, connect_timeout: timeout)
+    @buf = +"".b
+    request("version")   # the daemon answers before anything real is sent
+  rescue Errno::ECONNREFUSED, Errno::ETIMEDOUT, SocketError => e
+    raise Error, "no debug server on port #{port} (#{e.class.name.split('::').last}); is the program up?"
+  end
+
+  def close = @sock.close
+
+  # The payload of the answer; raises with the error code when err != 0.
+  def request(cmd, payload = nil, timeout: @timeout)
+    @seq = (@seq + 1) & 0xFFFF
+    body = FmrbMsgpack.pack([0, @seq, cmd, payload])
+    @sock.write([body.bytesize].pack("N") + body)
+    deadline = Time.now + timeout
+    loop do
+      msg = read_frame(deadline) or raise Error, "#{cmd}: no answer from port #{@port} in #{timeout}s"
+      next unless msg.is_a?(Array) && msg[0] == 1 && msg[1] == @seq
+      raise Error, "#{cmd}: error #{msg[2]}" unless msg[2].zero?
+      return msg[3]
+    end
+  end
+
+  private
+
+  def read_frame(deadline)
+    loop do
+      if @buf.bytesize >= 4
+        n = @buf.unpack1("N")
+        if @buf.bytesize >= 4 + n
+          body = @buf.byteslice(4, n)
+          @buf = @buf.byteslice(4 + n..)
+          return FmrbMsgpack.unpack(body)
+        end
+      end
+      left = deadline - Time.now
+      return nil if left <= 0
+      next unless IO.select([@sock], nil, nil, left)
+      chunk = @sock.read_nonblock(65_536, exception: false)
+      raise Error, "the debug server on port #{@port} closed the connection" if chunk.nil?
+      @buf << chunk.b unless chunk == :wait_readable
+    end
+  end
+end
+
+def with_debug(port)
+  link = DebugLink.new(port)
+  yield link
+ensure
+  link&.close
+end
+
+# A file under the program's /tmp/, in pieces.
+def file_get(link, file)
+  data = +"".b
+  size = nil
+  loop do
+    r = link.request("file_get", { "path" => file, "pos" => data.bytesize })
+    size ||= r["size"]
+    data << r["data"].to_s.b
+    break if data.bytesize >= size || r["data"].to_s.empty?
+  end
+  raise DebugLink::Error, "#{file}: #{data.bytesize} of #{size} bytes" if data.bytesize != size
+  data
+end
+
+def file_put(link, file, data)
+  id = link.request("file_begin", { "path" => file, "size" => data.bytesize })["id"]
+  pos = 0
+  while pos < data.bytesize
+    piece = data.byteslice(pos, PIECE)
+    link.request("file_chunk", { "id" => id, "pos" => pos, "data" => piece })
+    pos += piece.bytesize
+  end
+  link.request("file_commit", { "id" => id })
+end
 
 def pid
   Integer(File.read(path("pid")).strip)
@@ -143,6 +278,7 @@ def cmd_up(args)
   timeout = 60
   user_dir = nil
   alsa_file = false
+  port = nil
   until args.empty?
     a = args.shift
     case a
@@ -155,6 +291,7 @@ def cmd_up(args)
     when "--user-dir" then user_dir = File.expand_path(args.shift); extra += ["--user-dir", user_dir]
     when "--cache-dir" then extra += ["--cache-dir", File.expand_path(args.shift)]
     when "--timeout" then timeout = args.shift.to_i
+    when "--debug-port" then port = Integer(args.shift)
     else abort "up: unknown option #{a}"
     end
   end
@@ -166,6 +303,10 @@ def cmd_up(args)
   FileUtils.mkdir_p(run_dir, mode: 0o700)
   log = path("core.log")
   env = { "FMRB_NATIVE_RUN_DIR" => run_dir }
+  port ||= ENV["FMRB_DEBUG_TCP_PORT"].to_s.empty? ? DEFAULT_DEBUG_PORT : ENV["FMRB_DEBUG_TCP_PORT"].to_i
+  env["FMRB_DEBUG_TCP_PORT"] = port.to_s
+  # Remembered for the other commands (app, file, a move into this one).
+  File.write(path("debug_port"), "#{port}\n")
   unless gui
     env["SDL_VIDEODRIVER"] = "dummy"
     env["SDL_AUDIODRIVER"] = "disk"
@@ -202,6 +343,7 @@ def cmd_up(args)
   printf("up: pid %d, boot complete in %.1f s (machine %s, %s, %s%s)\n", child, Time.now - started,
          machine, engine, gui ? "window" : "headless", alsa_file ? ", ALSA into the file plugin" : "")
   puts "  user dir: #{user_dir || user_dir_default}"
+  puts "  debug port: #{port}" if port != DEFAULT_DEBUG_PORT
   puts "  log: #{log}"
 end
 
@@ -275,30 +417,155 @@ def cmd_app(args)
     when "restore"
       p = args.shift or abort "app restore: needs an image (e.g. /tmp/ckpt_counter.ckpt)"
       abort "app restore: #{p} is not a checkpoint image (.ckpt)" unless p.end_with?(".ckpt")
-      ["spawn", "path=#{p}"]
-    else abort "app: ps | spawn PATH | kill PID | checkpoint PID [--restart] [--max MS] | restore PATH"
+      return debug_json { |l| l.request("restore", { "path" => p, "max" => 8000 }, timeout: 12) }
+    when "finish"
+      p = Integer(args.shift || "", exception: false) or abort "app finish: needs a pid"
+      how = args.shift
+      abort "app finish: close or continue" unless %w[close continue].include?(how)
+      payload = { "pid" => p, "close" => how == "close", "reason" => args.join(" "), "max" => 5000 }
+      return debug_json { |l| l.request("checkpoint_finish", payload, timeout: 10) }
+    when "move" then return cmd_move(args)
+    else abort "app: ps | spawn PATH | kill PID | checkpoint PID [--restart] [--hold MS] [--max MS] | " \
+               "finish PID close|continue | restore PATH | move PID --to RUN_DIR"
     end
-  out, status = Open3.capture2e("python3", DBG_CLIENT, "--json", "localhost:#{DEBUG_PORT}", *kv)
+  out, status = Open3.capture2e("python3", DBG_CLIENT, "--json", "localhost:#{debug_port}", *kv)
   abort "app #{action}: #{out.strip}" unless status.success?
   puts out.lines.last.to_s.strip
 end
 
-# app checkpoint PID [--restart] [--max MS] -> the debug server's checkpoint
+# app checkpoint PID [--restart] [--hold MS] [--max MS] -> the debug server's checkpoint
 def checkpoint_kv(args)
   pid = nil
   restart = false
   max = nil
+  hold = nil
   while (a = args.shift)
     case a
     when "--restart" then restart = true
     when "--max" then max = Integer(args.shift || abort("app checkpoint: --max needs milliseconds"))
+    when "--hold" then hold = Integer(args.shift || abort("app checkpoint: --hold needs milliseconds"))
     else pid = Integer(a, exception: false) or abort "app checkpoint: #{a}: not a pid"
     end
   end
   abort "app checkpoint: needs a pid (see app ps)" unless pid
   kv = ["checkpoint", "pid=#{pid}", "restart=#{restart ? 1 : 0}"]
   kv << "max=#{max}" if max
+  kv << "hold=#{hold}" if hold
   kv
+end
+
+# One request on this program's debug server, printed as JSON.
+def debug_json
+  r = with_debug(debug_port) { |l| yield l }
+  puts JSON.generate(r)
+rescue DebugLink::Error => e
+  abort "fmrb_native: #{e.message}"
+end
+
+def ms_since(t) = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000).round
+
+# app move PID --to RUN_DIR: the steps of a move (doc/checkpoint F2, D15).
+# This program's kernel has the app write its image and hold where it
+# stopped; the image and the .toml beside it go to the other program in
+# pieces (file_begin / file_chunk / file_commit); the other program's kernel
+# starts the image and answers once it is restored; this kernel then closes
+# the app, or lets it go on when the other side refused or did not answer.
+def cmd_move(args)
+  pid = nil
+  to = nil
+  hold = MOVE_HOLD_MS
+  damage = false
+  while (a = args.shift)
+    case a
+    when "--to" then to = File.expand_path(args.shift || abort("app move: --to needs a run directory"))
+    when "--hold" then hold = Integer(args.shift || abort("app move: --hold needs milliseconds"))
+    when "--damage" then damage = true
+    else pid = Integer(a, exception: false) or abort "app move: #{a}: not a pid"
+    end
+  end
+  abort "app move: needs a pid and --to RUN_DIR" unless pid && to
+  abort "app move: #{to} is this program's run directory" if to == File.expand_path(run_dir)
+  t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  out = { "from_pid" => pid }
+  begin
+    a = DebugLink.new(debug_port)
+  rescue DebugLink::Error => e
+    abort "fmrb_native: #{e.message}"
+  end
+  begin
+    held = a.request("checkpoint", { "pid" => pid, "hold" => hold, "max" => 8000 }, timeout: 12)
+    unless held["status"] == "held"
+      # Never held: refused, or no answer in time (were it held later, its
+      # kernel lets it go on once the hold runs out).
+      puts JSON.generate(out.merge("status" => "stayed", "reason" => held["reason"] || held["status"]))
+      return
+    end
+    image = held["path"]
+    out["image"] = image
+    out["held_ms"] = ms_since(t0)
+    toml = image.sub(/\.ckpt\z/, ".toml")
+    there = nil
+    verdict = begin
+      data = file_get(a, image)
+      attrs = file_get(a, toml)
+      out["bytes"] = data.bytesize
+      data = data.byteslice(0, data.bytesize - 16) if damage
+      b = DebugLink.new(debug_port(to))
+      begin
+        file_put(b, toml, attrs)
+        file_put(b, image, data)
+        out["carried_ms"] = ms_since(t0)
+        r = b.request("restore", { "path" => image, "max" => 8000 }, timeout: 12)
+        there = r["pid"] if r["status"] == "restored"
+        r
+      ensure
+        b.close
+      end
+    rescue DebugLink::Error => e
+      { "status" => "refused", "reason" => e.message }
+    end
+    reason = verdict["reason"] || verdict["status"]
+    fin = a.request("checkpoint_finish", { "pid" => pid, "close" => !there.nil?, "reason" => there ? "" : "not taken there: #{reason}",
+                                           "max" => 5000 }, timeout: 10)
+    out["done_ms"] = ms_since(t0)
+    if there && fin["status"] == "closed"
+      puts JSON.generate(out.merge("status" => "moved", "pid" => there))
+    elsif there
+      # Up there but this one went on (its hold ran out first): two copies;
+      # the one there is stopped.
+      with_debug(debug_port(to)) { |b| b.request("kill", { "pid" => there }, timeout: 10) } rescue nil # rubocop:disable Style/RescueModifier
+      puts JSON.generate(out.merge("status" => "stayed", "reason" => "it went on here before it was up there " \
+                                   "(#{fin['reason'] || fin['status']}); the copy there was stopped"))
+    else
+      puts JSON.generate(out.merge("status" => "stayed", "reason" => reason, "here" => fin["status"]))
+    end
+  rescue DebugLink::Error => e
+    abort "fmrb_native: app move: #{e.message}"
+  ensure
+    a.close
+  end
+end
+
+# file get PATH OUT | put SRC PATH: a file under the program's /tmp/.
+def cmd_file(args)
+  what = args.shift
+  case what
+  when "get"
+    src, out = args
+    abort "file get: PATH OUT" unless src && out
+    data = with_debug(debug_port) { |l| file_get(l, src) }
+    File.binwrite(out, data)
+    puts "file get: #{src} -> #{out} (#{data.bytesize} bytes)"
+  when "put"
+    src, dest = args
+    abort "file put: SRC PATH" unless src && dest
+    data = File.binread(src)
+    with_debug(debug_port) { |l| file_put(l, dest, data) }
+    puts "file put: #{src} -> #{dest} (#{data.bytesize} bytes)"
+  else abort "file: get PATH OUT | put SRC PATH"
+  end
+rescue DebugLink::Error => e
+  abort "fmrb_native: #{e.message}"
 end
 
 def cmd_audio(args)
@@ -363,6 +630,7 @@ def main
   when "shot" then cmd_shot(args)
   when "input" then cmd_input(args)
   when "app" then cmd_app(args)
+  when "file" then cmd_file(args)
   when "audio" then cmd_audio(args)
   when "log" then cmd_log(args)
   when "status" then cmd_status

@@ -112,7 +112,7 @@ module FmrbMcp
       { sent: words, output: res[:output].strip }
     end
 
-    def app(action:, path: nil, pid: nil, restart: false, max: nil)
+    def app(action:, path: nil, pid: nil, restart: false, max: nil, hold: nil, to: nil)
       args =
         case action
         when "ps" then ["app", "ps"]
@@ -126,13 +126,24 @@ module FmrbMcp
           raise Error, "checkpoint needs a pid (see action: \"ps\")" if pid.nil?
           a = ["app", "checkpoint", pid.to_i.to_s]
           a << "--restart" if restart
+          a += ["--hold", hold.to_i.to_s] if hold
           a += ["--max", max.to_i.to_s] if max
+          a
+        when "move"
+          raise Error, "move needs a pid (see action: \"ps\")" if pid.nil?
+          if to.nil? || to.empty?
+            raise Error, "move needs to: the run directory of the other native program " \
+                         "(start it with: ruby tools/fmrb_native.rb --run-dir DIR up --debug-port 5566 " \
+                         "--user-dir DIR2)"
+          end
+          a = ["app", "move", pid.to_i.to_s, "--to", to]
+          a += ["--hold", hold.to_i.to_s] if hold
           a
         when "restore"
           raise Error, "restore needs an image path, e.g. /tmp/ckpt_counter.ckpt" if path.nil? || path.empty?
           ["app", "restore", path]
         else
-          raise Error, "unknown action #{action.inspect} (spawn|ps|kill|checkpoint|restore)"
+          raise Error, "unknown action #{action.inspect} (spawn|ps|kill|checkpoint|restore|move)"
         end
       res = run(args, timeout: CMD_TIMEOUT)
       unless res[:ok]

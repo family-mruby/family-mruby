@@ -143,7 +143,7 @@ Modern の firmware を x86-64 の Linux プログラムにしたもの
 | `native_down(force?)` | 止める。自分が起動したものでなければ force が要る |
 | `native_screenshot()` | 合成済みの画面 (RGB565 そのまま。sim と違い RGB332 を通らない) |
 | `native_input(commands)` | sim と同じ語彙 (`click X Y` `text "..."` `key ...`) |
-| `native_app(action, path?, pid?, restart?, max?)` | debugd (TCP 5565) 経由の `spawn` / `ps` / `kill`、アプリを止めてイメージに書く `checkpoint` (`restart` で起動し直す) とイメージから起動する `restore` (fmruby-core の doc/checkpoint) |
+| `native_app(action, path?, pid?, restart?, max?, hold?, to?)` | debugd (TCP 5565) 経由の `spawn` / `ps` / `kill`、アプリを止めてイメージに書く `checkpoint` (`restart` で起動し直す、`hold` で閉じずに止めておく) とイメージから起動する `restore`、もう 1 つのネイティブ版 (`to` = その run dir) へアプリを移す `move` (fmruby-core の doc/checkpoint) |
 
 - **sim・ブラウザ版と同時に動かせる**。ソケット (`/tmp/fmrb-native-<uid>`) と
   debug の口 (5565) が別。

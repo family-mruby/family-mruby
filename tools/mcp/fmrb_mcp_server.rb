@@ -931,7 +931,8 @@ NATIVE_APP = MCP::Tool.define(
       action: "ps"
       action: "kill",  pid: 5
       action: "checkpoint", pid: 5, restart: true      -> {status, path | reason}
-      action: "restore", path: "/tmp/ckpt_counter.ckpt" -> returns a pid
+      action: "restore", path: "/tmp/ckpt_counter.ckpt" -> {status: restored, pid | refused, reason}
+      action: "move", pid: 5, to: "/tmp/fmrb-native-b"   -> {status: moved, pid | stayed, reason}
 
     Paths are the machine's (/app, /home, /usr/share). /app, /usr and the
     rest of the distribution are the repository's flash/, read-only; /home
@@ -945,25 +946,40 @@ NATIVE_APP = MCP::Tool.define(
     reason (the app goes on), or "timeout". Only an app on the mruby VM whose
     .app.toml says movable = true is written (/app/test/ckpt_counter.app.rb
     is one); an app with a window is refused for now. restore starts an
-    image again later. That /tmp is the program's own memory, not the PC's:
-    the image is reachable by path inside the program only.
+    image again later and answers once it is restored. That /tmp is the
+    program's own memory, not the PC's: the image is reachable by path inside
+    the program only.
+
+    move carries an app into a second native program of the same build
+    (doc/checkpoint F2). Start that one from a shell with a run directory,
+    debug port and user directory of its own:
+      ruby tools/fmrb_native.rb --run-dir /tmp/fmrb-native-b up --debug-port 5566 --user-dir /tmp/fmrb-native-b-home
+    and pass its run directory as to. The app is written and held (not
+    closed), its image goes over in pieces, the other program starts it, and
+    this one closes the app once it is up there -- or lets it go on when the
+    other side refused it or nobody answered within hold ms (default 10000).
+    The answer says moved (pid: the app's pid there) or stayed (reason).
+    checkpoint with hold only writes and holds (the app goes on when the hold
+    runs out); the CLI's `app finish PID close|continue` ends a hold by hand.
 
     #{NATIVE_NOTE}
   DESC
   annotations: { destructive_hint: false, idempotent_hint: false, open_world_hint: true },
   input_schema: {
     properties: {
-      action: { type: "string", enum: %w[spawn ps kill checkpoint restore],
-                description: "spawn, ps, kill, checkpoint or restore" },
+      action: { type: "string", enum: %w[spawn ps kill checkpoint restore move],
+                description: "spawn, ps, kill, checkpoint, restore or move" },
       path: { type: "string", description: "app path for spawn, image path (.ckpt) for restore" },
-      pid: { type: "integer", description: "pid for kill and checkpoint (from action: ps)" },
+      pid: { type: "integer", description: "pid for kill, checkpoint and move (from action: ps)" },
       restart: { type: "boolean", description: "checkpoint: start the image again at once (default false)" },
       max: { type: "integer", description: "checkpoint: how long to wait for the app's answer, ms (default 5000)" },
+      hold: { type: "integer", description: "checkpoint, move: hold the written app this long, ms (move: default 10000)" },
+      to: { type: "string", description: "move: the other native program's run directory" },
     },
     required: ["action"],
   },
-) do |action:, path: nil, pid: nil, restart: false, max: nil, server_context: nil, **_extra|
-  respond { NATIVE.app(action: action, path: path, pid: pid, restart: restart, max: max) }
+) do |action:, path: nil, pid: nil, restart: false, max: nil, hold: nil, to: nil, server_context: nil, **_extra|
+  respond { NATIVE.app(action: action, path: path, pid: pid, restart: restart, max: max, hold: hold, to: to) }
 end
 
 # --- the browser build (wasm) ----------------------------------------------
