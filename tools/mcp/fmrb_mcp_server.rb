@@ -959,6 +959,9 @@ NATIVE_APP = MCP::Tool.define(
     this one closes the app once it is up there -- or lets it go on when the
     other side refused it or nobody answered within hold ms (default 10000).
     The answer says moved (pid: the app's pid there) or stayed (reason).
+    A moved answer may carry missing: the methods the app's code calls that
+    the build there has none of (it moved anyway; only the names its
+    .app.toml declares in requires = [...] make the other side refuse).
     to may also be a debug port on this machine: "5555" moves the app into
     the Linux simulation (sim_up first; a Retro sim's smaller screen makes a
     wider window fit and the app gets on_resize). Out of the simulation, use

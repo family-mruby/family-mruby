@@ -55,7 +55,11 @@
 #                                   /tmp/<name>.ckpt inside the program: its
 #                                   /tmp is the program's own, not the PC's);
 #                                   answers once it is restored: {status:
-#                                   restored, pid} | {status: refused, reason}
+#                                   restored, pid[, missing]} | {status:
+#                                   refused, reason}. missing: the methods the
+#                                   program calls that this build has none of
+#                                   (it goes on; only the names its .app.toml
+#                                   requires are refused)
 #   fmrb_native.rb app move PID --to RUN_DIR|PORT [--hold MS] [--damage]
 #                                   move app PID into the program of RUN_DIR
 #                                   (another native program, started with
@@ -69,8 +73,9 @@
 #                                   and closed here once it is up there, or
 #                                   let go on here when it was refused there
 #                                   or nobody answered (MS, default 10000).
-#                                   Prints {status: moved, pid (there), ...}
-#                                   or {status: stayed, reason, ...}.
+#                                   Prints {status: moved, pid (there), ...,
+#                                   missing (there, when any)} or {status:
+#                                   stayed, reason, ...}.
 #                                   --damage cuts the image short on the way
 #                                   (for the regression check: refused there)
 #   fmrb_native.rb file get PATH OUT | put SRC PATH
@@ -538,6 +543,7 @@ def cmd_move(args)
     fin = a.request("checkpoint_finish", { "pid" => pid, "close" => !there.nil?, "reason" => there ? "" : "not taken there: #{reason}",
                                            "max" => 5000 }, timeout: 10)
     out["done_ms"] = ms_since(t0)
+    out["missing"] = verdict["missing"] if there && verdict["missing"]
     if there && fin["status"] == "closed"
       puts JSON.generate(out.merge("status" => "moved", "pid" => there))
     elsif there
