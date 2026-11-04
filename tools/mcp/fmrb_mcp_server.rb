@@ -933,6 +933,7 @@ NATIVE_APP = MCP::Tool.define(
       action: "checkpoint", pid: 5, restart: true      -> {status, path | reason}
       action: "restore", path: "/tmp/ckpt_counter.ckpt" -> {status: restored, pid | refused, reason}
       action: "move", pid: 5, to: "/tmp/fmrb-native-b"   -> {status: moved, pid | stayed, reason}
+      action: "move", pid: 5, node: "fmruby-abcdef"      -> the same, over Asterism
 
     Paths are the machine's (/app, /home, /usr/share). /app, /usr and the
     rest of the distribution are the repository's flash/, read-only; /home
@@ -967,6 +968,18 @@ NATIVE_APP = MCP::Tool.define(
     wider window fit and the app gets on_resize). Out of the simulation, use
     the CLI: FMRB_DEBUG_TCP_PORT=5555 ruby tools/fmrb_native.rb app move PID
     --to <native run dir> (doc/checkpoint F4).
+    node moves the app over Asterism instead (doc/checkpoint F5): to the
+    machine whose Asterism node ID it is, a native program, the simulation,
+    the browser build or a board, through the router in this program's
+    /home/asterism/config.toml. The kernel asks that machine first whether its
+    build has the methods the app calls (refused before anything is stopped
+    when one its .app.toml requires is missing), then writes and holds the
+    app, its transfer app carries the image, and the app closes here once it
+    is up there. The other machine takes it only from the nodes named in its
+    /home/asterism/receive.toml (from = ["<this node>"]). The answer: moved
+    (pid there, detail, missing) or stayed (reason, here: "not stopped" or
+    "went on"). It waits up to max ms (default 40000: the transfer app may
+    have to connect first).
     checkpoint with hold only writes and holds (the app goes on when the hold
     runs out); the CLI's `app finish PID close|continue` ends a hold by hand.
 
@@ -983,11 +996,12 @@ NATIVE_APP = MCP::Tool.define(
       max: { type: "integer", description: "checkpoint: how long to wait for the app's answer, ms (default 5000)" },
       hold: { type: "integer", description: "checkpoint, move: hold the written app this long, ms (move: default 10000)" },
       to: { type: "string", description: "move: the other native program's run directory, or a debug port (5555: the simulation)" },
+      node: { type: "string", description: "move over Asterism: the other machine's Asterism node ID (instead of to)" },
     },
     required: ["action"],
   },
-) do |action:, path: nil, pid: nil, restart: false, max: nil, hold: nil, to: nil, server_context: nil, **_extra|
-  respond { NATIVE.app(action: action, path: path, pid: pid, restart: restart, max: max, hold: hold, to: to) }
+) do |action:, path: nil, pid: nil, restart: false, max: nil, hold: nil, to: nil, node: nil, server_context: nil, **_extra|
+  respond { NATIVE.app(action: action, path: path, pid: pid, restart: restart, max: max, hold: hold, to: to, node: node) }
 end
 
 # --- the browser build (wasm) ----------------------------------------------

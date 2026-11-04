@@ -135,6 +135,12 @@ Dir.mktmpdir("fmrb-mcp-native") do |dir|
     [a[:result]["argv"] == ["app", "move", "5", "--to", "5555"], a.inspect]
   end
 
+  check("app move passes node over Asterism, with the hold and max") do
+    a = native.app(action: "move", pid: 5, node: "fmruby-abcdef", hold: 3000, max: 20000)
+    [a[:result]["argv"] == ["app", "move", "5", "--node", "fmruby-abcdef", "--max", "20000", "--hold", "3000"],
+     a.inspect]
+  end
+
   check("app move without to says how to start the other program") do
     begin
       native.app(action: "move", pid: 5)

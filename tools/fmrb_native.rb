@@ -78,6 +78,22 @@
 #                                   stayed, reason, ...}.
 #                                   --damage cuts the image short on the way
 #                                   (for the regression check: refused there)
+#   fmrb_native.rb app move PID --node NODE [--hold MS] [--max MS]
+#                                   move app PID to the machine whose Asterism
+#                                   node ID is NODE (doc/checkpoint F5): this
+#                                   program's kernel asks that machine first
+#                                   (the methods the app calls; refused
+#                                   before anything stops when a name its
+#                                   .app.toml requires is missing there), has
+#                                   the app write its image and hold, has the
+#                                   transfer app carry it over Asterism, and
+#                                   closes it here once it is up there (or
+#                                   lets it go on). That machine takes it only
+#                                   from the nodes in its
+#                                   /home/asterism/receive.toml. Prints
+#                                   {status: moved, pid (there), detail,
+#                                   missing?, took_ms} | {status: stayed,
+#                                   reason, here} | {status: timeout}
 #   fmrb_native.rb file get PATH OUT | put SRC PATH
 #                                   a file under the program's /tmp/ out to
 #                                   the PC, or in from it (in pieces, through
@@ -480,6 +496,7 @@ def ms_since(t) = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - t) * 1000)
 # starts the image and answers once it is restored; this kernel then closes
 # the app, or lets it go on when the other side refused or did not answer.
 def cmd_move(args)
+  return cmd_move_node(args) if args.include?("--node")
   pid = nil
   to = nil
   hold = MOVE_HOLD_MS
@@ -560,6 +577,41 @@ def cmd_move(args)
   ensure
     a.close
   end
+end
+
+# app move PID --node NODE: a move over Asterism (doc/checkpoint F5). The
+# program's kernel holds every step; the debug server's "move" waits for the
+# outcome, read from the app's answer ("moved to NODE as PID n; it lacks:
+# ..." or why it stayed).
+def cmd_move_node(args)
+  pid = nil
+  node = nil
+  hold = nil
+  max = 40_000
+  while (a = args.shift)
+    case a
+    when "--node" then node = args.shift || abort("app move: --node needs the Asterism node ID of the other machine")
+    when "--hold" then hold = Integer(args.shift || abort("app move: --hold needs milliseconds"))
+    when "--max" then max = Integer(args.shift || abort("app move: --max needs milliseconds"))
+    else pid = Integer(a, exception: false) or abort "app move: #{a}: not a pid"
+    end
+  end
+  abort "app move: needs a pid and --node NODE" unless pid && node
+  req = { "pid" => pid, "to" => node, "max" => max }
+  req["hold"] = hold if hold
+  t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  r = with_debug(debug_port) { |link| link.request("move", req, timeout: max / 1000 + 5) }
+  out = { "from_pid" => pid, "to" => node }.merge(r)
+  if r["status"] == "moved"
+    detail = r["detail"].to_s
+    out["pid"] = detail[/as PID (\d+)/, 1].to_i
+    lacks = detail[/it lacks: (.*)\z/, 1]
+    out["missing"] = lacks.split(" ") if lacks
+  end
+  out["took_ms"] = ms_since(t0)
+  puts JSON.generate(out)
+rescue DebugLink::Error => e
+  abort "fmrb_native: app move: #{e.message}"
 end
 
 # file get PATH OUT | put SRC PATH: a file under the program's /tmp/.
