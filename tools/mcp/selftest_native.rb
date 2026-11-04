@@ -130,6 +130,11 @@ Dir.mktmpdir("fmrb-mcp-native") do |dir|
       b[:result]["argv"] == ["app", "checkpoint", "6", "--hold", "1500"], [a, b].inspect]
   end
 
+  check("app move passes a debug port as it is (the simulation's 5555)") do
+    a = native.app(action: "move", pid: 5, to: "5555")
+    [a[:result]["argv"] == ["app", "move", "5", "--to", "5555"], a.inspect]
+  end
+
   check("app move without to says how to start the other program") do
     begin
       native.app(action: "move", pid: 5)

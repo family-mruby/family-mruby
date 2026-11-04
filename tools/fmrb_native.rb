@@ -56,10 +56,14 @@
 #                                   /tmp is the program's own, not the PC's);
 #                                   answers once it is restored: {status:
 #                                   restored, pid} | {status: refused, reason}
-#   fmrb_native.rb app move PID --to RUN_DIR [--hold MS] [--damage]
+#   fmrb_native.rb app move PID --to RUN_DIR|PORT [--hold MS] [--damage]
 #                                   move app PID into the program of RUN_DIR
 #                                   (another native program, started with
-#                                   --run-dir and --debug-port): written and
+#                                   --run-dir and --debug-port), or into the
+#                                   one whose debug server is on PORT here
+#                                   (the Linux simulation: 5555). The app
+#                                   moves out of the simulation the same way
+#                                   with FMRB_DEBUG_TCP_PORT=5555: written and
 #                                   held here, the image (and its .toml) is
 #                                   carried there in pieces, started there,
 #                                   and closed here once it is up there, or
@@ -426,7 +430,7 @@ def cmd_app(args)
       return debug_json { |l| l.request("checkpoint_finish", payload, timeout: 10) }
     when "move" then return cmd_move(args)
     else abort "app: ps | spawn PATH | kill PID | checkpoint PID [--restart] [--hold MS] [--max MS] | " \
-               "finish PID close|continue | restore PATH | move PID --to RUN_DIR"
+               "finish PID close|continue | restore PATH | move PID --to RUN_DIR|PORT"
     end
   out, status = Open3.capture2e("python3", DBG_CLIENT, "--json", "localhost:#{debug_port}", *kv)
   abort "app #{action}: #{out.strip}" unless status.success?
@@ -477,14 +481,20 @@ def cmd_move(args)
   damage = false
   while (a = args.shift)
     case a
-    when "--to" then to = File.expand_path(args.shift || abort("app move: --to needs a run directory"))
+    when "--to"
+      t = args.shift || abort("app move: --to needs a run directory or a port")
+      # A bare number is a debug port on this machine: the simulation's 5555,
+      # or any program that is not a native one started with a run directory.
+      to = t.match?(/\A\d+\z/) ? Integer(t) : File.expand_path(t)
     when "--hold" then hold = Integer(args.shift || abort("app move: --hold needs milliseconds"))
     when "--damage" then damage = true
     else pid = Integer(a, exception: false) or abort "app move: #{a}: not a pid"
     end
   end
-  abort "app move: needs a pid and --to RUN_DIR" unless pid && to
+  abort "app move: needs a pid and --to RUN_DIR|PORT" unless pid && to
   abort "app move: #{to} is this program's run directory" if to == File.expand_path(run_dir)
+  to_port = to.is_a?(Integer) ? to : debug_port(to)
+  abort "app move: port #{to_port} is this program's own" if to_port == debug_port
   t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
   out = { "from_pid" => pid }
   begin
@@ -510,7 +520,7 @@ def cmd_move(args)
       attrs = file_get(a, toml)
       out["bytes"] = data.bytesize
       data = data.byteslice(0, data.bytesize - 16) if damage
-      b = DebugLink.new(debug_port(to))
+      b = DebugLink.new(to_port)
       begin
         file_put(b, toml, attrs)
         file_put(b, image, data)
@@ -533,7 +543,7 @@ def cmd_move(args)
     elsif there
       # Up there but this one went on (its hold ran out first): two copies;
       # the one there is stopped.
-      with_debug(debug_port(to)) { |b| b.request("kill", { "pid" => there }, timeout: 10) } rescue nil # rubocop:disable Style/RescueModifier
+      with_debug(to_port) { |b| b.request("kill", { "pid" => there }, timeout: 10) } rescue nil # rubocop:disable Style/RescueModifier
       puts JSON.generate(out.merge("status" => "stayed", "reason" => "it went on here before it was up there " \
                                    "(#{fin['reason'] || fin['status']}); the copy there was stopped"))
     else

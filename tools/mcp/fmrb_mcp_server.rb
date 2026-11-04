@@ -945,7 +945,7 @@ NATIVE_APP = MCP::Tool.define(
     (max ms, default 5000): status "written" with the path, "refused" with the
     reason (the app goes on), or "timeout". Only an app on the mruby VM whose
     .app.toml says movable = true is written (/app/test/ckpt_counter.app.rb
-    is one); an app with a window is refused for now. restore starts an
+    is one; /app/test/ckpt_window.app.rb has a window). restore starts an
     image again later and answers once it is restored. That /tmp is the
     program's own memory, not the PC's: the image is reachable by path inside
     the program only.
@@ -959,6 +959,11 @@ NATIVE_APP = MCP::Tool.define(
     this one closes the app once it is up there -- or lets it go on when the
     other side refused it or nobody answered within hold ms (default 10000).
     The answer says moved (pid: the app's pid there) or stayed (reason).
+    to may also be a debug port on this machine: "5555" moves the app into
+    the Linux simulation (sim_up first; a Retro sim's smaller screen makes a
+    wider window fit and the app gets on_resize). Out of the simulation, use
+    the CLI: FMRB_DEBUG_TCP_PORT=5555 ruby tools/fmrb_native.rb app move PID
+    --to <native run dir> (doc/checkpoint F4).
     checkpoint with hold only writes and holds (the app goes on when the hold
     runs out); the CLI's `app finish PID close|continue` ends a hold by hand.
 
@@ -974,7 +979,7 @@ NATIVE_APP = MCP::Tool.define(
       restart: { type: "boolean", description: "checkpoint: start the image again at once (default false)" },
       max: { type: "integer", description: "checkpoint: how long to wait for the app's answer, ms (default 5000)" },
       hold: { type: "integer", description: "checkpoint, move: hold the written app this long, ms (move: default 10000)" },
-      to: { type: "string", description: "move: the other native program's run directory" },
+      to: { type: "string", description: "move: the other native program's run directory, or a debug port (5555: the simulation)" },
     },
     required: ["action"],
   },
