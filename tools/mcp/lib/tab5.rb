@@ -217,7 +217,7 @@ module FmrbMcp
         { ip: r[:ip], apps: doc["apps"] || [], notes: r[:notes] }
       when "launch"
         raise Error, "launch needs a path, e.g. /app/demo/spinel_hello.app.rb" if blank?(path)
-        status, body = http(r[:ip], "POST", "/app/launch?path=#{path}")
+        status, body = http(r[:ip], "POST", "/app/launch?path=#{FmrbRdHttp.query_path(path)}")
         doc = parse_json(status, body, "/app/launch")
         unless doc["ok"]
           raise Error, "launch of #{path} failed (HTTP #{status}): #{body}"

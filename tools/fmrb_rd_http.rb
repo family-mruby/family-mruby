@@ -49,6 +49,15 @@ module FmrbRdHttp
     abort "cannot reach #{host}: #{e.message}"
   end
 
+  # A path as a query value: every byte but letters, digits, "_.~-" and "/"
+  # as %XX, so a space or a Japanese name gets through. "/" stays as it is:
+  # firmware from before 2026-11-06 decodes /app/launch's value not at all,
+  # and a plain path still reaches it; the firmware since then decodes every
+  # value, so both forms work there.
+  def query_path(path)
+    path.to_s.b.gsub(%r{[^A-Za-z0-9_.~/-]}) { |c| format("%%%02X", c.ord) }
+  end
+
   # The responses are small and flat, so a regexp reader beats requiring json
   # for the two or three keys these tools want.
   def field(body, key)

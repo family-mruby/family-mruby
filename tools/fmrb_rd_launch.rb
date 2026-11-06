@@ -14,7 +14,7 @@ unless host && path
         "  e.g. fmrb_rd_launch.rb 192.0.2.13 /app/modern/mic_spectrum.app.rb"
 end
 
-status, body = FmrbRdHttp.request(host, "POST", "/app/launch?path=#{path}")
+status, body = FmrbRdHttp.request(host, "POST", "/app/launch?path=#{FmrbRdHttp.query_path(path)}")
 FmrbRdHttp.check_status(status, body)
 
 if FmrbRdHttp.field(body, "ok") == "true"
