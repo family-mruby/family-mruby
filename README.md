@@ -174,6 +174,10 @@ This will launch sdl2-display, fmruby-graphics-audio, and fmruby-core in Linux s
 
 Optional overlays live under `docker/`: General MIDI output in `docker/midi/`, and the Zenoh router variants, ROS 2 and the MuJoCo rover in `docker/asterism/` (see its README). Run them from the repository root with `docker-compose.yml` as the first `-f`.
 
+### Releasing
+
+The release procedure (version numbers, tags, the release workflow, Web Studio and Web Console) is in [doc/release.md](doc/release.md) (Japanese).
+
 ## Disclaimer
 
 - This software is under active development. Some applications may not launch, and unexpected errors may occur.
