@@ -236,6 +236,15 @@ jobs:
           rake fetch
           git config --global --unset url."https://github.com/".insteadOf
 
+      - name: Run arm64 programs (qemu)
+        # The arm64 build runs a program it cross-compiled (the mruby-checkpoint
+        # table's generator, which has to see the target's layout). A desktop
+        # Docker registers qemu for that; the runner does not.
+        if: matrix.arch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Build the .deb
         working-directory: fmruby-core
         run: |
