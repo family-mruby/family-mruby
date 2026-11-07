@@ -32,7 +32,8 @@
 #                                               # device pixels (doc/web_crt/)
 #   fmrb_web.rb crt [on|off|defaults|KEY=N]...  # the Look selector and its
 #                                               # sliders (scan mask glow curve
-#                                               # vignette, 0..100; stored like
+#                                               # vignette ntsc flicker noise,
+#                                               # 0..100; stored like
 #                                               # a hand's choice), then print
 #                                               # the state and draw counters
 #                                               # (bench=N: time N draws)
