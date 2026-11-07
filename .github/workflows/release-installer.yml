@@ -42,7 +42,7 @@ jobs:
       - name: Install release dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends jq openssh-client
+          sudo apt-get install -y --no-install-recommends jq openssh-client gcc-multilib
 
       - name: Checkout family-mruby
         uses: actions/checkout@v7
