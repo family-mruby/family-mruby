@@ -239,6 +239,10 @@ jobs:
       - name: Build the .deb
         working-directory: fmruby-core
         run: |
+          # The package compiles the Spinel C of the kernel and the apps;
+          # spinel:gen makes it on a fresh checkout (it fetches the pinned
+          # compiler into vendor/spinel).
+          rake spinel:gen
           rake native:deb ARCH=${{ matrix.arch }}
           ls -l native/build-deb/
 
