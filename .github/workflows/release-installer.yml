@@ -1,7 +1,9 @@
 name: Release Firmware to Installer
 
-# Builds both ESP32 firmwares (fmruby-core, fmruby-graphics-audio) on a
-# semver-style tag push and stages them into the family-mruby-installer repo.
+# Builds the ESP32 firmwares (fmruby-core for NARYAv3, StickS3, AtomS3R and
+# Tab5; fmruby-graphics-audio) on a semver-style tag push and stages them into
+# the family-mruby-installer repo. The Linux packages (.deb, amd64 and arm64)
+# are built beside them and attached to this repository's GitHub release.
 #
 # Build environment matches local development and the per-repo CI:
 #   - Uses the prebuilt ghcr.io/family-mruby/fmruby-esp32-build image
@@ -104,26 +106,35 @@ jobs:
         working-directory: fmruby-core
         run: rake build:esp32
 
-      - name: Stash the S3 build before the Tab5 build reuses build/
+      - name: Stash the S3 build before the next build reuses build/
+        working-directory: fmruby-core
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/stash-core-build.sh" build-s3
+
+      # The target comes from .env, which overrides the environment (a CLI
+      # FMRB_HW_TARGET would be silently ignored), so each build edits the
+      # file itself and checks that exactly one active target remains. The
+      # Rakefile adds each board's build defaults (Asterism, the mini
+      # configuration of the headless boards) from the target.
+      - name: Build fmruby-core (ESP32-S3 / StickS3, headless)
         working-directory: fmruby-core
         run: |
-          mkdir -p build-s3/bootloader build-s3/partition_table
-          cp build/bootloader/bootloader.bin           build-s3/bootloader/
-          cp build/partition_table/partition-table.bin build-s3/partition_table/
-          cp build/fmruby-core.bin build/storage.bin   build-s3/
-          # The staging script derives every flash offset from this file
-          cp build/flasher_args.json                   build-s3/
+          bash "$GITHUB_WORKSPACE/.github/scripts/select-core-target.sh" STICKS3
+          rake clean_all
+          rake build:esp32
+          bash "$GITHUB_WORKSPACE/.github/scripts/stash-core-build.sh" build-sticks3
+
+      - name: Build fmruby-core (ESP32-S3 / AtomS3R, headless)
+        working-directory: fmruby-core
+        run: |
+          bash "$GITHUB_WORKSPACE/.github/scripts/select-core-target.sh" ATOMS3R
+          rake clean_all
+          rake build:esp32
+          bash "$GITHUB_WORKSPACE/.github/scripts/stash-core-build.sh" build-atoms3r
 
       - name: Build fmruby-core (ESP32-P4 / Tab5)
         working-directory: fmruby-core
         run: |
-          # The target comes from .env, which overrides the environment
-          # (a CLI FMRB_HW_TARGET would be silently ignored), so edit the
-          # file itself and verify exactly one active target remains.
-          sed -i 's/^FMRB_HW_TARGET=NARYAv3/#FMRB_HW_TARGET=NARYAv3/' .env
-          sed -i 's/^#FMRB_HW_TARGET=TAB5/FMRB_HW_TARGET=TAB5/' .env
-          test "$(grep -c '^FMRB_HW_TARGET=' .env)" = 1
-          grep '^FMRB_HW_TARGET=TAB5' .env
+          bash "$GITHUB_WORKSPACE/.github/scripts/select-core-target.sh" TAB5
           rake clean_all
           rake build:esp32
 
@@ -158,6 +169,8 @@ jobs:
           cd installer
           FMRUBY_CORE_BUILD="$GITHUB_WORKSPACE/fmruby-core/build-s3" \
           FMRUBY_CORE_TAB5_BUILD="$GITHUB_WORKSPACE/fmruby-core/build" \
+          FMRUBY_CORE_STICKS3_BUILD="$GITHUB_WORKSPACE/fmruby-core/build-sticks3" \
+          FMRUBY_CORE_ATOMS3R_BUILD="$GITHUB_WORKSPACE/fmruby-core/build-atoms3r" \
           FMRUBY_GFX_BUILD="$GITHUB_WORKSPACE/fmruby-graphics-audio/build" \
           bash scripts/stage-firmware.sh "$VER"
 
@@ -190,3 +203,77 @@ jobs:
           fi
           git commit -m "Release firmware ${VER} from family-mruby tag"
           git push origin HEAD:main
+
+  linux-deb:
+    # The Linux version's packages (doc/linux_native/): built in the package
+    # build image (Ubuntu 26.04 for amd64, Debian trixie cross-compiling for
+    # arm64) by rake native:deb, which also scans the package tree (no
+    # untracked file, no credential).
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    permissions:
+      contents: read
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends gcc-multilib
+
+      - name: Checkout family-mruby
+        uses: actions/checkout@v7
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+
+      - name: Fetch source repos pinned in .repos
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          rake fetch
+          git config --global --unset url."https://github.com/".insteadOf
+
+      - name: Build the .deb
+        working-directory: fmruby-core
+        run: |
+          rake native:deb ARCH=${{ matrix.arch }}
+          ls -l native/build-deb/
+
+      - name: Upload the .deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.arch }}
+          path: fmruby-core/native/build-deb/family-mruby_*_${{ matrix.arch }}.deb
+          if-no-files-found: error
+
+  github-release:
+    # The GitHub release of this repository for the tag, with the Linux
+    # packages attached. Runs after the firmware is published.
+    needs: [build-and-publish, linux-deb]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download the packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: deb-*
+          merge-multiple: true
+          path: debs
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VER: ${{ github.event.inputs.version || github.ref_name }}
+        run: |
+          ls -l debs
+          if gh release view "$VER" -R "${{ github.repository }}" > /dev/null 2>&1; then
+            gh release upload "$VER" debs/*.deb --clobber -R "${{ github.repository }}"
+          else
+            gh release create "$VER" debs/*.deb -R "${{ github.repository }}" \
+              --title "Family mruby $VER" \
+              --notes "Firmware: https://family-mruby.github.io/family-mruby-installer/ (Web Installer). Linux: the .deb files below (amd64: Ubuntu 26.04 or newer; arm64: Debian trixie)."
+          fi
