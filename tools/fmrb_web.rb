@@ -30,7 +30,8 @@
 #   fmrb_web.rb view [OUT.png]                  # what the page shows: with the
 #                                               # CRT look on, its view at
 #                                               # device pixels (doc/web_crt/)
-#   fmrb_web.rb crt [on|off|defaults|KEY=N]...  # the Look selector and its
+#   fmrb_web.rb crt [on|off|standard|strong|KEY=N]...  # the Look selector,
+#                                               # its Standard/Strong buttons and
 #                                               # sliders (scan mask glow curve
 #                                               # vignette ntsc flicker noise,
 #                                               # 0..100; stored like
@@ -253,10 +254,11 @@ def run_commands(argv)
         case argv[j]
         when "on" then cmd["look"] = "crt"
         when "off" then cmd["look"] = "flat"
-        when "defaults" then cmd["defaults"] = true
+        when "defaults", "standard" then cmd["preset"] = "standard"
+        when "strong" then cmd["preset"] = "strong"
         when /\Abench=(\d+)\z/ then cmd["bench"] = $1.to_i
         when /\A(\w+)=(\d+)\z/ then values[$1] = $2.to_i
-        else abort "crt: unknown argument #{argv[j]} (on, off, defaults, KEY=N)"
+        else abort "crt: unknown argument #{argv[j]} (on, off, standard, strong, KEY=N)"
         end
         j += 1
       end
