@@ -19,6 +19,7 @@
 #                                         # tab space backspace up down left right f1-f12
 #                                         # home end pageup pagedown insert delete
 #                                         # zenkaku katakana (JP kana input)
+#                                         # henkan (JIS 変換: kanji conversion)
 #   fmrb_input.rb key shift+NAME          # with shift modifier
 #   fmrb_input.rb keydown NAME / keyup NAME
 #                                         # press / release separately, for a
@@ -68,6 +69,9 @@ SPECIAL_KEYS = {
   # shift+zenkaku does the same switch on keyboards without a katakana key.
   # Both are dead keys for apps, so the keycode does not matter.
   "zenkaku" => [53, 0], "katakana" => [136, 0],
+  # JIS Henkan (International4, HID 0x8A): converts the reading like space
+  # when a kanji dictionary is open (doc/kanji_input K3); any layout.
+  "henkan" => [138, 0],
 }
 (1..12).each { |i| SPECIAL_KEYS["f#{i}"] = [58 + i - 1, 0] }
 

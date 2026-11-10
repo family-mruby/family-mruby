@@ -46,6 +46,12 @@
 #                                               # coordinate mapping, the CRT
 #                                               # curve included; `click`
 #                                               # writes the ring directly)
+#   fmrb_web.rb ime                             # where the browser's IME text
+#                                               # area is and has the keys
+#   fmrb_web.rb ime "日本語" [--updates a,b]    # a composition on it as the
+#                                               # browser would send one (start,
+#                                               # updates, commit); the real
+#                                               # IME window is not driven
 #
 # Commands chain left to right, like fmrb_input.rb:
 #   fmrb_web.rb click 30 8 sleep 500 key enter sleep 1000 screenshot out.png
@@ -159,7 +165,7 @@ end
 # `sleep` between two clicks really waits on the page's side.
 # Words that start a command: an optional file name stops before them.
 COMMAND_WORDS = %w[move click down up wheel key text sleep screenshot ls cat get
-                   put rm reload reset status view crt dom zoom].freeze
+                   put rm reload reset status view crt dom zoom ime].freeze
 
 def run_commands(argv)
   events = []
@@ -284,6 +290,21 @@ def run_commands(argv)
       res = request({ "op" => "dom", "kind" => kind, "x" => argv[i + 2].to_f, "y" => argv[i + 3].to_f })
       puts "dom #{res["types"].join(",")} -> machine #{res["machine"] ? res["machine"].join(",") : "outside the picture (dropped)"}"
       i += 4
+    when "ime"
+      flush.call
+      cmd = { "op" => "ime" }
+      text = argv[i + 1]
+      if text && !COMMAND_WORDS.include?(text)
+        cmd["text"] = text
+        i += 1
+        if argv[i + 1] == "--updates"
+          cmd["updates"] = argv[i + 2].split(",")
+          i += 2
+        end
+      end
+      res = request(cmd)
+      puts JSON.generate(res)
+      i += 1
     when "status"
       flush.call
       st = request({ "op" => "status" })

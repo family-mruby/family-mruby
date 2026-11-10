@@ -23,7 +23,9 @@ SCAN = { "tab" => 0x2B, "right" => 0x4F, "left" => 0x50, "up" => 0x52,
          ":" => 0x34, "slash" => 0x38,
          # International1, the key left of the right shift on a JP keyboard.
          # Shifted it is "_", which nothing else can reach.
-         "ro" => 0x87 }
+         "ro" => 0x87,
+         # International4, JIS Henkan: kanji conversion (doc/kanji_input K3).
+         "henkan" => 0x8A }
 # a-z, 1-0 and F1-F12 are each contiguous in the HID usage table.
 ("a".."z").each_with_index { |c, i| SCAN[c] = 0x04 + i }
 (("1".."9").to_a + ["0"]).each_with_index { |c, i| SCAN[c] = 0x1E + i }
