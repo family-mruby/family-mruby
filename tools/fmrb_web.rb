@@ -48,10 +48,14 @@
 #                                               # writes the ring directly)
 #   fmrb_web.rb ime                             # where the browser's IME text
 #                                               # area is and has the keys
-#   fmrb_web.rb ime "日本語" [--updates a,b]    # a composition on it as the
-#                                               # browser would send one (start,
-#                                               # updates, commit); the real
-#                                               # IME window is not driven
+#   fmrb_web.rb ime "日本語" [--updates a,b] [--hold]  # a composition on it
+#                                               # as the browser would send one
+#                                               # (start, updates, commit); the
+#                                               # real IME window is not driven.
+#                                               # --hold leaves it open
+#   fmrb_web.rb ime --end                       # commit the held composition
+#   fmrb_web.rb ime --key a                     # a plain key on the text area,
+#                                               # one the IME lets through
 #
 # Commands chain left to right, like fmrb_input.rb:
 #   fmrb_web.rb click 30 8 sleep 500 key enter sleep 1000 screenshot out.png
@@ -294,12 +298,22 @@ def run_commands(argv)
       flush.call
       cmd = { "op" => "ime" }
       text = argv[i + 1]
-      if text && !COMMAND_WORDS.include?(text)
+      if text == "--end"
+        cmd["end"] = true
+        i += 1
+      elsif text == "--key"
+        cmd["key"] = argv[i + 2]
+        i += 2
+      elsif text && !COMMAND_WORDS.include?(text)
         cmd["text"] = text
         i += 1
         if argv[i + 1] == "--updates"
           cmd["updates"] = argv[i + 2].split(",")
           i += 2
+        end
+        if argv[i + 1] == "--hold"
+          cmd["hold"] = true
+          i += 1
         end
       end
       res = request(cmd)
