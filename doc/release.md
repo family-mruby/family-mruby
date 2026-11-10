@@ -1,6 +1,6 @@
 # リリースの手順
 
-> 状態: 完了 | 更新: 2026-11-07 | 版の番号の上げ方、タグで動くリリースの CI (Web Installer のファーム 5 つと Linux の .deb)、Web Studio・Web Console・副次の置き場の更新、公開の確認。3.0.0 (2026-11-07) の時点の手順
+> 状態: 完了 | 更新: 2026-11-11 | 版の番号の上げ方、タグで動くリリースの CI (Web Installer のファーム 5 つと Linux の .deb)、漢字変換の辞書の添付 (手元)、Web Studio・Web Console・副次の置き場の更新、公開の確認。3.0.0 (2026-11-07) の時点の手順
 
 Family mruby のリリースは、3 つのリポジトリ (直下の family-mruby・fmruby-core・
 fmruby-graphics-audio) にタグを打ち、直下のタグで CI を動かして公開する。
@@ -16,6 +16,7 @@ fmruby-graphics-audio) にタグを打ち、直下のタグで CI を動かし�
 | ファーム: Modern | Tab5 (ESP32-P4) | 同上 |
 | ファーム: Headless | StickS3・AtomS3R (ESP32-S3) | 同上 |
 | Linux 版 | 直下のリポジトリの GitHub リリースに `.deb` (amd64・arm64) | 同上の linux-deb・github-release ジョブ |
+| 漢字変換の辞書 | 同じ GitHub リリースに `fmrb_kanji.dic` と `fmrb_kanji_LICENSE.txt` | 手元の `rake kanji:dict` と `rake kanji:place` (2 の後で添付) |
 | Web Studio (ブラウザ版) | サイトのリポジトリ family-mruby.github.io の `docs/studio/` | 手元の `rake wasm:site` |
 | Web Studio (副次) | 自前の nginx | 手元の `rake wasm:deploy` |
 | Web Console | サイトの `docs/console/` | サイトの公開の CI が fmruby-core の **main** の `tool/web` を取り込む |
@@ -70,6 +71,32 @@ git tag -a <ver> -m "Family mruby <ver>" origin/main && git push origin <ver>   
   生成器を実行するので qemu を登録する)。配布物の検査 (`native:scan`) も通す。
 - github-release: 直下のリポジトリの GitHub リリースを作り、`.deb` を添付する。
 
+### 漢字変換の辞書を添付する (CI の後)
+
+辞書 (fmruby-core/doc/kanji_input) はリポジトリにもファームにも入れず、
+リリースに添付する。CI は作らないので、github-release ジョブが終わってから
+手元で添付する。生成は決まった入力から同じバイト列を出す (元データは
+`tools/kanji/sources.rb` が版と sha256 で固定している)。
+
+```
+cd fmruby-core
+rake kanji:dict                          # 元データを取って作る (初回は約 35 秒)
+rake kanji:place DEST=<作業の場所>      # <作業の場所>/dict/ に 2 つ。前後で検査する
+cd ..
+gh release upload <ver> <作業の場所>/dict/fmrb_kanji.dic <作業の場所>/dict/fmrb_kanji_LICENSE.txt --clobber
+```
+
+- `kanji:place` が出す sha256 を控え、リリースノートに 1 行足す
+  (`gh release view <ver> --json body -q .body` で今の本文を取り、行を足して
+  `gh release edit <ver> --notes-file <ファイル>`)。足す行の例:
+
+  ```
+  Kanji conversion (ESP32 machines): put fmrb_kanji.dic and fmrb_kanji_LICENSE.txt in /dict/ on the SD card (/sd/dict/) and restart. The guide is /usr/share/doc/kanji.md on the machine. fmrb_kanji.dic sha256 <控えた値>.
+  ```
+
+- 辞書の形 (dict_format.md の版) を変えたリリースでは、古い辞書を置いた
+  端末は変換が off になる (かな入力のまま)。そのときはノートにも書く。
+
 ランナーの事情: `gcc-multilib` (checkpoint の表を `-m32` でもう一度コンパイルする)
 と qemu (arm64 の生成器) が要る。どちらもワークフローに入っている。手元では
 Docker Desktop が qemu を登録しているので、手元で通っても CI で落ちることがある
@@ -97,6 +124,8 @@ FMRB_WEB_DEST=<host>:<dir>/ rake wasm:deploy  # 副次の nginx (置き先はこ
 - installer: 公開のページ (GitHub Pages の組み立てが終わってから) で、新しい版の
   各 `manifest.json` が 200、既定の版が新しいもの。
 - GitHub リリース: `.deb` が添付され、`dpkg-deb -f` の Version が新しい版。
+  辞書の 2 つも添付され、落としたものを `rake kanji:check FILE=<落とした fmrb_kanji.dic>`
+  (fmruby-core で) が ok と言い、sha256 がノートの値と同じ。
 - Web Studio: 公開の `core_web.wasm` が手元の `wasm/build/dist/` のものとバイト単位で
   同じ。中に版の文字列がある。副次の nginx も同じ確かめ方と、COOP/COEP の
   ヘッダ。
@@ -109,3 +138,4 @@ FMRB_WEB_DEST=<host>:<dir>/ rake wasm:deploy  # 副次の nginx (置き先はこ
 - fmruby-core/doc/regression/usage.md (リリースの前の試験)
 - fmruby-core/doc/regression/report/ci_develop_20261107.md (CI だけで出た 3 つ)
 - fmruby-core/doc/headless_s3/report/welcome_app.md (Headless の端末の起動アプリ)
+- fmruby-core/doc/kanji_input/report/k5.md (辞書の配り方と置き方)
