@@ -16,7 +16,7 @@ fmruby-graphics-audio) にタグを打ち、直下のタグで CI を動かし�
 | ファーム: Modern | Tab5 (ESP32-P4) | 同上 |
 | ファーム: Headless | StickS3・AtomS3R (ESP32-S3) | 同上 |
 | Linux 版 | 直下のリポジトリの GitHub リリースに `.deb` (amd64・arm64) | 同上の linux-deb・github-release ジョブ |
-| 漢字変換の辞書 | 同じ GitHub リリースに `fmrb_kanji.dic` と `fmrb_kanji_LICENSE.txt` | 手元の `rake kanji:dict` と `rake kanji:place` (2 の後で添付) |
+| 漢字変換の辞書 | 同じ GitHub リリースに `fmrb_kanji.dic` (標準 1 MB)・`fmrb_kanji_4m.dic` (大きい辞書 4 MB)・`fmrb_kanji_LICENSE.txt` | 手元の `rake kanji:dict_release` と `rake kanji:place` (2 の後で添付) |
 | Web Studio (ブラウザ版) | サイトのリポジトリ family-mruby.github.io の `docs/studio/` | 手元の `rake wasm:site` |
 | Web Studio (副次) | 自前の nginx | 手元の `rake wasm:deploy` |
 | Web Console | サイトの `docs/console/` | サイトの公開の CI が fmruby-core の **main** の `tool/web` を取り込む |
@@ -80,18 +80,19 @@ git tag -a <ver> -m "Family mruby <ver>" origin/main && git push origin <ver>   
 
 ```
 cd fmruby-core
-rake kanji:dict                          # 元データを取って作る (初回は約 35 秒)
-rake kanji:place DEST=<作業の場所>      # <作業の場所>/dict/ に 2 つ。前後で検査する
+rake kanji:dict_release                  # 元データを取って 1 MB と 4 MB を作る (約 70 秒)
+rake kanji:place DEST=<作業の場所>      # <作業の場所>/dict/ に 3 つ。前後で検査する
 cd ..
-gh release upload <ver> <作業の場所>/dict/fmrb_kanji.dic <作業の場所>/dict/fmrb_kanji_LICENSE.txt --clobber
+gh release upload <ver> <作業の場所>/dict/fmrb_kanji.dic <作業の場所>/dict/fmrb_kanji_4m.dic \
+  <作業の場所>/dict/fmrb_kanji_LICENSE.txt --clobber
 ```
 
-- `kanji:place` が出す sha256 を控え、リリースノートに 1 行足す
+- `kanji:place` が出す sha256 (辞書 2 つ) を控え、リリースノートに 1 行足す
   (`gh release view <ver> --json body -q .body` で今の本文を取り、行を足して
   `gh release edit <ver> --notes-file <ファイル>`)。足す行の例:
 
   ```
-  Kanji conversion (ESP32 machines): put fmrb_kanji.dic and fmrb_kanji_LICENSE.txt in /dict/ on the SD card (/sd/dict/) and restart. The guide is /usr/share/doc/kanji.md on the machine. fmrb_kanji.dic sha256 <控えた値>.
+  Kanji conversion (ESP32 machines): put fmrb_kanji.dic and fmrb_kanji_LICENSE.txt in /dict/ on the SD card (/sd/dict/) and restart. fmrb_kanji_4m.dic is a larger dictionary (4 MB): rename it to fmrb_kanji.dic to use it instead. The guide is /usr/share/doc/kanji.md on the machine. fmrb_kanji.dic sha256 <控えた値>, fmrb_kanji_4m.dic sha256 <控えた値>.
   ```
 
 - 辞書の形 (dict_format.md の版) を変えたリリースでは、古い辞書を置いた
@@ -124,8 +125,8 @@ FMRB_WEB_DEST=<host>:<dir>/ rake wasm:deploy  # 副次の nginx (置き先はこ
 - installer: 公開のページ (GitHub Pages の組み立てが終わってから) で、新しい版の
   各 `manifest.json` が 200、既定の版が新しいもの。
 - GitHub リリース: `.deb` が添付され、`dpkg-deb -f` の Version が新しい版。
-  辞書の 2 つも添付され、落としたものを `rake kanji:check FILE=<落とした fmrb_kanji.dic>`
-  (fmruby-core で) が ok と言い、sha256 がノートの値と同じ。
+  辞書の 3 つ (辞書 2 つと LICENSE) も添付され、落とした辞書をそれぞれ
+  `rake kanji:check FILE=<落とした .dic>` (fmruby-core で) が ok と言い、sha256 がノートの値と同じ。
 - Web Studio: 公開の `core_web.wasm` が手元の `wasm/build/dist/` のものとバイト単位で
   同じ。中に版の文字列がある。副次の nginx も同じ確かめ方と、COOP/COEP の
   ヘッダ。
