@@ -28,6 +28,9 @@
 #   fmrb_input.rb wheel N                 # mouse wheel, N notches
 #                                         # (+ = away from you = scroll up)
 #   fmrb_input.rb text "STRING"           # type a string (ascii)
+#   fmrb_input.rb ime "STRING"            # the native program only: one
+#                                         # commit of a PC's IME (UTF-8),
+#                                         # as if the IME had committed it
 #   fmrb_input.rb --layout jp ...         # keyboard layout for text/key
 #                                         # (default: keyboard_layout from
 #                                         #  config/system_conf_linux.toml)
@@ -52,6 +55,7 @@ EV_KEY_UP = 0x02
 EV_MOUSE_BUTTON = 0x10
 EV_MOUSE_MOTION = 0x11
 EV_MOUSE_WHEEL = 0x12
+EV_IME_TEXT = 0x20     # native program only (fmruby-core/main/include/fmrb_hid_event.h)
 
 KEY_DELAY_MS = 40      # between press and release
 CLICK_DELAY_MS = 60    # between motion/press/release of a click
@@ -290,6 +294,11 @@ def parse_commands(argv)
     when "keydown", "keyup"
       sc, kc, mod = key_lookup(take.call(1)[0])
       out << [pending_sleep, ev_key(cmd == "keydown" ? EV_KEY_DOWN : EV_KEY_UP, sc, kc, mod)]
+      pending_sleep = 0
+    when "ime"
+      bytes = take.call(1)[0].b
+      abort "ime: at most 4000 bytes" if bytes.bytesize > 4000
+      out << [pending_sleep, [EV_IME_TEXT, bytes.bytesize].pack("Cv") + bytes]
       pending_sleep = 0
     when "text"
       take.call(1)[0].each_char do |c|
