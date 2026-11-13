@@ -28,8 +28,8 @@
 # `call` and `meta` talk to the objects an Asterism application exposes
 # (fmruby-core/doc/ruby_asterism, A1): `call <node>/<app>/<object> <method>
 # [<args JSON array>]` sends a get on asterism/<node>/<app>/<object>/call/<caller>
-# (Asterism protocol 1; the caller is --caller, default "fmrb-tool") with the
-# MessagePack payload {"method", "args", "kwargs"} in the request body, and
+# (Asterism protocol 2; the caller is --caller, default "fmrb-tool") with the
+# MessagePack payload {"method", "protocol" => 2, "args", "kwargs"} in the request body, and
 # decodes the reply ({"value" => v} or {"error" => {"kind", "class",
 # "message"}}). `meta` asks .../meta for the exposed methods; the object part
 # may be * there.
@@ -118,7 +118,7 @@ module FmrbZenoh
 
   # Returns the exit status.
   def asterism_call(opts, path, method, args, kwargs)
-    req = { "method" => method }
+    req = { "method" => method, "protocol" => 2 } # the protocol the caller speaks (asterism docs/protocol.md 4.1)
     req["args"] = args unless args.empty?
     req["kwargs"] = kwargs unless kwargs.empty?
     payload = FmrbMsgpack.pack(req)
