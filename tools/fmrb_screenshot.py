@@ -3,8 +3,8 @@
 
 The graphics-audio process publishes the composed RGB332 framebuffer in the
 POSIX shared memory object /fmrb_display (see
-fmruby-graphics-audio/main/common/shm_display.h). The compose services run
-with `ipc: host`, so the object is visible on the host at
+fmruby-core/components/fmrb_wire/include/shm_display.h). The compose
+services run with `ipc: host`, so the object is visible on the host at
 /dev/shm/fmrb_display and the screen can be captured without any GUI --
 this is what lets an agent or CI verify the display headlessly.
 

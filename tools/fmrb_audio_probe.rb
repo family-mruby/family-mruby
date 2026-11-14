@@ -5,8 +5,8 @@
 # sound, without a speaker.
 #
 # The graphics-audio process publishes mixed APU output into the same POSIX
-# shared memory as the framebuffer (fmruby-graphics-audio/main/common/
-# shm_display.h). Headless runs use the SDL dummy audio driver, so nothing is
+# shared memory as the framebuffer (fmruby-core/components/fmrb_wire/
+# include/shm_display.h). Headless runs use the SDL dummy audio driver, so nothing is
 # audible, but the samples are still written there - which makes it possible
 # to verify audio from an agent or from CI, the way fmrb_screenshot.py
 # verifies the screen.

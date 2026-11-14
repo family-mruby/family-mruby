@@ -7,6 +7,11 @@ services:
     build:
       context: ./fmruby-graphics-audio
       dockerfile: sdl2-display/Dockerfile
+      # The wire headers it is built with (shm_display.h, fmrb_hid_event.h)
+      # are fmruby-core's components/fmrb_wire; the Dockerfile copies them
+      # from this extra context (only that directory, not the whole checkout).
+      additional_contexts:
+        wire: ./fmruby-core/components/fmrb_wire/include
     container_name: fmruby_sdl2_display
     user: "${UID:-1000}:${GID:-1000}"
     init: true
@@ -38,6 +43,9 @@ services:
       - GIT_CONFIG_PARAMETERS=safe.directory=/opt/esp/idf
     volumes:
       - ./fmruby-graphics-audio:/project
+      # The wire headers graphics-audio is built with (fmruby-core's
+      # components/fmrb_wire), at the place its CMake looks: /project/../fmruby-core.
+      - ./fmruby-core:/fmruby-core:ro
       - fmruby-sockets:/var/run/fmrb
     ipc: host
     working_dir: /project

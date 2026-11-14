@@ -2,9 +2,9 @@
 # Inject synthetic mouse/keyboard events into the Family mruby Linux sim.
 #
 # Events are sent as pre-framed HID packets ([type u8][len u16 LE][payload],
-# see fmruby-graphics-audio/main/include/fmrb_hid_event.h) to the Unix DGRAM
-# socket /var/run/fmrb/fmrb_inject, which the SDL2 display process forwards
-# into the normal input stream. Coordinates are framebuffer coordinates
+# see fmruby-core/components/fmrb_wire/include/fmrb_hid_event.h) to the
+# Unix DGRAM socket /var/run/fmrb/fmrb_inject, which the SDL2 display process
+# forwards into the normal input stream. Coordinates are framebuffer coordinates
 # (e.g. 0..319 x 0..239), independent of window scaling.
 #
 # With Docker Desktop the socket volume is only visible inside the containers,
@@ -55,7 +55,7 @@ EV_KEY_UP = 0x02
 EV_MOUSE_BUTTON = 0x10
 EV_MOUSE_MOTION = 0x11
 EV_MOUSE_WHEEL = 0x12
-EV_IME_TEXT = 0x20     # native program only (fmruby-core/main/include/fmrb_hid_event.h)
+EV_IME_TEXT = 0x20     # native program only
 
 KEY_DELAY_MS = 40      # between press and release
 CLICK_DELAY_MS = 60    # between motion/press/release of a click

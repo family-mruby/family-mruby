@@ -109,7 +109,7 @@ fmruby-graphics-audio.elf ─┤                        │
 
 | 種別 | 現在の値 | 定義位置 |
 |---|---|---|
-| 共有メモリ名 | `/fmrb_display` | graphics-audio `main/common/shm_display.h` |
+| 共有メモリ名 | `/fmrb_display` | fmruby-core `components/fmrb_wire/include/shm_display.h` |
 | 入力ソケット | `/var/run/fmrb/fmrb_sdl_input` | 同上 |
 | 注入ソケット | `/var/run/fmrb/fmrb_inject` | 同上 |
 | USB 入力ソケット | `/var/run/fmrb/fmrb_input_socket` | core `main/drivers/usb/usb_task_linux.c`、graphics-audio `main/input_linux/input_socket.c` |
@@ -163,7 +163,7 @@ eglinfo | head          # または wlr-randr / glxinfo -B
 1. 320x240 = 76,800 画素を 1 画素ずつ表引きして **RGB24 に展開** (8bit の書き込みを
    3 回、計 230KB)
 2. `SDL_RenderCopy` で窓の大きさへ**拡大**
-3. **毎回全面を送る**。共有メモリの構造体 (`main/common/shm_display.h`) は
+3. **毎回全面を送る**。共有メモリの構造体 (fmruby-core の `components/fmrb_wire/include/shm_display.h`) は
    書き込み番号しか持たず、**どこが変わったかの情報が無い**
 
 重いのは 2 の拡大で、描画装置が無ければこれが全部 CPU に乗る。

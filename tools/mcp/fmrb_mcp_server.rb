@@ -566,7 +566,8 @@ SIM_UP = MCP::Tool.define(
     resolution mismatch on a reused stack is reported rather than fixed.
 
     It also refuses an sdl2-display image built from other sources than the
-    working tree's (shm_display.h, fmrb_hid_event.h, sdl2-display/main.c):
+    working tree's (fmruby-core's shm_display.h and fmrb_hid_event.h in
+    components/fmrb_wire, sdl2-display/main.c):
     `docker compose up` reuses an image instead of rebuilding it, and an old
     image reads the shared memory at the wrong offsets. The error names the
     command (docker compose build sdl2-display).

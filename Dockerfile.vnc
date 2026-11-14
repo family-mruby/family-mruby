@@ -20,16 +20,21 @@ FROM espressif/idf:v5.5.1 AS builder-ga
 
 ARG GA_REPO
 ARG GA_BRANCH
+ARG CORE_REPO
+ARG CORE_BRANCH
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ruby libsdl2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone with submodules (use HTTPS to avoid SSH key issues in CI)
+# Clone with submodules (use HTTPS to avoid SSH key issues in CI). fmruby-core
+# goes next to it: graphics-audio reads the wire format shared with the core
+# (components/fmrb_wire) from there, and needs no submodules of it for that.
 WORKDIR /build
 RUN git config --global url."https://github.com/".insteadOf "git@github.com:" && \
-    git clone --recursive --branch ${GA_BRANCH} ${GA_REPO} fmruby-graphics-audio
+    git clone --recursive --branch ${GA_BRANCH} ${GA_REPO} fmruby-graphics-audio && \
+    git clone --depth 1 --branch ${CORE_BRANCH} ${CORE_REPO} fmruby-core
 
 WORKDIR /build/fmruby-graphics-audio
 
@@ -85,7 +90,7 @@ RUN bash -c '\
     idf.py --preview -DSDKCONFIG_DEFAULTS="config/sdkconfig.defaults.linux" -DCMAKE_BUILD_TYPE=Debug build'
 
 # ---------------------------------------------------------------------------
-# Stage 3: Build sdl2-display (reuse headers from builder-ga)
+# Stage 3: Build sdl2-display (the wire headers from builder-ga's fmruby-core)
 # ---------------------------------------------------------------------------
 FROM ubuntu:24.04 AS builder-sdl2
 
@@ -95,8 +100,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-COPY --from=builder-ga /build/fmruby-graphics-audio/main/common/shm_display.h /build/include/
-COPY --from=builder-ga /build/fmruby-graphics-audio/main/include/fmrb_hid_event.h /build/include/
+COPY --from=builder-ga /build/fmruby-core/components/fmrb_wire/include/shm_display.h /build/include/
+COPY --from=builder-ga /build/fmruby-core/components/fmrb_wire/include/fmrb_hid_event.h /build/include/
 COPY --from=builder-ga /build/fmruby-graphics-audio/sdl2-display/main.c /build/
 
 RUN gcc -Wall -Wextra -O2 \

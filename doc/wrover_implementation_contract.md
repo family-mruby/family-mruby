@@ -359,8 +359,8 @@ Linux 開発環境では L1 を TCP に置換する。実装上の違い:
 
 - wire format: [core_wrover_protocol.md](core_wrover_protocol.md)
 - 高レベル GfxBlock: [gfx_block.md](gfx_block.md)
-- L3/L4 正本ヘッダ: [fmruby-core/components/fmrb_common/include/fmrb_link_protocol.h](../fmruby-core/components/fmrb_common/include/fmrb_link_protocol.h)
-- L1 UART フレーム: [fmruby-core/components/fmrb_hal/platform/esp32/uart_link_frame.h](../fmruby-core/components/fmrb_hal/platform/esp32/uart_link_frame.h)
+- L3/L4 正本ヘッダ: [fmruby-core/components/fmrb_wire/include/fmrb_link_protocol.h](../fmruby-core/components/fmrb_wire/include/fmrb_link_protocol.h)
+- L1 UART フレーム: [fmruby-core/components/fmrb_wire/include/uart_link_frame.h](../fmruby-core/components/fmrb_wire/include/uart_link_frame.h)
 - WROVER boot / INIT_DISPLAY: [fmruby-graphics-audio/main/tasks/graphics_task.cpp](../fmruby-graphics-audio/main/tasks/graphics_task.cpp)
 - WROVER VERSION / SET_TIME: [fmruby-graphics-audio/main/tasks/message_handler_task.c](../fmruby-graphics-audio/main/tasks/message_handler_task.c)
 - WROVER GFX ハンドラ / 同期 ACK: [fmruby-graphics-audio/main/graphics/graphics_handler.cpp](../fmruby-graphics-audio/main/graphics/graphics_handler.cpp)

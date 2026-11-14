@@ -2,7 +2,7 @@
 
 fmruby-core (ESP32-S3 / Linux コンテナ) と fmruby-graphics-audio (ESP32-WROVER / Linux プロセス) 間の通信仕様を、下層のトランスポート (UART / SPI / TCP ソケット) に依存しない形でまとめる。
 
-本ドキュメントはあくまで「論理プロトコル層」の正本であり、各実装側ヘッダ ([fmruby-core/components/fmrb_common/include/fmrb_link_protocol.h](../fmruby-core/components/fmrb_common/include/fmrb_link_protocol.h) と [fmruby-graphics-audio/main/communication/](../fmruby-graphics-audio/main/communication/)) と内容が食い違った場合はソースが優先。
+本ドキュメントはあくまで「論理プロトコル層」の正本であり、各実装側ヘッダ ([fmruby-core/components/fmrb_wire/include/fmrb_link_protocol.h](../fmruby-core/components/fmrb_wire/include/fmrb_link_protocol.h) と [fmruby-graphics-audio/main/communication/](../fmruby-graphics-audio/main/communication/)) と内容が食い違った場合はソースが優先。
 
 実装差し替え向けの振る舞い契約 (boot/handshake、同期応答の追加 payload、資源上限、GfxBlock VM 意味論、合成順序、音声・ファイル契約など) は [wrover_implementation_contract.md](wrover_implementation_contract.md) を参照。
 
@@ -90,7 +90,7 @@ struct { uint16_t original_sequence; uint8_t status; }
 
 ## 3. サブコマンド定義
 
-下記すべて [fmruby-core/components/fmrb_common/include/fmrb_link_protocol.h](../fmruby-core/components/fmrb_common/include/fmrb_link_protocol.h) に正本あり。
+下記すべて [fmruby-core/components/fmrb_wire/include/fmrb_link_protocol.h](../fmruby-core/components/fmrb_wire/include/fmrb_link_protocol.h) に正本あり。
 
 ### 3.1 `CONTROL` (type=1)
 
@@ -277,14 +277,14 @@ struct fmrb_link_chunk_info_t {
 - `status`: `STS_BOOT=0x00 / STS_RX_OK=0x10 / STS_APP_OK=0x12 / STS_APP_ERR=0x13 / STS_CRC_ERR=0xE1`
 - L3 msgpack は COBS エンコードしてから `DATA` へ格納する
 
-詳細: [uart_link_frame.h](../fmruby-core/components/fmrb_hal/platform/esp32/uart_link_frame.h)
+詳細: [uart_link_frame.h](../fmruby-core/components/fmrb_wire/include/uart_link_frame.h)
 
 ### 4.2 SPI リンク (旧構成・予備)
 
 - Master=S3、Slave=WROVER、フレーム長固定 256B、CRC16 付き
 - 旧 API は残してあるが、現行はビルド時に UART と切替
 
-詳細: [spi_frame.h](../fmruby-core/components/fmrb_hal/platform/esp32/spi_frame.h)
+詳細: [spi_frame.h](../fmruby-core/components/fmrb_wire/include/spi_frame.h)
 
 ### 4.3 TCP ソケット (Linux シミュレーション)
 
@@ -293,10 +293,10 @@ struct fmrb_link_chunk_info_t {
 
 ## 5. 参考
 
-- [fmruby-core/components/fmrb_common/include/fmrb_link_protocol.h](../fmruby-core/components/fmrb_common/include/fmrb_link_protocol.h) — 全 sub_cmd / payload 構造体の正本
+- [fmruby-core/components/fmrb_wire/include/fmrb_link_protocol.h](../fmruby-core/components/fmrb_wire/include/fmrb_link_protocol.h) — 全 sub_cmd / payload 構造体の正本
 - [fmruby-core/components/fmrb_msg/fmrb_gfx_msg.h](../fmruby-core/components/fmrb_msg/fmrb_gfx_msg.h) — Core 内タスク間 GFX メッセージ
 - [fmruby-core/components/fmrb_transport/fmrb_transport.h](../fmruby-core/components/fmrb_transport/fmrb_transport.h) — Core 側送信 API
 - [fmruby-graphics-audio/main/communication/comm_interface.h](../fmruby-graphics-audio/main/communication/comm_interface.h) — WROVER 側トランスポート抽象
 - [fmruby-graphics-audio/main/communication/fmrb_link_msgpack.c](../fmruby-graphics-audio/main/communication/fmrb_link_msgpack.c) — L3 msgpack デコード実装
-- [uart_link_frame.h](../fmruby-core/components/fmrb_hal/platform/esp32/uart_link_frame.h) / [spi_frame.h](../fmruby-core/components/fmrb_hal/platform/esp32/spi_frame.h) — L1 wire format
+- [uart_link_frame.h](../fmruby-core/components/fmrb_wire/include/uart_link_frame.h) / [spi_frame.h](../fmruby-core/components/fmrb_wire/include/spi_frame.h) — L1 wire format
 - [gfx_block.md](gfx_block.md) — GfxBlock VM の高レベル仕様

@@ -133,7 +133,7 @@ ruby tools/fmrb_midi_monitor.rb [--hex] [--log out.jsonl] [--duration 秒]
 ## 仕組みと注意
 
 - 画面: graphics-audio が POSIX SHM /fmrb_display に RGB332 ダブルバッファを公開
-  (fmruby-graphics-audio/main/common/shm_display.h)。大きさは Retro 320x240、
+  (fmruby-core/components/fmrb_wire/include/shm_display.h)。大きさは Retro 320x240、
   Modern 426x240 で、Modern は高解像度の全画面アプリ (エディタの全画面、
   `fullscreen_hires = true` のアプリ) が上にいる間だけ 640x360 になる
   (sim_screenshot の大きさも sim_input の座標も同じ)。
@@ -144,8 +144,15 @@ ruby tools/fmrb_midi_monitor.rb [--hex] [--log out.jsonl] [--duration 秒]
   main/input_linux/input_handler_ipc.c が fmrb_input_socket のサーバで、
   型ごとの switch。知らない型はここで捨てられる)** → core
   (main/drivers/usb/usb_task_linux.c)。新しいイベント型を足すときは
-  **ヘッダ 2 つ (両リポジトリの fmrb_hid_event.h) とこの switch の 3 箇所**。
+  **ヘッダ 1 つ (fmruby-core/components/fmrb_wire/include/fmrb_hid_event.h)
+  とこの switch の 2 箇所**。
   届かないときは 3 つのコンテナのログを全部見る。
+- 線の形のヘッダ (リンクのプロトコル・フレーム・COBS・版・HID イベント・共有メモリ) は
+  **fmruby-core/components/fmrb_wire/include の 1 か所だけ**。graphics-audio は
+  CMake で隣の fmruby-core を直接 include し (ビルドのコンテナには読み取り専用で
+  mount)、sdl2-display はイメージを作るときに compose の `additional_contexts` で
+  そこから取り込む。写しを作らない。足し忘れ・写しの残りは fmruby-core の
+  `rake wire:check` (`rake test`・`rake regress` に入っている) が止める。
 - sdl2-display/main.c (と、イメージに取り込む shm_display.h・fmrb_hid_event.h) を
   変更した場合は `docker compose build sdl2-display` が必要 (sim_up は古いイメージを
   見つけると止まる)。
