@@ -13,7 +13,7 @@
 # the ROS 2 Jazzy image of docker/asterism/docker-compose.ros2.yml when it is missing and
 # passes it on. The asterism checkout is ../asterism next to fmruby-core
 # (ASTERISM_DIR overrides); the refreshed files land there, to be committed
-# in asterism and then pinned by fmruby-core (lib/add/ASTERISM_PIN).
+# in asterism and then pinned by fmruby-core (lib/upstream/ASTERISM_PIN).
 ROOT = File.expand_path("..", __dir__)
 IMAGE = "fmruby-ros2-jazzy-zenoh:local"
 ASTERISM = File.expand_path(ENV["ASTERISM_DIR"] || File.join(ROOT, "asterism"))

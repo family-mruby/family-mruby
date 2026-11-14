@@ -31,6 +31,8 @@ on:
 
 env:
   INSTALLER_REPO: family-mruby/family-mruby-installer
+  # Release images leave the test apps (fmruby-core flash/app/test) out.
+  FMRB_RELEASE: "1"
   ESP32_BUILD_IMAGE: ghcr.io/family-mruby/fmruby-esp32-build
 
 jobs:

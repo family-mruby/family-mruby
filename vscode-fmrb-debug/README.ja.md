@@ -49,8 +49,8 @@ GUI なしで使いたい場合のみ `tools/dev_run_check.sh --keep`)。
 debugd に届いているかの確認:
 
 ```bash
-python3 fmruby-core/tool/debug/fmrb_dbg_client.py localhost:5555 version
-python3 fmruby-core/tool/debug/fmrb_dbg_client.py localhost:5555 ps
+python3 fmruby-core/tools/debug/fmrb_dbg_client.py localhost:5555 version
+python3 fmruby-core/tools/debug/fmrb_dbg_client.py localhost:5555 ps
 ```
 
 `ps` に出てくる VM (kernel, system_desktop, 起動したアプリ) がアタッチ対象。
@@ -229,12 +229,12 @@ BLE 固有:
 - 接続はできるが全コマンドがタイムアウトする: 起動ログに
   `debugd task started` が出ているか確認する。
 - `\\wsl$` の UNC パスからのアダプタ起動が不安定な場合は、
-  `fmruby-core/tool/debug/` を Windows 側のローカルフォルダにコピーし、
+  `fmruby-core/tools/debug/` を Windows 側のローカルフォルダにコピーし、
   `adapterPath` でそちらを指す。
 
 ## ステータス
 
 TCP (Linux シミュレーション) と BLE (ESP32-S3) の両トランスポートを実装済み。
-アダプタ (`fmruby-core/tool/debug/fmrb_dap_adapter.py`) は `test_phase2.py` で
+アダプタ (`fmruby-core/tools/debug/fmrb_dap_adapter.py`) は `test_phase2.py` で
 ヘッドレス検証済み、BLE のフレームコーデックはデバイス側 C 実装とバイト単位で
 突き合わせ済み。VSCode GUI 操作と BLE 実機 E2E は手動確認が必要。

@@ -7,7 +7,7 @@ module FmAssetEditor
   # (fmruby-graphics-audio/main/common/fmrb_bmp332.c): BITMAPINFOHEADER, 8 bits
   # per pixel, uncompressed, bottom-up rows, and a full 256 entry palette so the
   # pixel data starts at offset 1078. That is byte for byte what
-  # fmruby-core/tool/gen_icon_bmp.rb and tool/basic/basic_sheet.rb already
+  # fmruby-core/tools/gen_icon_bmp.rb and tools/basic/basic_sheet.rb already
   # generate, so re-saving an untouched file leaves the repository clean.
   #
   # Reading is deliberately more permissive (1, 4 and 8 bits per pixel, either

@@ -52,8 +52,8 @@ same way (`tools/dev_run_check.sh --keep`) if you ever want no GUI.
 To check that debugd is reachable:
 
 ```bash
-python3 fmruby-core/tool/debug/fmrb_dbg_client.py localhost:5555 version
-python3 fmruby-core/tool/debug/fmrb_dbg_client.py localhost:5555 ps
+python3 fmruby-core/tools/debug/fmrb_dbg_client.py localhost:5555 version
+python3 fmruby-core/tools/debug/fmrb_dbg_client.py localhost:5555 ps
 ```
 
 `ps` lists the VMs (kernel, system_desktop, and any app you started) — these
@@ -244,13 +244,13 @@ BLE specifically:
 - Connects but every command times out: something is connected to the board
   but it is not answering — check the boot log for `debugd task started`.
 - If running the adapter from the `\\wsl$` UNC path misbehaves, copy
-  `fmruby-core/tool/debug/` to a local Windows folder and point `adapterPath`
+  `fmruby-core/tools/debug/` to a local Windows folder and point `adapterPath`
   at that copy.
 
 ## Status
 
 TCP (Linux simulation) and BLE (ESP32-S3) transports are implemented. The
-adapter (`fmruby-core/tool/debug/fmrb_dap_adapter.py`) is verified headless by
-`fmruby-core/tool/debug/test_phase2.py`, and the BLE frame codec is
+adapter (`fmruby-core/tools/debug/fmrb_dap_adapter.py`) is verified headless by
+`fmruby-core/tools/debug/test_phase2.py`, and the BLE frame codec is
 cross-checked byte for byte against the device C implementation. The VSCode UI
 flow and BLE end-to-end against real hardware require manual verification.

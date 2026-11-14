@@ -100,7 +100,7 @@
                 "type": "array",
                 "description": "Dirs/globs holding *_combined.map.json (combined-line <-> original file:line).",
                 "default": [
-                  "${workspaceFolder}/fmruby-core/main/prebuild_scripts/*/mrb"
+                  "${workspaceFolder}/fmruby-core/main/ruby/*/mrb"
                 ]
               }
             }

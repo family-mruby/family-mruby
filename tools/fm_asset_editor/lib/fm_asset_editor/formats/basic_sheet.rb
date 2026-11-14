@@ -8,7 +8,7 @@ module FmAssetEditor
     # 128x128 holding 16x16 cells of 8x8 pixels; the character code is
     # row * 16 + column. The pixel byte is a palette index, not a colour:
     # 0 is off, 1 is the ink the renderer draws today, 2 and 3 are reserved for
-    # the colour attributes. Colours below match fmruby-core/tool/basic/
+    # the colour attributes. Colours below match fmruby-core/tools/basic/
     # basic_sheet.rb so the sheets keep opening the same way in other editors.
     module BasicSheet
       LABEL = 'BASIC character sheet (128x128, 16x16 cells of 8x8)'

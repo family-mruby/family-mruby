@@ -119,7 +119,7 @@ require "socket"
 
 HERE = File.dirname(File.expand_path(__FILE__))
 CORE = File.expand_path(File.join(HERE, "..", "fmruby-core"))
-DBG_CLIENT = File.join(CORE, "tool", "debug", "fmrb_dbg_client.py")
+DBG_CLIENT = File.join(CORE, "tools", "debug", "fmrb_dbg_client.py")
 INPUT_TOOL = File.join(HERE, "fmrb_input.rb")
 AUDIO_RATE = 15_720
 DEFAULT_DEBUG_PORT = 5565

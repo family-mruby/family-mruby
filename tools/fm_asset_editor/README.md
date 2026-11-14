@@ -138,7 +138,7 @@ o5 l4 cegegegc   パート。1 行 1 パートで、上から順にチャンネ�
 
 パートの中身は `MIDI::MML::Sequence` が読む方言そのもの
 (`o` `l` `v` `>` `<` `r` `.` `&` `[...]n`、`c+` `c#` `c-`)。**エディタは
-方言を書き直さず、実機と同じパーサ (`fmruby-core/lib/add/picoruby-midi-mml`)
+方言を書き直さず、実機と同じパーサ (`fmruby-core/lib/gems/picoruby-midi-mml`)
 をその場で読み込んで使う**ので、画面に出る音符と長さは実機の解釈と一致する。
 core が隣に無いときは、書くことはできるが下の確認機能が止まる。
 
@@ -183,8 +183,8 @@ player.start
 `load_file` は読み込みのときに音色の設定も送る (声は transport の
 `map_channel`、デューティと音量は control change、音色は program change)。
 使い道の無い装置はそれを無視するので、同じファイルが内蔵音源でも外部音源でも
-そのまま通る。実装は `lib/add/picoruby-fmrb-midi/mrblib/fmrb-mml.rb`。
-ホスト側の検査は `fmruby-core` で `ruby tool/midi/test/mml_test.rb`。
+そのまま通る。実装は `lib/gems/picoruby-fmrb-midi/mrblib/fmrb-mml.rb`。
+ホスト側の検査は `fmruby-core` で `ruby tools/midi/test/mml_test.rb`。
 
 ## テスト
 

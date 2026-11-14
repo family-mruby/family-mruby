@@ -122,7 +122,7 @@ module FmrbAudioProbe
   end
 
   # Pull the raw capture out of the container and wrap it in a WAV header so
-  # tool/midi/wav_pitch.rb (or any player) can read it.
+  # tools/midi/wav_pitch.rb (or any player) can read it.
   def fetch_dump(path)
     raw = IO.popen(["docker", "exec", CONTAINER, "cat", REMOTE_DUMP], "rb", &:read)
     if raw.nil? || raw.empty?

@@ -47,12 +47,12 @@ end
 # handling can be checked without a sim behind them.
 def fake_repo(dir, hw_target: "TAB5")
   FileUtils.mkdir_p(File.join(dir, "tools"))
-  FileUtils.mkdir_p(File.join(dir, "fmruby-core", "tool", "debug"))
+  FileUtils.mkdir_p(File.join(dir, "fmruby-core", "tools", "debug"))
   File.write(File.join(dir, "fmruby-core", ".env"),
              "# comment\nFMRB_HW_TARGET=#{hw_target}  # inline comment\n")
   File.write(File.join(dir, "tools", "fmrb_input.rb"),
              "require 'json'\nputs JSON.generate(ARGV)\n")
-  File.write(File.join(dir, "fmruby-core", "tool", "debug", "fmrb_dbg_client.py"),
+  File.write(File.join(dir, "fmruby-core", "tools", "debug", "fmrb_dbg_client.py"),
              "import json,sys\nprint(json.dumps({\"argv\": sys.argv[1:], \"pid\": 7}))\n")
   dir
 end

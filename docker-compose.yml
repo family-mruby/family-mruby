@@ -84,7 +84,7 @@ services:
 
   # Zenoh router for the Zenoh client gem (fmruby-core/doc/ruby_asterism).
   # Apps in the sim reach it by name: tcp/zenohd:7447. Pinned to the same
-  # release as zenoh-pico (fmruby-core/lib/add/ZENOH_PICO_PIN) -- bump both
+  # release as zenoh-pico (the asterism-zenoh checkout's ZENOH_PICO_PIN) -- bump both
   # together. The REST plugin (port 8000) lets the PC read and write keys over
   # HTTP (tools/fmrb_zenoh.rb); the in-memory storage on fmrb/** keeps the
   # latest value of each key so a REST GET has something to answer with.

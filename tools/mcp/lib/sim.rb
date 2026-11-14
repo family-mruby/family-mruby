@@ -177,7 +177,7 @@ module FmrbMcp
           raise Error, "unknown action #{action.inspect} (spawn|ps|kill)"
         end
 
-      client = File.join(@repo_root, "fmruby-core", "tool", "debug", "fmrb_dbg_client.py")
+      client = File.join(@repo_root, "fmruby-core", "tools", "debug", "fmrb_dbg_client.py")
       res = Sub.run({}, ["python3", client, "--json", "localhost", *args],
                     chdir: @repo_root, timeout: APP_TIMEOUT)
       unless res[:ok]
@@ -214,7 +214,7 @@ module FmrbMcp
         else
           raise Error, "unknown action #{action.inspect} (get|mute|unmute|volume)"
         end
-      client = File.join(@repo_root, "fmruby-core", "tool", "debug", "fmrb_dbg_client.py")
+      client = File.join(@repo_root, "fmruby-core", "tools", "debug", "fmrb_dbg_client.py")
       res = Sub.run({}, ["python3", client, "--json", "localhost", *args],
                     chdir: @repo_root, timeout: APP_TIMEOUT)
       unless res[:ok]

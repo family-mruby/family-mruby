@@ -272,7 +272,7 @@ PicoRuby) なので、道具立てを揃えるほうが読み書きしやすい�
   書き直せるものは Ruby へ移す (例: tools/fmrb_input.rb)。
 - Python のままにしてよいのは、置き換えに外部ライブラリ相当の実装が要る
   もの: 画像処理 (Pillow を使う PNG 生成・BMP 変換)、既存の Python 資産に
-  依存するもの (debugd クライアント tool/debug/fmrb_dbg_client.py とその
+  依存するもの (debugd クライアント tools/debug/fmrb_dbg_client.py とその
   利用ツール)、シリアルの RTS/DTR 制御 (pyserial を使う
   tools/fmrb_serial_capture.py。esptool 経由で pyserial は既にホスト依存)。
 - コンテナ内で実行する部分は、そのイメージに入っている言語に合わせる

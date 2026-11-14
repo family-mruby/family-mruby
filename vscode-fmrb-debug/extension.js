@@ -1,7 +1,7 @@
 // Minimal VSCode extension for the Family mruby remote debugger.
 //
 // It registers debug type "fmrb" and launches the Python DAP adapter
-// (fmruby-core/tool/debug/fmrb_dap_adapter.py) as an external process,
+// (fmruby-core/tools/debug/fmrb_dap_adapter.py) as an external process,
 // bridging VSCode's DAP to fmrb_debugd over TCP.
 //
 // No launch.json is required: starting an "fmrb" session without an "app"
@@ -123,7 +123,7 @@ async function findCoreDir(context, folder) {
   const sibling = path.join(context.extensionPath, "..", "fmruby-core");
   candidates.push({ remote: false, posix: sibling, ui: sibling });
   for (const c of candidates) {
-    const probe = joinLoc(c, "tool", "debug");
+    const probe = joinLoc(c, "tools", "debug");
     const found = await locExists(probe);
     log(`findCoreDir: ${probe.remote ? probe.posix : probe.ui} -> ${found}`);
     if (found) return c;
@@ -140,7 +140,7 @@ async function findCoreDir(context, folder) {
 async function toolPath(context, folder, file) {
   const core = await findCoreDir(context, folder);
   if (!core) return null;
-  return path.join(core.ui, "tool", "debug", file);
+  return path.join(core.ui, "tools", "debug", file);
 }
 
 // Run `fmrb_dbg_client.py <host:port> ps --json` and return the app list.
@@ -283,7 +283,7 @@ function activate(context) {
           { device: "/project/", local: localStr(core) },
         ];
         config.combinedMaps = config.combinedMaps || [
-          path.join(core.ui, "main", "prebuild_scripts", "*", "mrb"),
+          path.join(core.ui, "main", "ruby", "*", "mrb"),
         ];
       }
 
