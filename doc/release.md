@@ -19,7 +19,7 @@ fmruby-graphics-audio) にタグを打ち、直下のタグで CI を動かし�
 | 漢字変換の辞書 | 同じ GitHub リリースに `fmrb_kanji.dic` (標準 1 MB)・`fmrb_kanji_4m.dic` (大きい辞書 4 MB)・`fmrb_kanji_LICENSE.txt` | 手元の `rake kanji:dict_release` と `rake kanji:place` (2 の後で添付) |
 | Web Studio (ブラウザ版) | サイトのリポジトリ family-mruby.github.io の `docs/studio/` | 手元の `rake wasm:site` |
 | Web Studio (副次) | 自前の nginx | 手元の `rake wasm:deploy` |
-| Web Console | サイトの `docs/console/` | サイトの公開の CI が fmruby-core の **main** の `tool/web` を取り込む |
+| Web Console | サイトの `docs/console/` | サイトの公開の CI が fmruby-core の **main** の `tools/web` を取り込む |
 
 ## 1. 準備
 
@@ -116,7 +116,7 @@ FMRB_WEB_DEST=<host>:<dir>/ rake wasm:deploy  # 副次の nginx (置き先はこ
 ```
 
 - Web Console はサイトの公開の CI (deploy.yml) が、公開のたびに fmruby-core の
-  main の `tool/web` を `scripts/sync-console.sh` で取り込む (`docs/console/` は
+  main の `tools/web` を `scripts/sync-console.sh` で取り込む (`docs/console/` は
   gitignore、develop のものは `docs/console-dev/`)。fmruby-core の main をリリースに
   進めたあと、サイトを 1 回公開すれば揃う (Studio の push がそれを兼ねる)。
 
@@ -130,7 +130,7 @@ FMRB_WEB_DEST=<host>:<dir>/ rake wasm:deploy  # 副次の nginx (置き先はこ
 - Web Studio: 公開の `core_web.wasm` が手元の `wasm/build/dist/` のものとバイト単位で
   同じ。中に版の文字列がある。副次の nginx も同じ確かめ方と、COOP/COEP の
   ヘッダ。
-- Web Console: 公開の `index.html` が fmruby-core の main の `tool/web/index.html`
+- Web Console: 公開の `index.html` が fmruby-core の main の `tools/web/index.html`
   (favicon の 1 行を足したもの) と同じ。
 - 実機に焼いて確かめるのは、版の確認 (core と GA) とブートの要約 (crash 0)。
 

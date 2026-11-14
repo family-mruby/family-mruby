@@ -63,7 +63,7 @@ typedef struct mrb_task_state {
 → `known_issues.md` の「根本対応 TODO 候補 1: scheduler state を mrb_state 単位に持たせる」
 は実装済み。**state 共有は真因から外れる**。`known_issues.md` 側の記述はこの点で古い。
 
-参考: [task.c:28-34](../../fmruby-core/lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c),
+参考: [task.c:28-34](../../fmruby-core/lib/upstream/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c),
 [mruby.h:253-260](../../fmruby-core/components/picoruby-esp32/picoruby/mrbgems/picoruby-mruby/lib/mruby/include/mruby.h)
 
 ---
@@ -190,8 +190,8 @@ tick スレッドがキューを relink している最中に VM スレッドが
 
 `known_issues.md` に記録された症状・バックトレースと完全に一致する。
 
-参考: [execute_task / mrb_task_run / mrb_tick](../../fmruby-core/lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c),
-[machine.c (tick task / disable_irq)](../../fmruby-core/lib/replace/picoruby-machine/ports/esp32/machine.c)
+参考: [execute_task / mrb_task_run / mrb_tick](../../fmruby-core/lib/upstream/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c),
+[machine.c (tick task / disable_irq)](../../fmruby-core/lib/upstream/replace/picoruby-machine/ports/esp32/machine.c)
 
 ---
 
@@ -222,8 +222,8 @@ for (mrb_int i = 0; i < missed_ticks; i++) {
 供給されないため、そちらで `Task` API を使うと駆動されない (`known_issues.md` 記載どおりの
 綱渡り)。
 
-参考: [app.c:589-606 (_spin 補償)](../../fmruby-core/lib/add/picoruby-fmrb-app/ports/esp32/app.c),
-[machine.c:271-277 (mrb_hal_task_init no-op)](../../fmruby-core/lib/replace/picoruby-machine/ports/esp32/machine.c)
+参考: [app.c:589-606 (_spin 補償)](../../fmruby-core/lib/gems/picoruby-fmrb-app/ports/esp32/app.c),
+[machine.c:271-277 (mrb_hal_task_init no-op)](../../fmruby-core/lib/upstream/replace/picoruby-machine/ports/esp32/machine.c)
 
 ---
 
@@ -310,18 +310,18 @@ ESP32 実機検証は未。
 
 実際に変更したファイル:
 
-- `lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c`:
+- `lib/upstream/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c`:
   `mrb_task_run` / `mrb_task_run_once` のループ先頭で
   `mrb_hal_task_take_pending_ticks()` を drain して `mrb_tick()` を適用 (bottom-half)。
   signal 源用ヘルパ `mrb_task_request_switch(mrb)` (= `switching_ = TRUE`) を追加。
-- `lib/replace/picoruby-machine/ports/esp32/machine.c` および
+- `lib/upstream/replace/picoruby-machine/ports/esp32/machine.c` および
   `.../ports/esp32_linux/hal_freertos.c`: tick タスクを signal-only 化
   (`pending_ticks++` + `mrb_task_request_switch()`)。`mrb_hal_task_take_pending_ticks()`
   を実装。`mrb_task_disable_irq`/`enable_irq` を no-op 化。esp32 は `mrb_hal_task_init`
   の no-op を解除して tick タスク再有効化。registry に `pending_ticks` 追加。
-- `lib/replace/picoruby-machine/include/hal.h`: `mrb_task_request_switch` /
+- `lib/upstream/replace/picoruby-machine/include/hal.h`: `mrb_task_request_switch` /
   `mrb_hal_task_take_pending_ticks` のプロトタイプ追加。
-- `lib/add/picoruby-fmrb-app/ports/esp32/app.c`: `_spin` 末尾の補償 `mrb_tick` を削除
+- `lib/gems/picoruby-fmrb-app/ports/esp32/app.c`: `_spin` 末尾の補償 `mrb_tick` を削除
   (mrb_task_run に一本化)。
 
 実装で判明した要点 (当初案からの差分):
@@ -386,8 +386,8 @@ mrb_tick を VM 自スレッドに移してキュー競合は閉じたが、**as
 ESP32 で確実に出るのは host 往復が UART で **ms〜秒**と長く、再入窓が桁違いに大きいから
 (Linux のローカルソケットは µs)。
 
-**最終修正 (vm.c を lib/patch に vendoring):**
-`lib/patch/picoruby-mruby/lib/mruby/src/vm.c` の `RETURN_IF_TASK_STOPPED` を改修:
+**最終修正 (vm.c を lib/upstream/patch に vendoring):**
+`lib/upstream/patch/picoruby-mruby/lib/mruby/src/vm.c` の `RETURN_IF_TASK_STOPPED` を改修:
 
 - **最上位バイトコード境界でのみ yield。** `mrb_task_yield_ok()` で ci チェーンを current
   から下に走査し、`cci > 0` (C 境界) が一つでもあれば yield しない。→ ネスト C 再入中の
@@ -455,7 +455,7 @@ ISR プリエンプションを再現する案。本実機では **VM タスク�
 
 案B-改 (portMUX スピンロック化) の最大の懸念だった「portMUX 非再帰 → 二重取得デッド
 ロック」を、コード変更せず読み取りのみで監査した。対象は
-`lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c`。
+`lib/upstream/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c`。
 
 ### A. デッドロック (非再帰ネスト) リスク → クリーン。問題なし
 
@@ -533,11 +533,11 @@ introspection 系 3 関数 (stat / list / get) の snapshot 化という局所�
 
 ## 参考ファイル
 
-- スケジューラ本体: `fmruby-core/lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c`
+- スケジューラ本体: `fmruby-core/lib/upstream/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c`
 - VM 単位 state 定義: `fmruby-core/components/picoruby-esp32/picoruby/mrbgems/picoruby-mruby/lib/mruby/include/mruby.h` (`mrb_task_state`)
 - VM の switching 消費点: `.../mruby-task/.../src/vm.c` の `RETURN_IF_TASK_STOPPED` (命令ディスパッチ毎に `mrb->task.switching` を判定)
-- tick タスク / 協調 irq フラグ: `fmruby-core/lib/replace/picoruby-machine/ports/esp32/machine.c`
-- `_spin` 補償 tick: `fmruby-core/lib/add/picoruby-fmrb-app/ports/esp32/app.c`
+- tick タスク / 協調 irq フラグ: `fmruby-core/lib/upstream/replace/picoruby-machine/ports/esp32/machine.c`
+- `_spin` 補償 tick: `fmruby-core/lib/gems/picoruby-fmrb-app/ports/esp32/app.c`
 - VM 登録: `fmruby-core/main/app/fmrb_app.c` (`hal_register_vm`)
 
 ## 関連コミット

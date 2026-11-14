@@ -78,7 +78,7 @@ I2C bus はシステム全体で 1 つしかないリソースなので、永続
   ```
 
 - PC は `mrb_run` 内部、`A2 = 0x00000000` (NULL) — 保存された
-  `ci->proc` が NULL で mruby-task の resume ロジック ([`task.c:364`](../fmruby-core/lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c))
+  `ci->proc` が NULL で mruby-task の resume ロジック ([`task.c:364`](../fmruby-core/lib/upstream/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c))
   が `"task context corrupted: no proc on resume"` を raise している
 
 ### 再現手順
@@ -92,7 +92,7 @@ I2C bus はシステム全体で 1 つしかないリソースなので、永続
 
 - `input_router.rb` のドラッグ処理で、マウスポインタが画面外に出ると
   `new_x = x - @drag_offset_x` が負値になる
-- これが C 実装の [`_update_window_position`](../fmruby-core/lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c)
+- これが C 実装の [`_update_window_position`](../fmruby-core/lib/gems/picoruby-fmrb-kernel/ports/esp32/kernel.c)
   に渡されると、範囲チェックで `mrb_raise(..., "Invalid position")` が発生
 - Ruby 側 `rescue` で捕捉できるものの、**PicoRuby の mruby-task は C からの
   `mrb_raise` (`longjmp`) を複数回またいだ際に ci スタックを正しく復元できず、
@@ -132,7 +132,7 @@ monitor 単独 / mruby.app 単独では安定動作するため、**複数タス
 
 ### 原因切り分け結果 (2026-04-18)
 
-`mruby_tick_task` (FreeRTOS タスク、`lib/replace/picoruby-machine/ports/esp32/machine.c`)
+`mruby_tick_task` (FreeRTOS タスク、`lib/upstream/replace/picoruby-machine/ports/esp32/machine.c`)
 による 5ms 周期の `mrb_tick()` 配信を**完全に止める**実験を行い、以下を確認:
 
 - Tick task 有効時: 複数 VM 起動 + タイトルバードラッグで数秒〜数十秒でクラッシュ
@@ -141,7 +141,7 @@ monitor 単独 / mruby.app 単独では安定動作するため、**複数タス
 したがって **VM コンテキスト破壊の原因は Tick task 経由の並行 `mrb_tick()` 配信** で
 確定。
 
-注: Tick task を止めても、[`lib/add/picoruby-fmrb-app/ports/esp32/app.c`](../fmruby-core/lib/add/picoruby-fmrb-app/ports/esp32/app.c) の
+注: Tick task を止めても、[`lib/gems/picoruby-fmrb-app/ports/esp32/app.c`](../fmruby-core/lib/gems/picoruby-fmrb-app/ports/esp32/app.c) の
 `_spin` 末尾 (L600-602) に **自 VM 文脈からの補償 `mrb_tick()`** が残っているため、
 `_spin` を回しているアプリ (通常のウィンドウアプリ) のスケジューラは引き続き動く。
 ただし `_spin` を使わない常駐タスク (`fmrb_kernel` / `system_desktop` など) の
@@ -160,7 +160,7 @@ mruby-task スケジューラは止まっている可能性があるので、そ
 
 ### 仮説: `task.c` の static スケジューラ状態が全 VM で共有されている
 
-[`lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c`](../fmruby-core/lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c) の以下の
+[`lib/upstream/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c`](../fmruby-core/lib/upstream/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c) の以下の
 静的変数はファイルスコープで宣言されており、**複数 mruby VM が動いても 1 セットしか
 存在しない**:
 
@@ -194,9 +194,9 @@ resume 時に `ci->proc` が NULL になるのはこれが原因と推定。
 この Tick 問題は当面 Known Issue としてこの状態のままとし、根本対応は後で行う。
 現行コードベースの実情は以下:
 
-- [`lib/replace/picoruby-machine/ports/esp32/machine.c`](../fmruby-core/lib/replace/picoruby-machine/ports/esp32/machine.c) の `mrb_hal_task_init` は
+- [`lib/upstream/replace/picoruby-machine/ports/esp32/machine.c`](../fmruby-core/lib/upstream/replace/picoruby-machine/ports/esp32/machine.c) の `mrb_hal_task_init` は
   no-op 化済み (debug コメント付き) → Tick task は作られない
-- [`lib/add/picoruby-fmrb-app/ports/esp32/app.c`](../fmruby-core/lib/add/picoruby-fmrb-app/ports/esp32/app.c) の `_spin` 補償 tick は**有効**
+- [`lib/gems/picoruby-fmrb-app/ports/esp32/app.c`](../fmruby-core/lib/gems/picoruby-fmrb-app/ports/esp32/app.c) の `_spin` 補償 tick は**有効**
 - この構成で VM クラッシュは発生せず、ウィンドウアプリの Task も動作
 
 調査を続ける場合のポイント:
@@ -220,16 +220,16 @@ resume 時に `ci->proc` が NULL になるのはこれが原因と推定。
 ### 参考ファイル
 
 - ラップ側 (応急対処済み):
-  - `fmruby-core/main/prebuild_scripts/kernel/fmrb_kernel/input_router.rb`
-  - `fmruby-core/main/prebuild_scripts/kernel/mrb/fmrb_kernel_combined.rb`
+  - `fmruby-core/main/ruby/kernel/fmrb_kernel/input_router.rb`
+  - `fmruby-core/main/ruby/kernel/mrb/fmrb_kernel_combined.rb`
 - C 側 (`mrb_raise` の発生源):
-  - `fmruby-core/lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c:315`
+  - `fmruby-core/lib/gems/picoruby-fmrb-kernel/ports/esp32/kernel.c:315`
 - mruby-task のエラー発生箇所:
-  - `fmruby-core/lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c:364`
+  - `fmruby-core/lib/upstream/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c:364`
 - Tick task (2026-04-18 時点で debug 無効化):
-  - `fmruby-core/lib/replace/picoruby-machine/ports/esp32/machine.c:271` (`mrb_hal_task_init`)
+  - `fmruby-core/lib/upstream/replace/picoruby-machine/ports/esp32/machine.c:271` (`mrb_hal_task_init`)
 - 自 VM 文脈からの補償 tick:
-  - `fmruby-core/lib/add/picoruby-fmrb-app/ports/esp32/app.c:600`
+  - `fmruby-core/lib/gems/picoruby-fmrb-app/ports/esp32/app.c:600`
 
 ### 関連コミット
 
@@ -308,8 +308,8 @@ end
 
 ### 参考ファイル
 
-- Ruby 側 API: `fmruby-core/lib/add/picoruby-fmrb-app/mrblib/fmrb-audio.rb`
-- kernel 側ルータ: `fmruby-core/main/prebuild_scripts/kernel/fmrb_kernel/audio_handler.rb`
+- Ruby 側 API: `fmruby-core/lib/gems/picoruby-fmrb-app/mrblib/fmrb-audio.rb`
+- kernel 側ルータ: `fmruby-core/main/ruby/kernel/fmrb_kernel/audio_handler.rb`
 - WROVER 側ハンドラ: `fmruby-graphics-audio/main/tasks/audio_task.c` (`audio_task_note_on` / `_note_off`)
 - 応急対処の実装例: `fmruby-core/flash/app/game/flappy.rb` (`play_flap`)
 

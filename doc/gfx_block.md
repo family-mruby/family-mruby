@@ -4,7 +4,7 @@
 キャッシュし、以降は変化したパラメータ(レジスタ)だけを送ることで Core
 ↔ WROVER 間の通信コストを削減するための仕組みです。
 
-実装本体: [`fmruby-core/lib/add/picoruby-fmrb-app/mrblib/gfx_block.rb`](../fmruby-core/lib/add/picoruby-fmrb-app/mrblib/gfx_block.rb)
+実装本体: [`fmruby-core/lib/gems/picoruby-fmrb-app/mrblib/gfx_block.rb`](../fmruby-core/lib/gems/picoruby-fmrb-app/mrblib/gfx_block.rb)
 背景設計: [`tmp/window_roundcorner_and_batch_vm.md`](../tmp/window_roundcorner_and_batch_vm.md) Part B
 
 ---
@@ -221,7 +221,7 @@ end
 
 ### 4.1 ウィンドウ枠 — 静的ブロック
 
-[`fmruby-core/lib/add/picoruby-fmrb-app/mrblib/fmrb-app.rb`](../fmruby-core/lib/add/picoruby-fmrb-app/mrblib/fmrb-app.rb#L88-L106)
+[`fmruby-core/lib/gems/picoruby-fmrb-app/mrblib/fmrb-app.rb`](../fmruby-core/lib/gems/picoruby-fmrb-app/mrblib/fmrb-app.rb#L88-L106)
 の `_build_frame_block`:
 
 ```ruby
@@ -261,5 +261,5 @@ ghost piece (色だけ違う) で同じブロックを `draw` し直して使い
 
 ## 6. 参考
 
-- VM 命令定義(C側): [`fmruby-core/lib/add/picoruby-fmrb-app/ports/esp32/gfx_block.c`](../fmruby-core/lib/add/picoruby-fmrb-app/ports/esp32/gfx_block.c)
+- VM 命令定義(C側): [`fmruby-core/lib/gems/picoruby-fmrb-app/ports/esp32/gfx_block.c`](../fmruby-core/lib/gems/picoruby-fmrb-app/ports/esp32/gfx_block.c)
 - 単体テストアプリ: [`fmruby-core/flash/app/debug/gfx_block_test.app.rb`](../fmruby-core/flash/app/debug/gfx_block_test.app.rb)

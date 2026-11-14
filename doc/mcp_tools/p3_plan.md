@@ -54,7 +54,7 @@ P4 (CLAUDE.md 短縮) はやらない。
   - 経路は Unix DGRAM /var/run/fmrb/fmrb_inject。ソケットがホストに
     見えなければ fmruby_graphics_audio 内の sender に自動フォールバック。
 - アプリ操作は debugd (TCP)。sim では `localhost:5555` に出ている。
-  `python3 fmruby-core/tool/debug/fmrb_dbg_client.py --json localhost spawn path=/app/...`
+  `python3 fmruby-core/tools/debug/fmrb_dbg_client.py --json localhost spawn path=/app/...`
   が `{"pid": N}` を返す。ps / kill も同じクライアント。
   (P2 と違い HTTP でなく独自 TCP。クライアント CLI へ委譲する。)
 - 解像度の期待値は fmruby-core/.env の FMRB_HW_TARGET から:
