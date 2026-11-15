@@ -24,6 +24,9 @@
 #   fmrb_web.rb text "STRING"
 #   fmrb_web.rb sleep MS
 #   fmrb_web.rb ls PATH | cat PATH | get PATH LOCAL | put LOCAL PATH | rm PATH
+#   fmrb_web.rb launch PATH                     # open an app by its path
+#   fmrb_web.rb seed LOCAL PATH [LOCAL PATH]... # files written at every boot
+#   fmrb_web.rb seed --clear                    # of this tab (next reload on)
 #   fmrb_web.rb reload                          # reload the page (boots again)
 #   fmrb_web.rb reset                           # what the page's Erase button
 #                                               # does: files and settings gone
@@ -352,6 +355,31 @@ def run_commands(argv)
       flush.call
       request({ "op" => "fs", "action" => "rm", "path" => argv[i + 1] })
       i += 2
+    when "launch"
+      # An app by its path, as sim_app / tab5_app open one (the page's
+      # launch_wasm.c slot). Prints {"pid": N}.
+      flush.call
+      puts JSON.generate(request({ "op" => "launch", "path" => argv[i + 1] }))
+      i += 2
+    when "seed"
+      # seed LOCAL PATH [LOCAL PATH]... : files the page writes at every boot
+      # of this tab until replaced (from the next reload); `seed --clear`
+      # drops them. For places nothing persists, such as /flash/var/cache.
+      flush.call
+      files = {}
+      j = i + 1
+      if argv[j] == "--clear"
+        j += 1
+      else
+        while j + 1 < argv.length && File.file?(argv[j])
+          files[argv[j + 1]] = Base64.strict_encode64(File.binread(argv[j]))
+          j += 2
+        end
+        abort "seed: give LOCAL PATH pairs, or --clear" if files.empty?
+      end
+      res = request({ "op" => "seed", "files" => files })
+      puts files.empty? ? "seed: cleared" : "seed: #{res['seeded'].join(' ')} (from the next reload)"
+      i = j
     when "reload"
       flush.call
       request({ "op" => "reload" })
