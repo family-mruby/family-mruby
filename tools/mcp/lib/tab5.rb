@@ -268,15 +268,15 @@ module FmrbMcp
       { ip: r[:ip], muted: doc["muted"], volume: doc["volume"], notes: r[:notes] }
     end
 
-    def fs(action:, device_path: nil, local_path: nil, force: false, ip: nil)
+    def fs(action:, device_path: nil, local_path: nil, force: false, ip: nil, names: nil)
       r = resolve(ip)
-      args, timeout = fs_args(action, device_path, local_path, force)
+      args, timeout = fs_args(action, device_path, local_path, force, names)
       args << "--force" if force && %w[pull push].include?(action)
 
       res = Sub.run({}, ["ruby", File.join(tools_dir, "fmrb_rd_fs.rb"), r[:ip], *args],
                     chdir: @repo_root, timeout: timeout)
       notes = r[:notes].dup
-      if %w[put push get pull].include?(action)
+      if %w[put push get pull tests_push extra].include?(action)
         notes << "the remote desktop stream pauses during a large transfer and " \
                  "resumes when it finishes"
       end
@@ -300,8 +300,18 @@ module FmrbMcp
       s.nil? || s.to_s.empty?
     end
 
-    def fs_args(action, device_path, local_path, _force)
+    def fs_args(action, device_path, local_path, _force, names = nil)
+      names = Array(names).map(&:to_s).reject(&:empty?)
       case action
+      # The test apps and the optional apps no storage image carries
+      # (fmruby-core config/storage_exclude_common.txt, doc/flash_layout F1).
+      when "tests_push" then [["tests", "push", *names], FS_BASE_TIMEOUT * 10]
+      when "tests_clean" then [["tests", "clean"], FS_BASE_TIMEOUT * 5]
+      when "tests_ls" then [["tests", "ls"], FS_BASE_TIMEOUT]
+      when "extra", "extra_remove"
+        raise Error, "#{action} needs names (an optional app such as walk_scroller, or paths under flash/)" if names.empty?
+        [["extra", *names, *(action == "extra_remove" ? ["--remove"] : [])], FS_BASE_TIMEOUT * 10]
+      when "df" then [["df", device_path || "/"], FS_BASE_TIMEOUT]
       when "ls"    then [["ls", need(device_path, "ls needs device_path")], FS_BASE_TIMEOUT]
       when "mkdir" then [["mkdir", need(device_path, "mkdir needs device_path")], FS_BASE_TIMEOUT]
       when "del"   then [["del", need(device_path, "del needs device_path")], FS_BASE_TIMEOUT]
@@ -321,7 +331,7 @@ module FmrbMcp
         raise Error, "#{l} is not a directory" unless File.directory?(l)
         [["push", l, need(device_path, "push needs device_path")], transfer_timeout(dir_size(l))]
       else
-        raise Error, "unknown action #{action.inspect} (ls|get|put|push|pull|mkdir|del|rmr)"
+        raise Error, "unknown action #{action.inspect} (ls|get|put|push|pull|mkdir|del|rmr|df|tests_push|tests_clean|tests_ls|extra|extra_remove)"
       end
     end
 

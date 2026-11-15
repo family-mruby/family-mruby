@@ -530,6 +530,21 @@ TAB5_FS = MCP::Tool.define(
       action: "pull",  device_path: "/mnt/sd/picorabbit", local_path: "./exports"
       action: "push",  local_path: "./myapp", device_path: "/app/myapp"
       action: "rmr",   device_path: "/app/test"
+      action: "df"                                      -> free space of the storage
+      action: "tests_push", names: ["ckpt_counter"]     -> test apps to /app/test
+      action: "tests_clean"                             -> /app/test deleted
+      action: "tests_ls"
+      action: "extra", names: ["walk_scroller"]         -> an optional app
+      action: "extra_remove", names: ["walk_scroller"]
+
+    No storage image carries the test apps (fmruby-core/flash/app/test) or
+    walk_scroller (config/storage_exclude_common.txt). Before launching a test
+    app on the board, tests_push it (by base name; no names sends them all);
+    it sends only what is missing or differs, and when the free space would
+    fall under 512 KB it first deletes the test files put there earliest that
+    this push does not need. Keep them while a series of tests goes on and
+    call tests_clean at its end. The launcher lists pushed apps only after a
+    rescan (right click on the desktop); tab5_app launch by path works at once.
 
     A development build (the default) reaches every path, /etc and the files
     that hold keys and passwords included; any ".." is refused. A board on
@@ -553,8 +568,12 @@ TAB5_FS = MCP::Tool.define(
   annotations: { destructive_hint: true, idempotent_hint: false, open_world_hint: true },
   input_schema: {
     properties: {
-      action: { type: "string", enum: %w[ls get put push pull mkdir del rmr],
-                description: "ls, get, put, push, pull, mkdir, del or rmr" },
+      action: { type: "string", enum: %w[ls get put push pull mkdir del rmr df tests_push tests_clean tests_ls extra
+                                           extra_remove],
+                description: "ls, get, put, push, pull, mkdir, del, rmr, df, tests_push, tests_clean, tests_ls, " \
+                             "extra or extra_remove" },
+      names: { type: "array", items: { type: "string" },
+               description: "for tests_push: test app base names (none: all); for extra(_remove): optional apps (walk_scroller) or paths under flash/" },
       device_path: { type: "string", description: "path on the board (/app, /home, /usr/share, /mnt/sd, ...)" },
       local_path: { type: "string", description: "path on this machine" },
       force: { type: "boolean", description: "for pull/push: copy even when sizes match" },
@@ -562,9 +581,9 @@ TAB5_FS = MCP::Tool.define(
     },
     required: ["action"],
   },
-) do |action:, device_path: nil, local_path: nil, force: false, ip: nil, server_context: nil, **_extra|
+) do |action:, device_path: nil, local_path: nil, force: false, ip: nil, names: nil, server_context: nil, **_extra|
   respond { TAB5.fs(action: action, device_path: device_path, local_path: local_path,
-                    force: force, ip: ip) }
+                    force: force, ip: ip, names: names) }
 end
 
 TAB5_AUDIO = MCP::Tool.define(
@@ -1027,7 +1046,8 @@ NATIVE_APP = MCP::Tool.define(
     (max ms, default 5000): status "written" with the path, "refused" with the
     reason (the app goes on), or "timeout". Only an app on the mruby VM whose
     .app.toml says movable = true is written (/app/test/ckpt_counter.app.rb
-    is one; /app/test/ckpt_window.app.rb has a window). restore starts an
+    is one; /app/test/ckpt_window.app.rb has a window; on a board, put them
+    there first with tab5_fs tests_push). restore starts an
     image again later and answers once it is restored. That /tmp is the
     program's own memory, not the PC's: the image is reachable by path inside
     the program only.

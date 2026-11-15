@@ -63,7 +63,7 @@ Modern (Tab5 / ESP32-P4) を WiFi で操作する。**どのツールも IP を�
 | `tab5_screenshot(ip?)` | 画面 1 枚を **image content で返す** (ファイル経由不要)。JPEG はファイルにも残す |
 | `tab5_input(commands, ip?)` | `click X Y` `drag ...` `key ctrl+tab` `sleep MS` などを左から実行 |
 | `tab5_app(action, path?, pid?, ip?)` | `launch` (パス起動、pid を返す) / `ps` / `kill` |
-| `tab5_fs(action, device_path?, local_path?, force?, ip?)` | `ls get put push pull mkdir del rmr` |
+| `tab5_fs(action, device_path?, local_path?, force?, ip?, names?)` | `ls get put push pull mkdir del rmr df`、試験のアプリ `tests_push tests_clean tests_ls` (storage の像に入らない。fmruby-core doc/regression/usage.md 8.2)、`extra extra_remove` (walk_scroller など) |
 | `tab5_audio(action, level?, ip?)` | `get` / `mute` / `unmute` / `volume` (0-10)。devctl の `/audio/*` を叩く |
 
 - 座標はフレームバッファ系 **426x240** (窓の拡大率と無関係)。

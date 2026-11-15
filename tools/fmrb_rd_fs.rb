@@ -53,6 +53,24 @@
 # has and the build does not are listed, never deleted. This is what follows
 # an app-only flash (rake flash:app_sync).
 #
+# What no storage image carries (fmruby-core config/storage_exclude_common.txt)
+# is put on a board when it is wanted (fmruby-core doc/flash_layout F0-F1):
+#
+#   ruby tools/fmrb_rd_fs.rb <IP> tests push [name...] [--reserve KB] [--flash DIR]
+#   ruby tools/fmrb_rd_fs.rb <IP> tests clean           # all of /app/test
+#   ruby tools/fmrb_rd_fs.rb <IP> tests ls
+#   ruby tools/fmrb_rd_fs.rb <IP> extra walk_scroller [--remove]
+#   ruby tools/fmrb_rd_fs.rb <IP> df [path]             # free space (/fs/df)
+#
+# tests push sends the named test apps (base names: ckpt_counter takes
+# ckpt_counter.app.rb, .app.toml and whatever else bears that name; none named
+# sends all of flash/app/test) to /app/test, only what is missing or differs
+# in size. When that would leave less than the reserve free (512 KB unless
+# --reserve), it first deletes the test files put there earliest that this
+# push does not need. tests clean at the end of a series of tests deletes
+# /app/test. extra puts an optional app from flash/ (or any path under it) on
+# the board, --remove takes it away.
+#
 # wait polls /status until the board answers (after a flash or a reboot) and
 # prints ip=<address>; --name re-resolves the board's mDNS name when the
 # address stops answering (DHCP may hand out another). reboot restarts it.
@@ -132,6 +150,15 @@ class FmrbFs
   # (before 2026-11-15): the callers then fall back to the size.
   def md5(path)
     res = request(Net::HTTP::Get, "/fs/md5", path)
+    doc = JSON.parse(res.body) rescue nil
+    return nil if res.code == "404" && !(doc.is_a?(Hash) && doc.key?("ok"))
+    expect_ok(res)
+  end
+
+  # { "total" => bytes, "free" => bytes } of the filesystem under path, or
+  # nil when the firmware has no /fs/df (before 2026-11-16).
+  def df(path = "/")
+    res = request(Net::HTTP::Get, "/fs/df", path)
     doc = JSON.parse(res.body) rescue nil
     return nil if res.code == "404" && !(doc.is_a?(Hash) && doc.key?("ok"))
     expect_ok(res)
@@ -666,8 +693,42 @@ def one_shot(fs, cmd, args)
   when "reboot"
     fs.reboot
     puts "rebooting #{fs.host}"
+  when "df"
+    path = args.shift || "/"
+    d = fs.df(path) or abort "this firmware has no /fs/df (before 2026-11-16)"
+    puts "#{path}: #{d['free'] / 1024} KB free of #{d['total'] / 1024} KB"
+  when "tests"
+    flash = option(args, "--flash")
+    reserve = (option(args, "--reserve") || FmrbDevFiles::RESERVE_KB).to_i
+    dev = FmrbDevFiles.new(fs, ->(s) { puts s }, **(flash ? { flash: File.expand_path(flash) } : {}))
+    case (sub = args.shift)
+    when "push"
+      r, dt = timed { dev.push_tests(args, reserve_kb: reserve) }
+      puts "tests: sent #{r[:sent]} files (#{r[:bytes]} bytes), #{r[:same]} already there " \
+           "(#{format('%.0f', dt)} s)"
+    when "clean"
+      n = dev.clean_tests
+      puts(n.zero? ? "tests: no #{FmrbDevFiles::TEST_DIR} on the board" : "tests: deleted #{n} entries under #{FmrbDevFiles::TEST_DIR}")
+    when "ls"
+      dev.list_tests.each do |p, size, at|
+        puts format("%8d  %-19s  %s", size, at ? at.strftime("%Y-%m-%d %H:%M:%S") : "-", p)
+      end
+    else
+      abort "tests push [name...] [--reserve KB] [--flash DIR] | tests clean | tests ls (got #{sub.inspect})"
+    end
+  when "extra"
+    flash = option(args, "--flash")
+    remove = args.delete("--remove")
+    dev = FmrbDevFiles.new(fs, ->(s) { puts s }, **(flash ? { flash: File.expand_path(flash) } : {}))
+    if remove
+      puts "extra: deleted #{dev.uninstall(args)} entries"
+    else
+      r, dt = timed { dev.install(args) }
+      puts "extra: sent #{r[:sent]} files (#{r[:bytes]} bytes), #{r[:same]} already there " \
+           "(#{format('%.0f', dt)} s); the launcher lists it after a rescan (right click on the desktop)"
+    end
   else
-    abort "unknown command #{cmd} (ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot)"
+    abort "unknown command #{cmd} (ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot|df|tests|extra)"
   end
 end
 
@@ -820,9 +881,223 @@ def interactive(host, fs)
   end
 end
 
+# ---- files a board carries only while they are wanted ----
+#
+# No storage image carries the test apps (fmruby-core/flash/app/test) or the
+# optional apps (walk_scroller), fmruby-core config/storage_exclude_common.txt.
+# A tool that runs a test app on a board puts it there first and takes the
+# whole of /app/test away when its run is over (doc/flash_layout F1: kept
+# while a series of tests goes on, gone at its end). Before sending, it looks
+# at the free space (/fs/df) and, when sending would leave less than the
+# reserve, deletes the test files put there earliest that this push does not
+# need; /app/test/.pushed.json on the board records when each was put.
+class FmrbDevFiles
+  FLASH = File.expand_path(ENV["FMRB_FLASH_DIR"] || File.join(__dir__, "..", "fmruby-core", "flash"))
+  TEST_DIR = "/app/test"
+  MANIFEST = "/app/test/.pushed.json"
+  BLOCK = 4096
+  RESERVE_KB = 512
+  # Optional apps by name: the paths under flash/ that make each one.
+  EXTRAS = {
+    "walk_scroller" => %w[app/demo/walk_scroller.app.rb app/demo/walk_scroller.app.toml
+                          app/demo/walk_scroller usr/share/sprites/walk_scroller]
+  }.freeze
+
+  def initialize(fs, log, flash: FLASH)
+    @fs = fs
+    @log = log
+    @flash = flash
+  end
+
+  # The files under flash/ (relative paths) for the test apps named: an app's
+  # base name ("ckpt_counter") takes every entry of that name in app/test
+  # (.app.rb, .app.toml, a picture, a directory). None named: all of them.
+  def test_files(names)
+    root = File.join(@flash, "app/test")
+    raise ArgumentError, "no #{root}" unless File.directory?(root)
+    entries = Dir.children(root).sort
+    picked = if names.nil? || names.empty?
+               entries
+             else
+               names.flat_map do |n|
+                 base = File.basename(n).sub(/\.app\.\w+\z/, "")
+                 got = entries.select { |e| e == base || e.start_with?("#{base}.") }
+                 raise ArgumentError, "no test app #{n} in #{root}" if got.empty?
+                 got
+               end.uniq
+             end
+    picked.flat_map { |e| expand("app/test/#{e}") }
+  end
+
+  # Put the test apps on the board (only what is missing or differs in size).
+  def push_tests(names, reserve_kb: RESERVE_KB)
+    files = test_files(names)
+    manifest = read_manifest
+    on_board = board_files(TEST_DIR)
+    make_room(files, on_board, manifest, reserve_kb)
+    r = send_files(files, on_board)
+    now = Time.now.to_i
+    files.each { |f| manifest["/#{f}"] = { "size" => File.size(File.join(@flash, f)), "at" => now } }
+    @fs.put(MANIFEST, JSON.generate(manifest))
+    r.merge(files: files.size)
+  end
+
+  # Take every test file away (all of /app/test: no image carries any).
+  def clean_tests
+    return 0 unless dir?(TEST_DIR)
+    @fs.rm_tree(TEST_DIR)
+  end
+
+  # [path, size, put at (Time or nil)] of what the board has under /app/test.
+  def list_tests
+    manifest = read_manifest
+    board_files(TEST_DIR).reject { |p, _| p == MANIFEST }.sort.map do |p, size|
+      at = manifest.dig(p, "at")
+      [p, size, at && Time.at(at)]
+    end
+  end
+
+  # Put an optional app (EXTRAS) or any path under flash/ on the board.
+  def install(names)
+    files = extra_paths(names).flat_map { |rel| expand(rel) }
+    on_board = {}
+    extra_paths(names).each { |rel| on_board.merge!(board_files("/#{rel}")) }
+    r = send_files(files, on_board)
+    r.merge(files: files.size)
+  end
+
+  # Delete what install put there.
+  def uninstall(names)
+    count = 0
+    extra_paths(names).each do |rel|
+      path = "/#{rel}"
+      if dir?(path)
+        count += @fs.rm_tree(path)
+      elsif file?(path)
+        @fs.del(path)
+        count += 1
+      end
+    end
+    count
+  end
+
+  private
+
+  def extra_paths(names)
+    raise ArgumentError, "name an optional app (#{EXTRAS.keys.join(', ')}) or a path under flash/" if names.empty?
+    names.flat_map do |n|
+      next EXTRAS[n] if EXTRAS.key?(n)
+      rel = n.sub(%r{\A/}, "")
+      raise ArgumentError, "#{n}: not an optional app (#{EXTRAS.keys.join(', ')}) nor a path under #{@flash}" unless
+        File.exist?(File.join(@flash, rel)) && !rel.split("/").include?("..")
+      [rel]
+    end
+  end
+
+  # rel (a file or a directory under flash/) -> the files under it.
+  def expand(rel)
+    full = File.join(@flash, rel)
+    return [rel] if File.file?(full)
+    Dir.glob("**/*", base: full).sort.select { |f| File.file?(File.join(full, f)) }.map { |f| "#{rel}/#{f}" }
+  end
+
+  # { "/app/test/x.app.rb" => size } of the files under path, or of path
+  # itself when it is a file (none when it is missing).
+  def board_files(path)
+    entry = (@fs.list(File.dirname(path)).find { |e| e["name"] == File.basename(path) } rescue nil)
+    return {} unless entry
+    return { path => entry["size"] } unless entry["dir"]
+    @fs.walk(path).reject { |e| e["dir"] }.to_h { |e| [e["path"], e["size"]] }
+  rescue FmrbFs::DeviceError
+    {}
+  end
+
+  def dir?(path)
+    parent = File.dirname(path)
+    @fs.list(parent).any? { |e| e["name"] == File.basename(path) && e["dir"] }
+  rescue FmrbFs::DeviceError
+    false
+  end
+
+  def file?(path)
+    @fs.list(File.dirname(path)).any? { |e| e["name"] == File.basename(path) && !e["dir"] }
+  rescue FmrbFs::DeviceError
+    false
+  end
+
+  def read_manifest
+    JSON.parse(@fs.get(MANIFEST))
+  rescue FmrbFs::DeviceError, JSON::ParserError
+    {}
+  end
+
+  def blocks(size)
+    [(size + BLOCK - 1) / BLOCK, 1].max * BLOCK
+  end
+
+  # When sending would leave less than the reserve free, delete the test
+  # files this push does not need, the earliest put first (those the manifest
+  # does not know count as the earliest).
+  def make_room(files, on_board, manifest, reserve_kb)
+    need = files.sum do |f|
+      size = File.size(File.join(@flash, f))
+      on_board["/#{f}"] == size ? 0 : blocks(size)
+    end
+    df = @fs.df("/app")
+    unless df
+      @log.call("(this firmware has no /fs/df: the free space is not checked)")
+      return
+    end
+    reserve = reserve_kb * 1024
+    short = need + reserve - df["free"]
+    return if short <= 0
+    wanted = files.map { |f| "/#{f}" }
+    old = on_board.keys.reject { |p| p == MANIFEST || wanted.include?(p) }
+                  .sort_by { |p| [manifest.dig(p, "at") || 0, p] }
+    old.each do |p|
+      break if short <= 0
+      @fs.del(p)
+      manifest.delete(p)
+      short -= blocks(on_board[p])
+      @log.call("  deleted #{p} (put there earlier; making room)")
+    end
+    df = @fs.df("/app")
+    return if need + reserve <= df["free"]
+    raise FmrbFs::DeviceError, "not enough room: #{need / 1024} KB to send, #{df['free'] / 1024} KB free, " \
+                               "#{reserve_kb} KB to keep free (--reserve KB)"
+  end
+
+  def send_files(files, on_board)
+    sent = 0
+    bytes = 0
+    made = {}
+    files.each do |f|
+      local = File.join(@flash, f)
+      path = "/#{f}"
+      next if on_board[path] == File.size(local)
+      dir = File.dirname(path)
+      unless made[dir]
+        mkdir_p(dir)
+        made[dir] = true
+      end
+      data = File.binread(local)
+      @fs.put(path, data)
+      @log.call("  #{path} (#{data.bytesize} bytes)")
+      sent += 1
+      bytes += data.bytesize
+    end
+    { sent: sent, bytes: bytes, same: files.size - sent }
+  end
+
+  def mkdir_p(dir)
+    parts = dir.split("/").reject(&:empty?)
+    parts.each_index { |i| @fs.mkdir("/" + parts[0..i].join("/")) }
+  end
+end
+
 # Loaded by tools/fmrb_flash_keep.rb for the classes above; run only as a command.
 if $PROGRAM_NAME == __FILE__
-  host = ARGV.shift or abort "usage: fmrb_rd_fs.rb HOST [ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot ...]"
+  host = ARGV.shift or abort "usage: fmrb_rd_fs.rb HOST [ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot|df|tests|extra ...]"
   host = FmrbBoard.resolve(host) || abort("cannot resolve #{host}")
   fs = FmrbFs.new(host)
   if ARGV.empty?

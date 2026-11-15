@@ -246,6 +246,8 @@ serial_start でシリアルを開きっぱなしにし、serial_log で読む�
 
 tab5_app でパス起動/一覧/kill、tab5_screenshot で画面、tab5_input で操作、
 tab5_fs でファイル転送。IP は tab5_ip が解決する (固定値を使わない)。
+**試験のアプリ (`app/test`) は storage の像に入っていない**: 実機で使う前に tab5_fs の
+`tests_push` で送り、試験のまとまりの終わりに `tests_clean` で消す (fmruby-core doc/regression/usage.md 8.2)。
 put → launch が**再 flash なしの開発ループ**。
 /home の退避・書き戻しは `ruby tools/fmrb_rd_fs.rb <IP> backup` / `restore <dir>` (鍵ごと ~/asterism_keys/devices/ へ)、焼くときは flash の `keep_home: true` か storage を焼かない `app_sync: true` (fmruby-core/doc/dev_remote_ctl/plan.md)。
 
