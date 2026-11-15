@@ -1,12 +1,15 @@
 #!/usr/bin/env ruby
-# Move files to and from a Tab5 over WiFi, through the remote desktop's
-# development file endpoints (/fs/list, /fs/get, /fs/put, /fs/del,
-# /fs/mkdir; fmruby-core main/drivers/remote_desktop/rd_http.c).
+# Move files to and from a board over WiFi, through the development file
+# endpoints (/fs/list, /fs/get, /fs/put, /fs/del, /fs/mkdir, /fs/md5;
+# fmruby-core main/drivers/devctl/devctl_http.c, on the remote desktop's
+# server on Modern and a small server of its own on Retro).
 #
 # BLE was the only way to get a file off the device and it tops out at a few
 # tens of KB/s -- fine for a .rb, hopeless for the JPEGs PicoRabbit exports or
-# an MJPEG clip. WiFi moves several hundred KB/s. Paths are the ones apps use
-# (/app, /home, /usr/share, /mnt/sd); the device refuses anything else.
+# an MJPEG clip. WiFi moves several hundred KB/s. A development build
+# (FMRB_DEV_REMOTE_CTL) reaches every path, the keys included; firmware from
+# before 2026-11-15 refuses anything outside /app, /home, /usr/share and
+# /mnt/sd and never hands out a key (fmruby-core doc/remote_guard/plan.md).
 #
 # One-shot form:
 #
@@ -19,8 +22,40 @@
 #   ruby tools/fmrb_rd_fs.rb <IP> push  <local_dir> <path>  # upload a tree (directories made as needed)
 #   ruby tools/fmrb_rd_fs.rb <IP> rmr   <path>              # delete a tree
 #
-# pull and push skip a file whose size already matches on the other side
-# (the device has no checksums); add --force to copy everything.
+# pull and push skip a file whose size already matches on the other side;
+# add --force to copy everything.
+#
+# /home with its keys, and the storage tree of a build (fmruby-core
+# doc/dev_remote_ctl/plan.md, "the development build"):
+#
+#   ruby tools/fmrb_rd_fs.rb <IP> backup  [dir] [--machine m] [--mac xxxxxx]
+#   ruby tools/fmrb_rd_fs.rb <IP> restore <dir> [--force]
+#   ruby tools/fmrb_rd_fs.rb <IP> sync    <storage_root> [--dry-run] [--conf]
+#   ruby tools/fmrb_rd_fs.rb <IP> wait    [--timeout s] [--name fmruby-xxxxxx] [--after-reboot]
+#   ruby tools/fmrb_rd_fs.rb <IP> reboot
+#
+# backup copies the board's /home (keys and passwords included) into dir,
+# by default ~/asterism_keys/devices/<machine>-<MAC last 3>/home_backup_<time>/
+# (directories 700, files 600; the machine and the MAC come from /status).
+# Each file is checked against the board's MD5, and a manifest.json written
+# last records every file and directory (empty ones too). Run it again on the
+# same dir to finish an interrupted one: what is already there and matches is
+# kept. restore writes dir/home back (directories first, then the files that
+# differ, each checked after it lands) and lists what the board has in /home
+# that the backup does not, without deleting it. Neither prints a file's
+# contents. LittleFS keeps no owner, mode or time, so names, contents and
+# directories are all there is to keep.
+#
+# sync sends what differs between a build's storage tree (build/storage_root)
+# and the board, leaving /home, /tmp, /mnt, /var/cache and the saved settings
+# (/etc/system_conf.toml; --conf sends it too) alone: a missing file or a
+# different size is sent, an equal size is compared by MD5. Files the board
+# has and the build does not are listed, never deleted. This is what follows
+# an app-only flash (rake flash:app_sync).
+#
+# wait polls /status until the board answers (after a flash or a reboot) and
+# prints ip=<address>; --name re-resolves the board's mDNS name when the
+# address stops answering (DHCP may hand out another). reboot restarts it.
 #
 # Interactive form -- give only the address and you get a prompt, like an
 # FTP client, with a current directory on the device and one on the PC:
@@ -44,9 +79,15 @@
 require "net/http"
 require "json"
 require "uri"
+require "digest"
+require "fileutils"
+require "socket"
+require "time"
 
 class FmrbFs
   class DeviceError < StandardError; end
+
+  attr_reader :host
 
   def initialize(host)
     @host = host
@@ -74,6 +115,43 @@ class FmrbFs
 
   def mkdir(path)
     expect_ok(request(Net::HTTP::Post, "/fs/mkdir", path))
+  end
+
+  # ---- the board ----
+
+  def status
+    uri = URI("http://#{@host}/status")
+    res = Net::HTTP.start(uri.host, uri.port, read_timeout: 5, open_timeout: 5) do |http|
+      http.request(Net::HTTP::Get.new(uri))
+    end
+    raise DeviceError, "#{res.code} /status" unless res.code == "200"
+    JSON.parse(res.body)
+  end
+
+  # { "md5" => hex, "size" => n }, or nil when the firmware has no /fs/md5
+  # (before 2026-11-15): the callers then fall back to the size.
+  def md5(path)
+    res = request(Net::HTTP::Get, "/fs/md5", path)
+    doc = JSON.parse(res.body) rescue nil
+    return nil if res.code == "404" && !(doc.is_a?(Hash) && doc.key?("ok"))
+    expect_ok(res)
+  end
+
+  # Whether the firmware answers /fs/md5 at all (asked once).
+  def md5_supported?
+    return @md5_supported unless @md5_supported.nil?
+    res = request(Net::HTTP::Get, "/fs/md5", "/")
+    doc = JSON.parse(res.body) rescue nil
+    @md5_supported = !(res.code == "404" && !(doc.is_a?(Hash) && doc.key?("ok")))
+  end
+
+  def reboot
+    uri = URI("http://#{@host}/sys/reboot")
+    res = Net::HTTP.start(uri.host, uri.port, read_timeout: 10, open_timeout: 5) do |http|
+      http.request(Net::HTTP::Post.new(uri))
+    end
+    raise DeviceError, "404: this firmware has no /sys/reboot (before 2026-11-15)" if res.code == "404"
+    expect_ok(res)
   end
 
   # ---- trees ----
@@ -143,6 +221,16 @@ class FmrbFs
     dir.end_with?("/") ? dir + name : "#{dir}/#{name}"
   end
 
+  # Every entry under path, depth first: [{ "path", "dir", "size" }].
+  def walk(path, out = [])
+    list(path).sort_by { |e| e["name"] }.each do |e|
+      remote = join(path, e["name"])
+      out << { "path" => remote, "dir" => e["dir"], "size" => e["size"] }
+      walk(remote, out) if e["dir"]
+    end
+    out
+  end
+
   private
 
   def request(klass, route, path, body: nil)
@@ -166,6 +254,308 @@ class FmrbFs
     end
     doc
   end
+end
+
+# ---- /home backup and restore, the storage sync, waiting for a board ----
+
+module FmrbBoard
+  module_function
+
+  # FmrbConst::BOARD -> the name ~/asterism_keys/devices/ uses for it.
+  MACHINE_DIRS = { "naryav4" => "p4nano", "narya_v3" => "naryav3" }.freeze
+  KEYS_DIR = File.expand_path("~/asterism_keys/devices")
+
+  # An address for a name. A board's mDNS name (fmruby-XXXXXX.local) is not
+  # resolvable everywhere: WSL has no mDNS of its own and borrows Windows'.
+  def resolve(host)
+    return host if host =~ /\A\d{1,3}(\.\d{1,3}){3}(:\d+)?\z/
+    begin
+      addr = Addrinfo.getaddrinfo(host, 80, Socket::AF_INET).first
+      return addr.ip_address if addr
+    rescue SocketError
+      nil
+    end
+    if host.end_with?(".local") && File.exist?("/proc/sys/fs/binfmt_misc/WSLInterop")
+      out = IO.popen(["powershell.exe", "-NoProfile", "-Command",
+                      "(Resolve-DnsName #{host} -ErrorAction SilentlyContinue | " \
+                      "Where-Object Type -eq 'A').IPAddress"], err: File::NULL, &:read) rescue ""
+      ip = out.to_s[/\b(?:\d{1,3}\.){3}\d{1,3}\b/]
+      return ip if ip
+    end
+    nil
+  end
+
+  # <machine>-<MAC last 3> from /status (firmware since 2026-11-15 says
+  # "board" and "host"); either can be given instead.
+  def device_dir_name(status, machine: nil, mac: nil)
+    board = status && status["board"]
+    machine ||= MACHINE_DIRS.fetch(board, board) if board
+    mac ||= status["host"].to_s[/-(\h{6})\z/, 1] if status
+    unless machine && mac
+      raise ArgumentError, "cannot tell which board this is (its /status has no board/host: " \
+                           "firmware before 2026-11-15) -- give --machine and --mac, or a directory"
+    end
+    "#{machine}-#{mac.downcase}"
+  end
+
+  def private_mkdir(dir)
+    missing = []
+    d = File.expand_path(dir)
+    until File.directory?(d)
+      missing.unshift(d)
+      d = File.dirname(d)
+    end
+    missing.each { |m| Dir.mkdir(m, 0o700) }
+    File.chmod(0o700, dir)
+  end
+end
+
+class FmrbHome
+  ROOT = "/home"
+
+  def initialize(fs, log)
+    @fs = fs
+    @log = log
+  end
+
+  # Copy the board's /home into dir/home and write dir/manifest.json last.
+  def backup(dir)
+    old_umask = File.umask(0o077)
+    FmrbBoard.private_mkdir(dir)
+    local_root = File.join(dir, "home")
+    FmrbBoard.private_mkdir(local_root)
+    status = (@fs.status rescue {})
+    entries = @fs.walk(ROOT)
+    md5_ok = @fs.md5_supported?
+    manifest = { "complete" => false, "board" => status["board"], "host" => status["host"],
+                 "ip" => status["ip"], "started" => Time.now.iso8601, "entries" => [] }
+    write_manifest(dir, manifest)
+    copied = kept = bytes = 0
+    entries.each do |e|
+      local = File.join(local_root, rel(e["path"]))
+      if e["dir"]
+        FmrbBoard.private_mkdir(local)
+        manifest["entries"] << { "path" => e["path"], "dir" => true }
+        next
+      end
+      remote_sum = md5_ok ? @fs.md5(e["path"]) : nil
+      if File.file?(local) && File.size(local) == e["size"] &&
+         (remote_sum.nil? || Digest::MD5.file(local).hexdigest == remote_sum["md5"])
+        kept += 1
+      else
+        fetch(e["path"], local, remote_sum)
+        copied += 1
+        @log.call("  #{e['path']} (#{File.size(local)} bytes)")
+      end
+      bytes += File.size(local)
+      manifest["entries"] << { "path" => e["path"], "size" => File.size(local),
+                               "md5" => Digest::MD5.file(local).hexdigest }
+    end
+    manifest["complete"] = true
+    manifest["finished"] = Time.now.iso8601
+    write_manifest(dir, manifest)
+    files = manifest["entries"].count { |m| !m["dir"] }
+    dirs = manifest["entries"].count { |m| m["dir"] }
+    { files: files, dirs: dirs, bytes: bytes, copied: copied, kept: kept, verified: md5_ok }
+  ensure
+    File.umask(old_umask) if old_umask
+  end
+
+  # Write dir/home back into the board's /home.
+  def restore(dir, force)
+    local_root = File.join(dir, "home")
+    raise ArgumentError, "#{local_root} is not a directory" unless File.directory?(local_root)
+    manifest_file = File.join(dir, "manifest.json")
+    if File.exist?(manifest_file)
+      m = JSON.parse(File.read(manifest_file))
+      unless m["complete"]
+        raise ArgumentError, "#{dir} is an interrupted backup (manifest.json says complete: false); " \
+                             "run backup on it again first"
+      end
+    end
+    @fs.mkdir(ROOT)
+    on_board = {}
+    @fs.walk(ROOT).each { |e| on_board[e["path"]] = e }
+    sent = same = bytes = 0
+    local_entries(local_root).each do |path, local|
+      if File.directory?(local)
+        @fs.mkdir(path) unless on_board[path] && on_board[path]["dir"]
+        next
+      end
+      data = File.binread(local)
+      sum = Digest::MD5.hexdigest(data)
+      have = on_board[path]
+      if !force && have && !have["dir"] && have["size"] == data.bytesize
+        remote = @fs.md5(path)
+        if remote.nil? || remote["md5"] == sum
+          same += 1
+          next
+        end
+      end
+      @fs.put(path, data)
+      check = @fs.md5(path)
+      if check && check["md5"] != sum
+        raise FmrbFs::DeviceError, "#{path}: the board's copy does not match after the put"
+      end
+      sent += 1
+      bytes += data.bytesize
+      @log.call("  #{path} (#{data.bytesize} bytes)")
+    end
+    backed = local_entries(local_root).map(&:first)
+    extra = on_board.keys.reject { |p| backed.include?(p) }.sort
+    { sent: sent, same: same, bytes: bytes, extra: extra }
+  end
+
+  private
+
+  def rel(path)
+    path.delete_prefix(ROOT).delete_prefix("/")
+  end
+
+  # [[device path, local path]], parents before children.
+  def local_entries(local_root)
+    Dir.glob("**/*", File::FNM_DOTMATCH, base: local_root)
+       .reject { |r| File.basename(r) == "." || File.basename(r) == ".." || r.end_with?(".part") }
+       .sort
+       .map { |r| ["#{ROOT}/#{r}", File.join(local_root, r)] }
+  end
+
+  # A file lands under .part and is renamed only once it is whole and matches
+  # the board's MD5, so an interrupted run never leaves a short file that
+  # looks finished. One retry for a transfer that came out wrong.
+  def fetch(path, local, remote_sum)
+    2.times do |attempt|
+      data = @fs.get(path)
+      ok = remote_sum ? Digest::MD5.hexdigest(data) == remote_sum["md5"] : true
+      if ok
+        part = "#{local}.part"
+        File.open(part, "wb", 0o600) { |f| f.write(data) }
+        File.rename(part, local)
+        return
+      end
+      raise FmrbFs::DeviceError, "#{path}: two downloads did not match the board's MD5" if attempt == 1
+    end
+  end
+
+  def write_manifest(dir, manifest)
+    file = File.join(dir, "manifest.json")
+    File.open("#{file}.part", "w", 0o600) { |f| f.write(JSON.pretty_generate(manifest)) }
+    File.rename("#{file}.part", file)
+  end
+end
+
+class FmrbStorageSync
+  # The board's own: the user's files, RAM, the card, caches, the settings it saves.
+  SKIP = ["/home", "/tmp", "/mnt", "/var/cache"].freeze
+  CONF = "/etc/system_conf.toml"
+
+  def initialize(fs, log)
+    @fs = fs
+    @log = log
+    @lists = {}
+  end
+
+  def run(local_root, dry_run: false, conf: false)
+    raise ArgumentError, "#{local_root} is not a directory" unless File.directory?(local_root)
+    skip = conf ? SKIP : SKIP + [CONF]
+    sent = same = bytes = 0
+    held = []
+    local = {}
+    Dir.glob("**/*", File::FNM_DOTMATCH, base: local_root).sort.each do |r|
+      next if File.basename(r) == "." || File.basename(r) == ".."
+      path = "/#{r}"
+      next if skipped?(path, skip)
+      full = File.join(local_root, r)
+      local[path] = true
+      if File.directory?(full)
+        @fs.mkdir(path) unless dry_run || board_entry(path)&.fetch("dir")
+        next
+      end
+      have = board_entry(path)
+      size = File.size(full)
+      if have && !have["dir"] && have["size"] == size
+        remote = @fs.md5(path)
+        raise FmrbFs::DeviceError, "this firmware has no /fs/md5 (before 2026-11-15): sync cannot compare" if remote.nil?
+        if remote["md5"] == Digest::MD5.file(full).hexdigest
+          same += 1
+          next
+        end
+      end
+      @fs.put(path, File.binread(full)) unless dry_run
+      sent += 1
+      bytes += size
+      @log.call("  #{dry_run ? 'would send' : 'sent'} #{path} (#{size} bytes)")
+    end
+    if !conf && File.file?(File.join(local_root, CONF.delete_prefix("/")))
+      have = board_entry(CONF)
+      remote = have && @fs.md5(CONF)
+      if remote.nil? || remote["md5"] != Digest::MD5.file(File.join(local_root, CONF.delete_prefix("/"))).hexdigest
+        held << CONF
+      end
+    end
+    extra = board_only(local, skip)
+    { sent: sent, same: same, bytes: bytes, extra: extra, held: held }
+  end
+
+  private
+
+  def skipped?(path, skip)
+    skip.any? { |s| path == s || path.start_with?("#{s}/") }
+  end
+
+  def board_list(dir)
+    @lists[dir] ||= begin
+      @fs.list(dir).to_h { |e| [e["name"], e] }
+    rescue FmrbFs::DeviceError
+      {}
+    end
+  end
+
+  def board_entry(path)
+    board_list(File.dirname(path))[File.basename(path)]
+  end
+
+  # Files and directories on the board under the synced part that the build
+  # does not have: listed for a person to decide, never deleted.
+  def board_only(local, skip)
+    out = []
+    @fs.walk("/").each do |e|
+      next if skipped?(e["path"], skip)
+      out << e["path"] unless local[e["path"]]
+    end
+    # A directory the build lacks: list it, not each file inside.
+    out.reject { |p| out.any? { |q| q != p && p.start_with?("#{q}/") } }
+  end
+end
+
+# Poll /status until the board answers. With after_reboot, first wait (up to
+# 20 s) for it to stop answering: the reboot has not happened yet when
+# /sys/reboot replies.
+def wait_for_board(host, timeout:, name: nil, after_reboot: false, log: ->(_) {})
+  deadline = Time.now + timeout
+  if after_reboot
+    down_by = [Time.now + 20, deadline].min
+    while Time.now < down_by
+      break unless (FmrbFs.new(host).status rescue nil)
+      sleep 1
+    end
+  end
+  silent_since = Time.now
+  current = host
+  while Time.now < deadline
+    st = (FmrbFs.new(current).status rescue nil)
+    return [current, st] if st
+    if name && Time.now - silent_since > 15
+      ip = FmrbBoard.resolve(name.end_with?(".local") ? name : "#{name}.local")
+      if ip && ip != current
+        log.call("#{current} is silent; #{name} now resolves to #{ip}")
+        current = ip
+      end
+      silent_since = Time.now
+    end
+    sleep 2
+  end
+  nil
 end
 
 # ---- output helpers shared by both forms ----
@@ -229,9 +619,64 @@ def one_shot(fs, cmd, args)
     path = args.shift or abort "rmr needs a path"
     n = fs.rm_tree(path)
     puts "deleted #{n} entries under #{path}"
+  when "backup"
+    machine = option(args, "--machine")
+    mac = option(args, "--mac")
+    dir = args.shift
+    unless dir
+      name = FmrbBoard.device_dir_name((fs.status rescue nil), machine: machine, mac: mac)
+      dir = File.join(FmrbBoard::KEYS_DIR, name, "home_backup_#{Time.now.strftime('%Y%m%d-%H%M%S')}")
+    end
+    r, dt = timed { FmrbHome.new(fs, ->(s) { puts s }).backup(dir) }
+    puts "backed up /home: #{r[:files]} files, #{r[:dirs]} directories, #{r[:bytes]} bytes " \
+         "(#{r[:copied]} copied, #{r[:kept]} already there, #{format('%.0f', dt)} s)" \
+         "#{r[:verified] ? ', each checked by MD5' : ', sizes only (no /fs/md5 on this firmware)'}"
+    puts "backup=#{File.expand_path(dir)}"
+  when "restore"
+    dir = args.shift or abort "restore needs the backup directory"
+    r, dt = timed { FmrbHome.new(fs, ->(s) { puts s }).restore(File.expand_path(dir), force) }
+    puts "restored /home: #{r[:sent]} files sent (#{r[:bytes]} bytes), #{r[:same]} already the same " \
+         "(#{format('%.0f', dt)} s)"
+    unless r[:extra].empty?
+      puts "on the board but not in the backup (left as they are):"
+      r[:extra].each { |p| puts "  #{p}" }
+    end
+  when "sync"
+    root = args.shift or abort "sync needs the storage tree (fmruby-core/build/storage_root)"
+    dry = args.delete("--dry-run")
+    conf = args.delete("--conf")
+    r, dt = timed { FmrbStorageSync.new(fs, ->(s) { puts s }).run(root, dry_run: dry, conf: conf) }
+    puts "#{dry ? 'would send' : 'sent'} #{r[:sent]} files (#{r[:bytes]} bytes), " \
+         "#{r[:same]} already the same (#{format('%.0f', dt)} s)"
+    r[:held].each do |p|
+      puts "#{p} differs and was kept: it holds the board's saved settings (--conf sends the build's)"
+    end
+    unless r[:extra].empty?
+      puts "on the board but not in the build (left as they are):"
+      r[:extra].each { |p| puts "  #{p}" }
+    end
+  when "wait"
+    timeout = (option(args, "--timeout") || "180").to_i
+    name = option(args, "--name")
+    after = args.delete("--after-reboot")
+    got = wait_for_board(fs.host, timeout: timeout, name: name, after_reboot: after,
+                         log: ->(s) { puts s })
+    abort "the board did not answer /status within #{timeout} s" unless got
+    puts "ip=#{got[0]}"
+  when "reboot"
+    fs.reboot
+    puts "rebooting #{fs.host}"
   else
-    abort "unknown command #{cmd} (ls|get|put|del|mkdir|pull|push|rmr)"
+    abort "unknown command #{cmd} (ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot)"
   end
+end
+
+# "--key value" out of args, or nil.
+def option(args, key)
+  i = args.index(key)
+  return nil unless i
+  args.delete_at(i)
+  args.delete_at(i)
 end
 
 # ---- interactive form ----
@@ -375,15 +820,22 @@ def interactive(host, fs)
   end
 end
 
-host = ARGV.shift or abort "usage: fmrb_rd_fs.rb HOST [ls|get|put|del|mkdir|pull|push|rmr ...]"
-fs = FmrbFs.new(host)
-if ARGV.empty?
-  interactive(host, fs)
-else
-  begin
-    one_shot(fs, ARGV.shift, ARGV)
-  rescue FmrbFs::DeviceError => e
-    warn "error: #{e.message}"
-    exit 1
+# Loaded by tools/fmrb_flash_keep.rb for the classes above; run only as a command.
+if $PROGRAM_NAME == __FILE__
+  host = ARGV.shift or abort "usage: fmrb_rd_fs.rb HOST [ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot ...]"
+  host = FmrbBoard.resolve(host) || abort("cannot resolve #{host}")
+  fs = FmrbFs.new(host)
+  if ARGV.empty?
+    interactive(host, fs)
+  else
+    begin
+      one_shot(fs, ARGV.shift, ARGV)
+    rescue FmrbFs::DeviceError, ArgumentError => e
+      warn "error: #{e.message}"
+      exit 1
+    rescue SystemCallError, Net::OpenTimeout, Net::ReadTimeout, SocketError => e
+      warn "error: cannot reach #{host}: #{e.message}"
+      exit 1
+    end
   end
 end
