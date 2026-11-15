@@ -249,11 +249,21 @@ class FmrbFs
   end
 
   # Every entry under path, depth first: [{ "path", "dir", "size" }].
-  def walk(path, out = [])
+  # skip: a predicate on a directory's path; a skipped directory is listed but
+  # not entered. A directory that cannot be listed below the starting one (a
+  # mount point with nothing mounted, such as /mnt/sd without a card) is
+  # listed and left alone instead of failing the whole walk.
+  def walk(path, out = [], skip: nil)
     list(path).sort_by { |e| e["name"] }.each do |e|
       remote = join(path, e["name"])
       out << { "path" => remote, "dir" => e["dir"], "size" => e["size"] }
-      walk(remote, out) if e["dir"]
+      next unless e["dir"]
+      next if skip&.call(remote)
+      begin
+        walk(remote, out, skip: skip)
+      rescue DeviceError
+        next
+      end
     end
     out
   end
@@ -546,7 +556,7 @@ class FmrbStorageSync
   # does not have: listed for a person to decide, never deleted.
   def board_only(local, skip)
     out = []
-    @fs.walk("/").each do |e|
+    @fs.walk("/", skip: ->(p) { skipped?(p, skip) }).each do |e|
       next if skipped?(e["path"], skip)
       out << e["path"] unless local[e["path"]]
     end
