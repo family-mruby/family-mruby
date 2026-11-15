@@ -121,6 +121,7 @@ WebAssembly に落とした core を実ブラウザで動かし、外から操�
 | `web_down(force?)` | ブラウザを閉じ、自分で起動した開発サーバを止める |
 | `web_screenshot()` | 画面 1 枚 (canvas の中身 = 機械のフレームバッファ) |
 | `web_input(commands)` | `click X Y` `text "hello world"` `key ctrl+s` など。sim と同じ語彙 |
+| `web_app(path, action?)` | パスでアプリを開く (`action` は `spawn` だけ、pid を返す)。ページの launch の口 (`fmrb_web.rb launch PATH`) を通る。ps・kill は無い |
 | `web_fs(action, path?, local_path?)` | `ls cat get put rm`。`/flash/home` はリロードを越えて残る |
 | `web_reload()` | ページを読み込み直し、機械が戻るまで待って 1 枚返す |
 
@@ -136,6 +137,12 @@ WebAssembly に落とした core を実ブラウザで動かし、外から操�
   待って**から画面を返す。
 - 走査コードは `fmrb_input.rb` の表 = ファームウェアの keymap の逆引きを
   そのまま使うので、`text` は設定された配列に従う。sim と違って alt+ も効く。
+- **パスは機械のもの** (`/app/...`、`/home/...`)。`web_fs` の `/flash` は
+  付けない (`/flash/home/a.app.rb` に置いたものは `/home/a.app.rb` で開く。
+  `/flash/` から始まるパスは理由を言って断る)。ブラウザ版にはデバッグ
+  サーバが無いので、`sim_app`・`native_app` と違って ps と kill は無い
+  (閉じるのは Window から)。launch の口の無い古い梱包は
+  `this build has no launch by path` と答えるので、`rake wasm:web` から。
 - ファイル選択の一覧は**クリックだけでは開かない** (選択と決定が別。
   `click` の後に `key enter`)。
 
@@ -241,7 +248,8 @@ ruby tools/mcp/selftest.rb
   argv を印字する偽 CLI で `text "hello world"` が 1 引数のまま渡ること、
   `put` / `get` の引数の順、未知 action と足りない引数の拒否、
   ポートを覚えること、`browser_ours: false` の down 拒否と force、
-  6 ツールが並ぶこと。
+  `web_app` が `launch PATH` を渡して pid を読むこと・`/flash/` のパスと
+  spawn 以外の action を断ること、7 ツールが並ぶこと。
 
 ## 掟
 

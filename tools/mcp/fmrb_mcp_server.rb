@@ -1127,9 +1127,9 @@ WEB_NOTE = <<~NOTE
   web_input takes 640x360 coordinates. Take a screenshot to see which size
   is current before clicking.
 
-  What it cannot do: launch an app by path (there is no debug server in the
-  browser -- go through the launcher, or put a file in /home and open it),
-  and hold a key down.
+  Apps open by path with web_app (the page's own launch slot; there is no
+  debug server in the browser, so no ps or kill). What it cannot do: hold a
+  key down.
 NOTE
 
 WEB_UP = MCP::Tool.define(
@@ -1318,6 +1318,51 @@ WEB_FS = MCP::Tool.define(
   end
 end
 
+WEB_APP = MCP::Tool.define(
+  name: "web_app",
+  title: "Start an app in the browser build by its path",
+  description: <<~DESC,
+    Open an app by its path, as sim_app and native_app do -- no launcher
+    interaction, so it does not matter where (or whether) the launcher lists
+    it:
+
+      action: "spawn", path: "/app/demo/kamon.app.rb"   -> returns a pid
+
+    Paths are the machine's (/app, /home, /usr/share), WITHOUT the /flash
+    prefix web_fs uses for the same files: a file put with web_fs at
+    /flash/home/a.app.rb opens here as /home/a.app.rb (its .app.toml next to
+    it, as on the boards).
+
+    Only spawn: the browser has no debug server, so there is no ps and no
+    kill -- close the app through its window (web_input). A path that is not
+    there, or an app the machine refuses (too many running, an engine this
+    build lacks), comes back as an error with the machine's error number.
+
+    It goes through the page's launch slot (fmruby-core
+    wasm/backend/launch_wasm.c; `ruby tools/fmrb_web.rb launch PATH` from a
+    shell), so the page must be a bundle that has it (built 2026-11-16 or
+    later): an older bundle answers "this build has no launch by path" --
+    rebuild with `rake wasm:web` and web_reload.
+
+    #{WEB_NOTE}
+  DESC
+  annotations: { destructive_hint: false, idempotent_hint: false },
+  input_schema: {
+    properties: {
+      action: { type: "string", enum: %w[spawn], description: "spawn (the only one the browser build has)" },
+      path: { type: "string", description: "app path on the machine, e.g. /app/demo/kamon.app.rb" },
+    },
+    required: ["path"],
+  },
+) do |path:, action: "spawn", server_context: nil, **_extra|
+  begin
+    respond { WEB.app(action: action, path: path) }
+  rescue StandardError => e
+    warn "fmrb-mcp: #{e.class}: #{e.message}"
+    tool_error(e.class.name, e.message)
+  end
+end
+
 WEB_RELOAD = MCP::Tool.define(
   name: "web_reload",
   title: "Reload the page and wait for the machine",
@@ -1378,8 +1423,8 @@ server = MCP::Server.new(
 
     Browser build (wasm): web_up starts the development server, a browser and
     the page and shows the first frame, web_screenshot and web_input drive it,
-    web_fs moves files in and out, web_reload restarts the page, web_down
-    tidies up. A page the user already has open is driven as it is. It is the
+    web_app opens apps by path, web_fs moves files in and out, web_reload
+    restarts the page, web_down tidies up. A page the user already has open is driven as it is. It is the
     only place to check the web page's own behaviour -- storage that outlives
     a reload, the settings, the audio worklet.
 
@@ -1392,7 +1437,7 @@ server = MCP::Server.new(
   tools: [SERIAL_START, SERIAL_LOG, SERIAL_STOP, FLASH,
           TAB5_IP, TAB5_SCREENSHOT, TAB5_INPUT, TAB5_APP, TAB5_FS, TAB5_AUDIO,
           SIM_UP, SIM_DOWN, SIM_SCREENSHOT, SIM_INPUT, SIM_APP, SIM_AUDIO,
-          WEB_UP, WEB_DOWN, WEB_SCREENSHOT, WEB_INPUT, WEB_FS, WEB_RELOAD,
+          WEB_UP, WEB_DOWN, WEB_SCREENSHOT, WEB_INPUT, WEB_APP, WEB_FS, WEB_RELOAD,
           NATIVE_UP, NATIVE_DOWN, NATIVE_SCREENSHOT, NATIVE_INPUT, NATIVE_APP],
 )
 

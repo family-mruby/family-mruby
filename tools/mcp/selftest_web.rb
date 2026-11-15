@@ -50,6 +50,10 @@ def fake_repo(dir)
       ihdr = [426, 240].pack('NN') + "\\x08\\x02\\x00\\x00\\x00".b
       File.binwrite(path, "\\x89PNG\\r\\n\\x1A\\n".b + [13].pack('N') + 'IHDR'.b + ihdr)
     end
+    if args[0] == 'launch'
+      puts JSON.generate('pid' => 7, 'argv' => args)
+      exit
+    end
     puts args[0] == 'status' ? 'running=true 426x240 frame=9 home=persistent' : JSON.generate(args)
   RUBY
   dir
@@ -146,6 +150,39 @@ Dir.mktmpdir("fmrb-mcp-web") do |dir|
     end
   end
 
+  check("web_app passes launch and the path, and reads the pid") do
+    r = web.app(path: "/app/demo/kamon.app.rb")
+    [JSON.parse(r[:output])["argv"] == ["launch", "/app/demo/kamon.app.rb"] && r[:pid] == 7 && r[:action] == "spawn",
+     r.inspect]
+  end
+
+  check("web_app refuses a /flash path and names the machine's path") do
+    begin
+      web.app(path: "/flash/home/a.app.rb")
+      [false, "no error raised"]
+    rescue FmrbMcp::Error => e
+      [e.message.include?("(/home/a.app.rb)"), e.message]
+    end
+  end
+
+  check("web_app refuses ps and kill, which the page does not have") do
+    begin
+      web.app(action: "ps")
+      [false, "no error raised"]
+    rescue FmrbMcp::Error => e
+      [e.message.include?("only spawns"), e.message]
+    end
+  end
+
+  check("web_app without a path says what is missing") do
+    begin
+      web.app(path: "")
+      [false, "no error raised"]
+    rescue FmrbMcp::Error => e
+      [e.message.include?("/app/demo/kamon.app.rb"), e.message]
+    end
+  end
+
   # The state rules: whose browser is it, and which port.
   File.write(File.join(state, "web.json"), JSON.dump(
     "port" => 8123, "server_ours" => false, "browser_ours" => false))
@@ -193,8 +230,8 @@ Dir.mktmpdir("fmrb-mcp-web") do |dir|
   line, res = req.call("tools/list", {})
   raw << line
   names = (res.dig("result", "tools") || []).map { |t| t["name"] }
-  check("the six web tools are listed") do
-    want = %w[web_up web_down web_screenshot web_input web_fs web_reload]
+  check("the seven web tools are listed") do
+    want = %w[web_up web_down web_screenshot web_input web_app web_fs web_reload]
     [(want - names).empty?, (want - names).inspect]
   end
 

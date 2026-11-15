@@ -160,6 +160,32 @@ module FmrbMcp
         output: Sub.clamp(res[:output], MAX_TEXT_BYTES) }
     end
 
+    # An app by its path, as sim_app / native_app spawn one: the page's launch
+    # slot (fmruby-core wasm/backend/launch_wasm.c), through `fmrb_web.rb
+    # launch PATH`, which prints {"pid": N}. Only spawn: the page has no
+    # ps or kill (close the app's window with web_input).
+    def app(action: "spawn", path: nil, port: nil)
+      action = "spawn" if blank?(action)
+      unless action == "spawn"
+        raise Error, "unknown action #{action.inspect}: the browser build only spawns " \
+                     "(no ps or kill -- close the app's window with web_input)"
+      end
+      raise Error, "spawn needs path, e.g. /app/demo/kamon.app.rb" if blank?(path)
+      if path.start_with?("/flash/")
+        raise Error, "#{path}: give the machine's path without /flash " \
+                     "(#{path.delete_prefix('/flash')}); /flash is web_fs's view of the same files"
+      end
+      res = run_tool(resolve_port(port), ["launch", path])
+      out = res[:output].strip
+      last = begin
+        JSON.parse(out.lines.last.to_s)
+      rescue JSON::ParserError
+        nil
+      end
+      pid = last.is_a?(Hash) ? last["pid"] : nil
+      { action: action, path: path, pid: pid, output: Sub.clamp(out, MAX_TEXT_BYTES) }
+    end
+
     def reload(port: nil)
       port = resolve_port(port)
       res = run_tool(port, ["reload"], timeout: UP_TIMEOUT)
