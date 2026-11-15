@@ -43,7 +43,7 @@ tools/mcp/README.md、経緯は doc/mcp_tools/。
 | シリアル + flash (S3/Tab5) | serial_start / serial_log / serial_stop / flash |
 | Tab5 遠隔 (WiFi) | tab5_ip / tab5_screenshot / tab5_input / tab5_app / tab5_fs |
 | Linux sim | sim_up / sim_down / sim_screenshot / sim_input / sim_app |
-| ブラウザ版 (wasm) | web_up / web_down / web_screenshot / web_input / web_fs / web_reload |
+| ブラウザ版 (wasm) | web_up / web_down / web_screenshot / web_input / web_app / web_fs / web_reload |
 | ネイティブ版 (Linux の 1 プロセス、sim と同時可、`machine` で機種の定義) | native_up / native_down / native_screenshot / native_input / native_app |
 
 運用の決まりごと (ポートの排他と開きっぱなし、flash 時の capture 退避、
