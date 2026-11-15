@@ -32,13 +32,21 @@ USB 再列挙で ROM バナーを失う (`reset: false` ならバナーから採
 | `serial_start(port?, baud?, reset?)` | capture を起動して開きっぱなしにする。ポートは `fmruby-core/.serial_port`、無ければ `rake check-port` で検出。`reset: true` でリセットしてブートバナーから採る |
 | `serial_log(grep?, tail?, regex?)` | ログファイルを読む。**ポートには触らない** |
 | `serial_stop()` | capture を止めてポートを解放する |
-| `flash(app_only?)` | capture 退避 → `FLASH_BAUD=115200 rake flash` (app_only なら `rake flash:app`) → `--no-reset` で再開 → ブートの要約 |
+| `flash(app_only?, keep_home?, app_sync?, ip?)` | capture 退避 → `FLASH_BAUD=115200 rake flash` (app_only なら `rake flash:app`) → `--no-reset` で再開 → ブートの要約。keep_home・app_sync は下 |
 
 全体 `flash` は**端末の /home 区画を消す** (ユーザデータと TTS 鍵。鍵はビルド時
 注入なので焼き直せば戻る)。ユーザが使っている機体では確認してから叩く。
 `app_only: true` は app 区画だけを書き、storage (/home 含む) に触らない。
 コードだけの変更を繰り返し焼くときはこちら。ただし flash/ や config/ を
 変えた場合は端末側が古いまま**無警告**なので、全体 flash を使う。
+
+`keep_home: true` は /home を残す全体 flash: WiFi で /home を鍵ごと
+`~/asterism_keys/devices/<機種>-<MAC 下 3>/home_backup_<日時>/` に退避 → 全体を
+焼く → WiFi に戻ったら /home を書き戻して再起動。`app_sync: true` は app 区画だけ
+焼き、`build/storage_root` と端末の差 (大きさ、同じなら MD5) を WiFi で送る
+(/home と /etc/system_conf.toml には触らない。一番速い)。どちらも開発のビルド
+(`FMRB_DEV_REMOTE_CTL`) の端末が WiFi にいることが前提で、WiFi の半分は
+`tools/fmrb_flash_keep.rb` (rake の flash:keep_home・flash:app_sync と共有)。
 
 `rake attach` (usbipd で USB を WSL2 へ) はサーバからは行わない。Windows 側の
 権限が要るのでユーザ操作。

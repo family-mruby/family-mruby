@@ -282,8 +282,8 @@ module FmrbMcp
       end
       unless res[:ok]
         hint = if res[:output].include?("400")
-                 " Paths are limited to /app, /home, /usr/share and /mnt/sd, " \
-                 "and \"..\" is refused."
+                 " \"..\" is refused. Firmware from before 2026-11-15 also limits " \
+                 "paths to /app, /home, /usr/share and /mnt/sd."
                else
                  ""
                end

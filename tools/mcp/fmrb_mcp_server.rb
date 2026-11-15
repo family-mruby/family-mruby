@@ -207,9 +207,30 @@ FLASH = MCP::Tool.define(
     the device keeps the OLD files with no warning. When in doubt about
     whether storage content changed, do a full flash.
 
+    keep_home: true is the full flash that keeps the board's /home (a
+    development build on the board, on WiFi): /home is backed up over WiFi
+    with its keys into ~/asterism_keys/devices/<machine>-<MAC>/home_backup_<time>/,
+    the board is flashed, and once it is back on WiFi /home is written back
+    and the board rebooted. It refuses before flashing when the new image's
+    /etc/wifi.toml would not bring WiFi up (then use `rake flash:keep_home_serial`
+    in fmruby-core); if the board does not come back, the result says where
+    the backup is and what to run. No confirmation needed: nothing of the
+    user's is lost. Slower than app_sync (the whole 16 MB is written).
+
+    app_sync: true is the fastest way to bring a board fully up to date: the
+    app partition only, then whatever differs between the build's storage tree
+    (fmruby-core/build/storage_root) and the board is sent over WiFi (size,
+    then MD5). /home and the board's saved settings (/etc/system_conf.toml)
+    are not touched; files the board has and the build does not are listed,
+    never deleted. Build first: the tree is what the last build left.
+
+    ip: the board's address for keep_home / app_sync (resolved like tab5_ip
+    when left out).
+
     Fixed choices, on purpose:
       - FLASH_BAUD=115200. The rake default of 460800 frequently fails to
-        connect under WSL2.
+        connect under WSL2, and CH34x bridges (NARYAv3, P4-Nano) are reliable
+        only at 115200.
       - The target chip comes from FMRB_HW_TARGET in fmruby-core/.env. This
         tool never changes it; flash what is built.
       - Nothing is rebuilt here. Run the build yourself first.
@@ -239,11 +260,66 @@ FLASH = MCP::Tool.define(
     properties: {
       app_only: { type: "boolean",
                   description: "write only the app partition; storage (/home) untouched (default false)" },
+      keep_home: { type: "boolean",
+                   description: "full flash keeping /home: WiFi backup, flash, write back, reboot (default false)" },
+      app_sync: { type: "boolean",
+                  description: "app partition, then the storage files that differ over WiFi; /home untouched (default false)" },
+      ip: { type: "string", description: "the board's address for keep_home / app_sync (default: resolved)" },
     },
     required: [],
   },
-) do |app_only: false, server_context: nil, **_extra|
-  respond { MANAGER.flash(app_only: app_only) }
+) do |app_only: false, keep_home: false, app_sync: false, ip: nil, server_context: nil, **_extra|
+  respond do
+    if keep_home || app_sync
+      flash_keeping_home(keep_home: keep_home, app_sync: app_sync, app_only: app_only, ip: ip)
+    else
+      MANAGER.flash(app_only: app_only)
+    end
+  end
+end
+
+# The WiFi halves (tools/fmrb_flash_keep.rb, shared with rake flash:keep_home
+# and flash:app_sync) around this server's own flash, so the capture keeps
+# running through the board's boot, the write-back and the reboot.
+FLASH_KEEP_TOOL = File.join(REPO_ROOT, "tools", "fmrb_flash_keep.rb")
+FLASH_KEEP_TIMEOUT = 1200
+
+def flash_keeping_home(keep_home:, app_sync:, app_only:, ip:)
+  raise FmrbMcp::Error, "keep_home and app_sync are two different flashes; pick one" if keep_home && app_sync
+  raise FmrbMcp::Error, "keep_home is a full flash; it does not combine with app_only" if keep_home && app_only
+  root = File.join(MANAGER.core_dir, "build", "storage_root")
+  raise FmrbMcp::Error, "no ESP32 build (#{root}): run rake build:esp32 in fmruby-core first" unless File.directory?(root)
+  host = TAB5.resolve(ip)[:ip]
+  keep = ->(*args) do
+    FmrbMcp::Sub.run({}, ["ruby", FLASH_KEEP_TOOL, *args], chdir: REPO_ROOT, timeout: FLASH_KEEP_TIMEOUT)
+  end
+  if keep_home
+    pre = keep.call("prepare", host, "--storage-root", root)
+    unless pre[:ok]
+      raise FmrbMcp::Error, "nothing was flashed: #{FmrbMcp::Sub.clamp(pre[:output].strip, 4000)}"
+    end
+    backup = pre[:output][/^backup=(.+)$/, 1]
+    name = pre[:output][/^name=(.+)$/, 1]
+    result = MANAGER.flash(app_only: false)
+    unless result[:ok]
+      result[:keep_home] = { backup: backup, note: "the flash failed, so nothing was written back; " \
+                                                   "/home is saved in the backup" }
+      return result
+    end
+    fin = keep.call("finish", host, "--dir", backup, *(name ? ["--name", name] : []))
+    result[:keep_home] = { ok: fin[:ok], backup: backup,
+                           prepare: FmrbMcp::Sub.clamp(pre[:output].strip, 8000),
+                           finish: FmrbMcp::Sub.clamp(fin[:output].strip, 8000) }
+    result[:ok] &&= fin[:ok]
+  else
+    name = keep.call("name", host)[:output][/^name=(.+)$/, 1]
+    result = MANAGER.flash(app_only: true)
+    return result unless result[:ok]
+    sync = keep.call("sync", host, "--storage-root", root, *(name ? ["--name", name] : []))
+    result[:app_sync] = { ok: sync[:ok], output: FmrbMcp::Sub.clamp(sync[:output].strip, 8000) }
+    result[:ok] &&= sync[:ok]
+  end
+  result
 end
 
 
@@ -455,9 +531,13 @@ TAB5_FS = MCP::Tool.define(
       action: "push",  local_path: "./myapp", device_path: "/app/myapp"
       action: "rmr",   device_path: "/app/test"
 
-    Paths on the device are the four roots apps use -- /app, /home,
-    /usr/share, /mnt/sd. Anything outside them, and any "..", is refused by
-    the firmware.
+    A development build (the default) reaches every path, /etc and the files
+    that hold keys and passwords included; any ".." is refused. A board on
+    firmware from before 2026-11-15 limits paths to /app, /home, /usr/share and
+    /mnt/sd and never hands out a key. Whatever you get from /home/asterism,
+    wifi.toml or secrets.toml holds secrets: do not print it, and keep copies
+    only under ~/asterism_keys/ (the flash tool's keep_home does /home
+    backups for you).
 
     put writes to a temporary name and renames, so an interrupted upload does
     not leave a half-written file. pull and push skip files whose size already
@@ -475,7 +555,7 @@ TAB5_FS = MCP::Tool.define(
     properties: {
       action: { type: "string", enum: %w[ls get put push pull mkdir del rmr],
                 description: "ls, get, put, push, pull, mkdir, del or rmr" },
-      device_path: { type: "string", description: "path on the board (/app, /home, /usr/share, /mnt/sd)" },
+      device_path: { type: "string", description: "path on the board (/app, /home, /usr/share, /mnt/sd, ...)" },
       local_path: { type: "string", description: "path on this machine" },
       force: { type: "boolean", description: "for pull/push: copy even when sizes match" },
       ip: { type: "string", description: "use this address instead of resolving" },
