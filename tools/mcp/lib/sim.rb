@@ -163,6 +163,9 @@ module FmrbMcp
       { sent: words, output: res[:output].strip }
     end
 
+    # the kernel, the host and the system desktop
+    SYSTEM_PIDS = [0, 1, 2].freeze
+
     def app(action:, path: nil, pid: nil)
       args =
         case action
@@ -172,6 +175,12 @@ module FmrbMcp
           ["spawn", "path=#{path}"]
         when "kill"
           raise Error, "kill needs a pid (see action: \"ps\")" if pid.nil?
+          if SYSTEM_PIDS.include?(pid.to_i)
+            # the debug server would stop the kernel, the host or the desktop
+            # all the same (devctl on the boards refuses them)
+            raise Error, "pid #{pid.to_i} is part of the system (the kernel, the host or the desktop), " \
+                         "not an app: stopping it leaves the sim without input. Kill a user app (see action: \"ps\")."
+          end
           ["kill", "pid=#{pid.to_i}"]
         else
           raise Error, "unknown action #{action.inspect} (spawn|ps|kill)"

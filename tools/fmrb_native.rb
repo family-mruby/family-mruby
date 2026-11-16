@@ -436,6 +436,7 @@ def cmd_app(args)
       ["spawn", "path=#{p}"]
     when "kill"
       p = args.shift or abort "app kill: needs a pid (see app ps)"
+      refuse_system_kill(p.to_i)
       ["kill", "pid=#{p.to_i}"]
     when "checkpoint"
       checkpoint_kv(args)
@@ -456,6 +457,29 @@ def cmd_app(args)
   out, status = Open3.capture2e("python3", DBG_CLIENT, "--json", "localhost:#{debug_port}", *kv)
   abort "app #{action}: #{out.strip}" unless status.success?
   puts out.lines.last.to_s.strip
+end
+
+# The kernel (0), the host (1) and the desktop (2, system_desktop) are not
+# apps to stop: the debug server would stop them all the same and leave a
+# program that takes no input (devctl on the boards refuses them; the debug
+# server does not). Refused here by PID and by the name ps gives.
+SYSTEM_PIDS = [0, 1, 2].freeze
+SYSTEM_NAMES = %w[fmrb_kernel system_desktop].freeze
+
+def refuse_system_kill(pid)
+  name = nil
+  out, status = Open3.capture2e("python3", DBG_CLIENT, "--json", "localhost:#{debug_port}", "ps")
+  if status.success?
+    begin
+      apps = JSON.parse(out.lines.last.to_s)["apps"] || []
+      name = apps.find { |a| a["pid"] == pid }&.fetch("name", nil)
+    rescue JSON::ParserError
+      name = nil
+    end
+  end
+  return unless SYSTEM_PIDS.include?(pid) || SYSTEM_NAMES.include?(name)
+  abort "app kill: PID #{pid}#{name ? " (#{name})" : ''} is part of the system, not an app: stopping it " \
+        "leaves the program without its kernel or desktop. Kill a user app (see app ps), or use down."
 end
 
 # app checkpoint PID [--restart] [--hold MS] [--max MS] -> the debug server's checkpoint
