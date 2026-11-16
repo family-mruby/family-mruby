@@ -222,7 +222,10 @@ FLASH = MCP::Tool.define(
     (fmruby-core/build/storage_root) and the board is sent over WiFi (size,
     then MD5). /home and the board's saved settings (/etc/system_conf.toml)
     are not touched; files the board has and the build does not are listed,
-    never deleted. Build first: the tree is what the last build left.
+    never deleted. Build first: the tree is what the last build left. On the
+    ESP32-P4 it first checks the board's partition table and font image
+    (the font_ja partition) against the build's and flashes nothing when
+    they differ: an app-only flash writes neither, so use keep_home once.
 
     ip: the board's address for keep_home / app_sync (resolved like tab5_ip
     when left out).
@@ -312,6 +315,13 @@ def flash_keeping_home(keep_home:, app_sync:, app_only:, ip:)
                            finish: FmrbMcp::Sub.clamp(fin[:output].strip, 8000) }
     result[:ok] &&= fin[:ok]
   else
+    # An app-only flash writes neither the partition table nor the P4's font
+    # partition (fmruby-core doc/flash_layout F4): when the board's differ
+    # from the build's, it needs keep_home first.
+    lay = keep.call("layout", host, "--build", File.join(MANAGER.core_dir, "build"))
+    unless lay[:ok]
+      raise FmrbMcp::Error, "nothing was flashed: #{FmrbMcp::Sub.clamp(lay[:output].strip, 4000)}"
+    end
     name = keep.call("name", host)[:output][/^name=(.+)$/, 1]
     result = MANAGER.flash(app_only: true)
     return result unless result[:ok]

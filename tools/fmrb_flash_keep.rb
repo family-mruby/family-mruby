@@ -18,9 +18,16 @@
 #   ruby tools/fmrb_flash_keep.rb sync <host> --storage-root <dir> [--name <mDNS name>] [--conf] [--timeout s]
 #       After an app-only flash: wait for the board, then send what differs
 #       between the build's storage tree and the board (/home untouched).
+#   ruby tools/fmrb_flash_keep.rb layout <host> --build <dir>
+#       Before an app-only flash: check that the board's partition table and
+#       font image (the ESP32-P4's font_ja partition, fmruby-core
+#       doc/flash_layout F4) are the build's. An app-only flash writes
+#       neither, so when they differ it needs one full flash (keep_home).
+#       A build without the font partition (the S3 boards) is not checked.
 #
 # Exit status: 0 done, 1 an error, 3 the board did not come back on WiFi
-# (then the message says what to do over serial instead).
+# (then the message says what to do over serial instead), 4 the board needs
+# a full flash first (layout).
 
 require_relative "fmrb_rd_fs"
 
@@ -63,6 +70,57 @@ module FmrbFlashKeep
     warn "the board did not answer on WiFi within #{timeout} s#{name ? " (#{name})" : ''}."
     warn serial_hint(dir) if dir
     exit 3
+  end
+
+  # label => [offset, size] from ESP-IDF's binary partition table: 32-byte
+  # entries (magic 0xAA50, type, subtype, offset, size, label[16], flags),
+  # ended by the MD5 entry (0xEBEB) or erased flash.
+  def partition_table(bin)
+    parts = {}
+    bin.b.scan(/.{32}/mn).each do |e|
+      magic, _type, _sub, off, size, label = e.unpack("vCCVVZ16")
+      break unless magic == 0x50AA
+      parts[label] = [off, size]
+    end
+    parts
+  end
+
+  FULL_FLASH = "Flash the whole image once, keeping /home: `rake flash:keep_home HOST=...` " \
+               "(fmruby-core) or the MCP flash tool with keep_home: true."
+
+  def layout_check(host, build)
+    table = File.join(build, "partition_table", "partition-table.bin")
+    abort "no partition table in #{build} (rake build:esp32 first)" unless File.exist?(table)
+    parts = partition_table(File.binread(table))
+    unless parts["font_ja"]
+      puts "layout: this build has no font partition; not checked"
+      return
+    end
+    want_layout = %w[storage font_ja].map do |l|
+      off, size = parts[l] || (abort "the build's partition table has no #{l}")
+      format("%s@0x%x+0x%x", l, off, size)
+    end.join(",")
+    img = File.join(build, "font_ja.bin")
+    want_font = if File.exist?(img)
+                  _, ver, _, _, crc = File.binread(img, 24).unpack("a8vvVV")
+                  format("v%d crc=%08x", ver, crc)
+                end
+    st = FmrbFs.new(host).status
+    unless st["layout"]
+      warn "the board's firmware does not say its flash layout (it predates the font " \
+           "partition), so its partition table is the old one. #{FULL_FLASH}"
+      exit 4
+    end
+    if st["layout"] != want_layout
+      warn "the board's partitions are #{st['layout']}, this build's are #{want_layout}. #{FULL_FLASH}"
+      exit 4
+    end
+    if want_font && st["font_ja"] != want_font
+      warn "the board's font image is \"#{st['font_ja']}\", this build's is \"#{want_font}\"; " \
+           "an app-only flash does not write it. #{FULL_FLASH}"
+      exit 4
+    end
+    puts "layout: the board's partitions and font image are this build's (#{want_font || 'no font image'})"
   end
 
   def run(cmd, args)
@@ -125,8 +183,11 @@ module FmrbFlashKeep
         r[:extra].each { |p| puts "  #{p}" }
       end
       puts "ip=#{ip}"
+    when "layout"
+      build = option(args, "--build") or abort "layout needs --build"
+      layout_check(host, File.expand_path(build))
     else
-      abort "unknown command #{cmd} (prepare|finish|name|sync)"
+      abort "unknown command #{cmd} (prepare|finish|name|sync|layout)"
     end
   rescue FmrbFs::DeviceError, ArgumentError => e
     warn "error: #{e.message}"
@@ -139,6 +200,6 @@ end
 
 if $PROGRAM_NAME == __FILE__
   $stdout.sync = true
-  cmd = ARGV.shift or abort "usage: fmrb_flash_keep.rb prepare|finish|name|sync <host> ..."
+  cmd = ARGV.shift or abort "usage: fmrb_flash_keep.rb prepare|finish|name|sync|layout <host> ..."
   FmrbFlashKeep.run(cmd, ARGV)
 end
