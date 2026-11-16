@@ -59,7 +59,7 @@ Modern (Tab5 / ESP32-P4) を WiFi で操作する。**どのツールも IP を�
 
 | tool | 動作 |
 |---|---|
-| `tab5_ip(ip?, refresh?)` | 住所を解決して `/status` を返す。切り分け用 |
+| `tab5_ip(ip?, refresh?, pair_code?)` | 住所を解決して `/status` を返す。切り分け用。`pair_code` はリリースのビルドの登録 (端末の Config > 遠隔操作 の番号) |
 | `tab5_screenshot(ip?)` | 画面 1 枚を **image content で返す** (ファイル経由不要)。JPEG はファイルにも残す |
 | `tab5_input(commands, ip?)` | `click X Y` `drag ...` `key ctrl+tab` `sleep MS` などを左から実行 |
 | `tab5_app(action, path?, pid?, ip?)` | `launch` (パス起動、pid を返す) / `ps` / `kill` |
@@ -69,9 +69,14 @@ Modern (Tab5 / ESP32-P4) を WiFi で操作する。**どのツールも IP を�
 - 座標はフレームバッファ系 **426x240** (窓の拡大率と無関係)。
 - `put` → `tab5_app launch` が**再 flash なしの開発ループ**。
 - **Retro (S3) は不可** (remote desktop が無い)。
-- `/app` `/fs` は開発ビルド限定 (`FMRB_DEV_REMOTE_CTL`)。無い firmware は
-  404 を返すので、「壊れた」ではなく「リリースビルド」と診断して返す。
-  無認証なので信頼できる LAN 内が前提。
+- 開発のビルド (`FMRB_DEV_REMOTE_CTL`、既定) は無認証で、信頼できる LAN 内が前提。
+  リリースのビルドは端末で許可した PC だけ: 401 が返ったら、ユーザに端末の
+  Config > 遠隔操作 を ON にしてもらい (再起動まで)、初回は画面の 6 桁の番号を
+  聞いて `tab5_ip(pair_code: "123456")`。トークンは `~/.config/fmrb/remote_tokens.json`
+  (0600) に端末ごとに残り、以後の tab5_* と fmrb_rd_*.rb が付ける。リリースは
+  `/home` `/app` の下にしか書けない (403)。2026-11-16 より前のリリースは `/app` `/fs`
+  が無く 404 を返すので、「壊れた」ではなく「古いリリースビルド」と診断して返す
+  (fmruby-core doc/remote_guard)。
 - `tab5_audio` のミュートと音量は端末の `/etc/system_conf.toml` に保存され、
   再起動と app_only の flash を越えて残る (起動音も鳴らない)。**通常の
   flash は system_conf を config/ から書き直すので既定 (ミュートなし) に戻る**。
