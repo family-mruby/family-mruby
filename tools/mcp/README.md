@@ -71,10 +71,11 @@ Modern (Tab5 / ESP32-P4) を WiFi で操作する。**どのツールも IP を�
 - **Retro (S3) は不可** (remote desktop が無い)。
 - 開発のビルド (`FMRB_DEV_REMOTE_CTL`、既定) は無認証で、信頼できる LAN 内が前提。
   リリースのビルドは端末で許可した PC だけ: 401 が返ったら、ユーザに端末の
-  Config > 遠隔操作 を ON にしてもらい (再起動まで)、初回は画面の 6 桁の番号を
-  聞いて `tab5_ip(pair_code: "123456")`。トークンは `~/.config/fmrb/remote_tokens.json`
+  Config > 遠隔操作 を ON にしてもらい (OFF にするまで、再起動しても残る)、初回は
+  同じ行を「PCを登録」に進めて出る 6 桁の番号を聞き、出ている間に
+  `tab5_ip(pair_code: "123456")`。トークンは `~/.config/fmrb/remote_tokens.json`
   (0600) に端末ごとに残り、以後の tab5_* と fmrb_rd_*.rb が付ける。リリースは
-  `/home` `/app` の下にしか書けない (403)。2026-11-16 より前のリリースは `/app` `/fs`
+  `/home` `/app` `/mnt/sd` の下にしか書けない (403)。2026-11-16 より前のリリースは `/app` `/fs`
   が無く 404 を返すので、「壊れた」ではなく「古いリリースビルド」と診断して返す
   (fmruby-core doc/remote_guard)。
 - `tab5_audio` のミュートと音量は端末の `/etc/system_conf.toml` に保存され、

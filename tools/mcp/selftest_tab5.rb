@@ -43,6 +43,7 @@ FAKE_JPEG = ("\xFF\xD8\xFF\xE0".b + ("fmrb selftest frame " * 8).b + "\xFF\xD9".
 class FakeTab5
   attr_accessor :release_mode   # an old release firmware: no /app, /fs, /audio
   attr_accessor :guard          # nil (development), :closed or :open (a release build)
+  attr_accessor :pairing        # "Pair a PC" open in Config (a release build)
   attr_reader :seen_tokens
 
   PAIR_CODE = "123456"
@@ -52,6 +53,7 @@ class FakeTab5
     @server = TCPServer.new("127.0.0.1", port)
     @release_mode = false
     @guard = nil
+    @pairing = true
     @seen_tokens = []
     @thread = Thread.new { accept_loop }
   end
@@ -145,6 +147,9 @@ class FakeTab5
       code = query.to_s[/code=(\d+)/, 1]
       if @guard != :open
         json(c, '{"ok":false,"guard":"closed","err":"remote control is off"}', "403 Forbidden")
+      elsif !@pairing
+        json(c, '{"ok":false,"guard":"not_pairing","err":"the board is not taking new PCs now: ' \
+                'open Config > Remote control > Pair a PC"}', "403 Forbidden")
       elsif code == PAIR_CODE
         json(c, %({"ok":true,"guard":"open","token":"#{TOKEN}"}))
       else
@@ -362,6 +367,13 @@ Dir.mktmpdir("fmrb-mcp-tab5") do |dir|
     [err == true && doc["message"].to_s.include?("pairing refused"), doc.inspect]
   end
   fake.guard = :open
+  fake.pairing = false
+  doc, err = payload(srv.call("tab5_ip", { ip: "127.0.0.1", pair_code: "123456" }))
+  check("pairing outside Pair a PC is refused with the reason") do
+    m = doc["message"].to_s
+    [err == true && m.include?("pairing refused") && m.include?("Pair a PC"), doc.inspect]
+  end
+  fake.pairing = true
   doc, err = payload(srv.call("tab5_app", { action: "ps", ip: "127.0.0.1" }))
   check("open but not paired: the 401 gives the pair command") do
     m = doc["message"].to_s
@@ -389,9 +401,13 @@ Dir.mktmpdir("fmrb-mcp-tab5") do |dir|
   end
   doc, err = payload(srv.call("tab5_input", { commands: "click 1 2", ip: "127.0.0.1" }))
   check("paired: input asks /auth with it, then the websocket") { [!err, doc.inspect] }
+  fake.pairing = false
+  doc, err = payload(srv.call("tab5_app", { action: "ps", ip: "127.0.0.1" }))
+  check("paired: works with Pair a PC closed") { [!err && doc["apps"].is_a?(Array), doc.inspect] }
+  fake.pairing = true
   fake.guard = :closed
   doc, err = payload(srv.call("tab5_audio", { action: "get", ip: "127.0.0.1" }))
-  check("after a restart (closed again) a paired PC is told to turn it on, not to pair") do
+  check("turned off on the board: a paired PC is told to turn it on, not to pair") do
     m = doc["message"].to_s
     [err == true && m.include?("A PC paired before needs nothing more"), m]
   end

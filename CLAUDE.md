@@ -259,9 +259,9 @@ MCP に載せていない部分:
 - curl 直叩き: `POST /app/launch?path=` / `GET /app/list` /
   `POST /app/kill?pid=`、fs 系は `/fs/list` `/fs/get` `/fs/put` `/fs/del`
   `/fs/mkdir`。開発のビルド (`FMRB_DEV_REMOTE_CTL`、既定 ON) は無認証。
-  リリースのビルドは端末の Config > 遠隔操作 を ON にして (再起動まで)、
-  PC を一度 `ruby tools/fmrb_rd_fs.rb <IP> pair <番号>` で登録したときだけ
-  通る (トークンは ~/.config/fmrb/、MCP は tab5_ip の pair_code、curl は
+  リリースのビルドは端末の Config > 遠隔操作 が ON (OFF にするまで、再起動しても残る)
+  で、PC を一度登録したときだけ通る (登録は Config の同じ行を「PCを登録」に進めて
+  番号が出ている間に `ruby tools/fmrb_rd_fs.rb <IP> pair <番号>`) (トークンは ~/.config/fmrb/、MCP は tab5_ip の pair_code、curl は
   `-H "X-Fmrb-Token: <token>"`)。計画・経緯は `fmruby-core/doc/dev_remote_ctl/plan.md`
   と `fmruby-core/doc/remote_guard/plan.md`。
 - tab5_input のキーが足りないときは fmrb_rd_input.rb 冒頭の SCAN 表

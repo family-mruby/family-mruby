@@ -92,15 +92,16 @@
 #   ruby tools/fmrb_rd_launch.rb $IP /app/test/my.app.rb
 #
 # A release build (fmruby-core doc/remote_guard) answers a paired PC only,
-# and changes files only under /home and /app. Pair once per PC and board:
-# turn on Config > Remote control on the board, read the number, then
+# and changes files only under /home, /app and /mnt/sd. Pair once per PC and
+# board: on the board step Config > Remote control to "Pair a PC", read the
+# number it shows (only while it shows it), then
 #
 #   ruby tools/fmrb_rd_fs.rb <IP> pair 123456     # keeps the token (tools/fmrb_rd_token.rb)
 #   ruby tools/fmrb_rd_fs.rb <IP> unpair          # forgets this PC's copy
 #
-# Every tool here then sends the token. After the board restarts the switch is
-# off again: turn it on, and the paired PC goes on with no new number. A
-# development build needs no pairing.
+# Every tool here then sends the token. The switch stays as it was left across
+# restarts; while it is on a paired PC needs nothing more. A development build
+# needs no pairing.
 #
 # Exit status is 0 on success, 1 when the device answered with an error
 # (in the interactive form an error is printed and the prompt comes back).
@@ -756,7 +757,7 @@ def one_shot(fs, cmd, args)
     fs.reboot
     puts "rebooting #{fs.host}"
   when "pair"
-    code = args.shift or abort "pair needs the number shown on the board (Config > Remote control)"
+    code = args.shift or abort "pair needs the number shown on the board (Config > Remote control > Pair a PC)"
     r = FmrbRdToken.pair(fs.host, code)
     if r[:guard] == "free"
       puts "#{r[:host]} is a development build: it needs no pairing"

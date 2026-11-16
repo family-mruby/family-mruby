@@ -346,11 +346,12 @@ TAB5_NOTE = <<~NOTE
 
   A development build (FMRB_DEV_REMOTE_CTL, the default) answers anyone on the
   network. A release build answers a paired PC only: when a tool says 401,
-  ask the user to turn on Config > Remote control on the board (it lasts until
-  the board restarts) and, the first time, to read you the six-digit number
-  shown there; then tab5_ip with pair_code. The token is kept per board in
-  ~/.config/fmrb/ and sent from then on. A release build also writes only
-  under /home and /app. A 404 for /app or /fs means a release firmware from
+  ask the user to turn on Config > Remote control on the board (it stays on,
+  across restarts, until turned off) and, the first time, to step it on to
+  "Pair a PC" and read you the six-digit number shown there (the board takes
+  it only while that shows); then tab5_ip with pair_code. The token is kept
+  per board in ~/.config/fmrb/ and sent from then on. A release build also
+  writes only under /home, /app and /mnt/sd. A 404 for /app or /fs means a release firmware from
   before 2026-11-16, not a broken board.
 
   A crash takes WiFi down with it, so when the board stops answering, the log
@@ -379,8 +380,9 @@ TAB5_IP = MCP::Tool.define(
     (it is still checked before use).
 
     pair_code: "123456" pairs this PC with a release build: the number the
-    board shows in Config > Remote control (the user reads it to you). Needed
-    once per board; a development build answers that it needs none.
+    board shows in Config > Remote control > Pair a PC (the user reads it to
+    you, and leaves it showing until you have paired). Needed once per board;
+    a development build answers that it needs none.
 
     #{TAB5_NOTE}
   DESC
@@ -389,7 +391,7 @@ TAB5_IP = MCP::Tool.define(
     properties: {
       ip: { type: "string", description: "use this address instead of resolving" },
       refresh: { type: "boolean", description: "ignore the cached address (default false)" },
-      pair_code: { type: "string", description: "the number shown in Config > Remote control on a release build" },
+      pair_code: { type: "string", description: "the number shown in Config > Remote control > Pair a PC on a release build" },
     },
     required: [],
   },

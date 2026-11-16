@@ -4,13 +4,16 @@
 # the MCP server's tab5_* tools.
 #
 # How a release board lets a PC in: the owner turns on Config > Remote control
-# on the board, which then shows a six-digit number; the PC sends it once
+# on the board and steps it to "Pair a PC", which shows a six-digit number
+# while it is open; the PC sends it once
 #
 #   ruby tools/fmrb_rd_fs.rb <IP> pair 123456
 #
 # and receives a token, which every later request carries (X-Fmrb-Token). The
-# board keeps up to four PCs' tokens and can forget them all (Config). The
-# switch lasts until the board restarts; the token lasts until it is forgotten.
+# board keeps up to four PCs (the SHA-256 of their tokens) and can forget them
+# all (Config). The switch is kept across restarts until it is turned off; the
+# token lasts until it is forgotten. New PCs pair only while "Pair a PC" is
+# open; a paired one works whenever the switch is on.
 # A development build needs none of this: it answers every request, and the
 # tools send no token there (none is stored for it).
 #
@@ -113,7 +116,7 @@ module FmrbRdToken
   # board's reason.
   def pair(addr, code)
     code = code.to_s.strip
-    raise Denied.new("the number is the six digits shown on the board in Config > Remote control", "wrong") unless code =~ /\A\d{1,6}\z/
+    raise Denied.new("the number is the six digits shown on the board in Config > Remote control > Pair a PC", "wrong") unless code =~ /\A\d{1,6}\z/
     uri = URI("http://#{addr}/pair?code=#{code}")
     res = Net::HTTP.start(uri.host, uri.port, open_timeout: 5, read_timeout: 10) do |h|
       h.request(Net::HTTP::Post.new(uri))
@@ -158,10 +161,10 @@ module FmrbRdToken
     reason = doc.is_a?(Hash) && doc["err"] ? doc["err"] : "the board refused this PC"
     steps = case guard
             when "closed"
-              "On the board: Config > Remote control: ON (it lasts until the board restarts). " \
-              "A PC paired before needs nothing more; a new one then runs the pair command with the number shown."
+              "On the board: Config > Remote control: ON (it stays on until turned off). " \
+              "A PC paired before needs nothing more; a new one steps it on to Pair a PC and runs the pair command with the number shown."
             else
-              "On the board: Config > Remote control: ON, read the six-digit number, then on this PC:"
+              "On the board: Config > Remote control, step to Pair a PC, read the six-digit number, then on this PC:"
             end
     msg = "401 #{reason}\n#{steps}\n  ruby tools/fmrb_rd_fs.rb #{addr} pair <number>"
     Denied.new(msg, guard)

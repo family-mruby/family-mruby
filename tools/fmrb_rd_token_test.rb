@@ -19,13 +19,14 @@ require_relative "fmrb_rd_token"
 
 class FakeBoard
   TOKEN = "0123456789abcdef0123456789abcdef"
-  attr_accessor :guard, :status_ip, :code
+  attr_accessor :guard, :status_ip, :code, :pairing
   attr_reader :port, :hits
 
   def initialize
     @server = TCPServer.new("127.0.0.1", 0)
     @port = @server.addr[1]
     @guard = :open
+    @pairing = true     # "Pair a PC" open in Config
     @status_ip = "127.0.0.1"
     @code = "042137"
     @hits = []
@@ -63,6 +64,9 @@ class FakeBoard
           [200, '{"ok":true,"guard":"free","token":""}']
         elsif @guard == :closed
           [403, '{"ok":false,"guard":"closed","err":"remote control is off on this board"}']
+        elsif !@pairing
+          [403, '{"ok":false,"guard":"not_pairing","err":"the board is not taking new PCs now: ' \
+                'open Config > Remote control > Pair a PC on the board"}']
         elsif query.to_s == "code=#{@code}"
           [200, %({"ok":true,"guard":"open","token":"#{TOKEN}"})]
         else
@@ -147,14 +151,29 @@ class FmrbRdTokenTest < Minitest::Test
     assert_equal "closed", e.guard
   end
 
+  def test_pair_outside_the_pairing_view_says_why
+    @board.pairing = false
+    e = assert_raises(FmrbRdToken::Denied) { FmrbRdToken.pair(@board.addr, "042137") }
+    assert_equal "not_pairing", e.guard
+    assert_includes e.message, "Pair a PC"
+    refute File.exist?(FmrbRdToken.path)
+  end
+
+  def test_a_paired_pc_needs_no_pairing_view
+    FmrbRdToken.pair(@board.addr, "042137")
+    @board.pairing = false
+    status, = get(@board.addr)
+    assert_equal 200, status
+  end
+
   def test_not_paired_gives_the_steps_and_the_command
     e = assert_raises(FmrbRdToken::Denied) { get(@board.addr) }
     assert_includes e.message, "401"
-    assert_includes e.message, "Config > Remote control: ON"
+    assert_includes e.message, "step to Pair a PC"
     assert_includes e.message, "ruby tools/fmrb_rd_fs.rb #{@board.addr} pair <number>"
   end
 
-  def test_closed_after_a_restart_tells_a_paired_pc_to_turn_it_on
+  def test_closed_by_the_owner_tells_a_paired_pc_to_turn_it_on
     FmrbRdToken.pair(@board.addr, "042137")
     @board.guard = :closed
     e = assert_raises(FmrbRdToken::Denied) { get(@board.addr) }
