@@ -344,10 +344,14 @@ TAB5_NOTE = <<~NOTE
   remote desktop and cannot be driven this way -- use the Linux simulation, or
   ask the user to press the keys.
 
-  The remote desktop is unauthenticated and its /app and /fs endpoints exist
-  only in development builds (FMRB_DEV_REMOTE_CTL, on by default, off in
-  release), so this assumes a board on a trusted network. A 404 means a
-  firmware without them, not a broken board.
+  A development build (FMRB_DEV_REMOTE_CTL, the default) answers anyone on the
+  network. A release build answers a paired PC only: when a tool says 401,
+  ask the user to turn on Config > Remote control on the board (it lasts until
+  the board restarts) and, the first time, to read you the six-digit number
+  shown there; then tab5_ip with pair_code. The token is kept per board in
+  ~/.config/fmrb/ and sent from then on. A release build also writes only
+  under /home and /app. A 404 for /app or /fs means a release firmware from
+  before 2026-11-16, not a broken board.
 
   A crash takes WiFi down with it, so when the board stops answering, the log
   that matters is on the serial line: serial_start / serial_log on this same
@@ -374,6 +378,10 @@ TAB5_IP = MCP::Tool.define(
     refresh: true skips the cache. ip: "1.2.3.4" pins an address for this call
     (it is still checked before use).
 
+    pair_code: "123456" pairs this PC with a release build: the number the
+    board shows in Config > Remote control (the user reads it to you). Needed
+    once per board; a development build answers that it needs none.
+
     #{TAB5_NOTE}
   DESC
   annotations: { read_only_hint: true, destructive_hint: false, open_world_hint: true },
@@ -381,11 +389,18 @@ TAB5_IP = MCP::Tool.define(
     properties: {
       ip: { type: "string", description: "use this address instead of resolving" },
       refresh: { type: "boolean", description: "ignore the cached address (default false)" },
+      pair_code: { type: "string", description: "the number shown in Config > Remote control on a release build" },
     },
     required: [],
   },
-) do |ip: nil, refresh: false, server_context: nil, **_extra|
-  respond { TAB5.resolve(ip, refresh: refresh) }
+) do |ip: nil, refresh: false, pair_code: nil, server_context: nil, **_extra|
+  respond do
+    if pair_code && !pair_code.to_s.empty?
+      TAB5.pair(pair_code.to_s, ip: ip)
+    else
+      TAB5.resolve(ip, refresh: refresh)
+    end
+  end
 end
 
 TAB5_SCREENSHOT = MCP::Tool.define(

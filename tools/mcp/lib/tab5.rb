@@ -12,6 +12,11 @@
 # today. So no tool here takes an address as a required argument: the address
 # is resolved, verified against the board's own /status, cached briefly, and
 # thrown away the moment it stops answering.
+#
+# A release build answers a paired PC only (fmruby-core doc/remote_guard):
+# every request carries the token tools/fmrb_rd_token.rb keeps per board, and
+# a 401 comes back as an Error saying what to do on the board and how to pair
+# (tab5_ip with pair_code). A development build needs none of it.
 require "base64"
 require "fileutils"
 require "json"
@@ -94,6 +99,19 @@ module FmrbMcp
 
     # --- tools ---------------------------------------------------------------
 
+    # Trade the number shown on the board (Config > Remote control, a release
+    # build) for a token kept in ~/.config/fmrb/remote_tokens.json; every
+    # tab5_* tool then sends it.
+    def pair(code, ip: nil)
+      r = resolve(ip)
+      got = FmrbRdToken.pair(r[:ip], code)
+      { ip: r[:ip], status: r[:status], notes: r[:notes],
+        paired: got[:guard] == "free" ? "not needed: a development build" : got[:host],
+        token_file: FmrbRdToken.path }
+    rescue FmrbRdToken::Denied => e
+      raise Error, "pairing refused: #{e.message}"
+    end
+
     def screenshot(ip: nil)
       r = resolve(ip)
       # A board with no remote desktop ("mode":"none", its own small server)
@@ -122,10 +140,16 @@ module FmrbMcp
     # zlib -- no image library on either side.
     def fb_screenshot(r)
       require "net/http"
-      res = begin
-        Net::HTTP.start(r[:ip], 80, open_timeout: 5, read_timeout: SNAP_TIMEOUT) do |h|
-          h.get("/fb")
+      res = nil
+      begin
+        FmrbRdToken.with_token(r[:ip]) do |tok|
+          res = Net::HTTP.start(r[:ip], 80, open_timeout: 5, read_timeout: SNAP_TIMEOUT) do |h|
+            h.get("/fb", tok ? { FmrbRdToken::HEADER => tok } : {})
+          end
+          [res.code.to_i, res.body]
         end
+      rescue FmrbRdToken::Denied => e
+        raise Error, e.message
       rescue StandardError => e
         raise Tab5Unreachable, "#{r[:ip]} did not answer /fb: #{e.message}"
       end
@@ -261,7 +285,7 @@ module FmrbMcp
       if status == 404 && !(doc.is_a?(Hash) && doc.key?("ok"))
         raise Error, "#{path} answered 404: this firmware has no /audio endpoints -- " \
                      "it predates the mute (fmruby-core doc/reference/audio_output.md), or it is a " \
-                     "release build without FMRB_DEV_REMOTE_CTL. Nothing was changed."
+                     "release build from before 2026-11-16. Nothing was changed."
       end
       doc = parse_json(status, body, path) unless doc.is_a?(Hash)
       raise Error, "#{path} was refused (HTTP #{status}): #{body}" unless doc["ok"]
@@ -284,6 +308,9 @@ module FmrbMcp
         hint = if res[:output].include?("400")
                  " \"..\" is refused. Firmware from before 2026-11-15 also limits " \
                  "paths to /app, /home, /usr/share and /mnt/sd."
+               elsif res[:output].include?("403")
+                 " A release build writes only under /home and /app and never hands " \
+                 "out a key (fmruby-core doc/remote_guard)."
                else
                  ""
                end
@@ -354,7 +381,11 @@ module FmrbMcp
     # which inside a long-lived server would take the whole process down. Turn
     # that back into an exception rather than forking the client.
     def http(ip, method, path, timeout: HTTP_TIMEOUT)
-      FmrbRdHttp.request(ip, method, path, timeout: timeout)
+      FmrbRdHttp.request(ip, method, path, timeout: timeout, on_denied: :raise)
+    rescue FmrbRdToken::Denied => e
+      # The board answered; it is not unreachable, and resolving it again
+      # would not help.
+      raise Error, e.message
     rescue SystemExit => e
       raise Tab5Unreachable, e.message.to_s.strip
     end
@@ -368,10 +399,10 @@ module FmrbMcp
         if doc.is_a?(Hash) && doc.key?("ok")
           raise Error, "#{endpoint} answered 404: #{doc['err'] || 'not found'}"
         end
-        raise Error, "#{endpoint} answered 404: this firmware has no development " \
-                     "remote control. It is compiled in only with FMRB_DEV_REMOTE_CTL " \
-                     "(on by default, off in release builds), so a release firmware " \
-                     "cannot be driven this way."
+        raise Error, "#{endpoint} answered 404: this firmware has no remote control " \
+                     "endpoints -- a release build from before 2026-11-16, which left them " \
+                     "out. Later release builds have them behind pairing (fmruby-core " \
+                     "doc/remote_guard)."
       end
       JSON.parse(body)
     rescue JSON::ParserError

@@ -91,6 +91,17 @@
 #   ruby tools/fmrb_rd_fs.rb $IP put my.app.rb /app/test/my.app.rb
 #   ruby tools/fmrb_rd_launch.rb $IP /app/test/my.app.rb
 #
+# A release build (fmruby-core doc/remote_guard) answers a paired PC only,
+# and changes files only under /home and /app. Pair once per PC and board:
+# turn on Config > Remote control on the board, read the number, then
+#
+#   ruby tools/fmrb_rd_fs.rb <IP> pair 123456     # keeps the token (tools/fmrb_rd_token.rb)
+#   ruby tools/fmrb_rd_fs.rb <IP> unpair          # forgets this PC's copy
+#
+# Every tool here then sends the token. After the board restarts the switch is
+# off again: turn it on, and the paired PC goes on with no new number. A
+# development build needs no pairing.
+#
 # Exit status is 0 on success, 1 when the device answered with an error
 # (in the interactive form an error is printed and the prompt comes back).
 
@@ -101,6 +112,7 @@ require "digest"
 require "fileutils"
 require "socket"
 require "time"
+require_relative "fmrb_rd_token"
 
 class FmrbFs
   class DeviceError < StandardError; end
@@ -174,11 +186,34 @@ class FmrbFs
 
   def reboot
     uri = URI("http://#{@host}/sys/reboot")
-    res = Net::HTTP.start(uri.host, uri.port, read_timeout: 10, open_timeout: 5) do |http|
-      http.request(Net::HTTP::Post.new(uri))
+    res = with_token do |tok|
+      req = Net::HTTP::Post.new(uri)
+      req[FmrbRdToken::HEADER] = tok if tok
+      Net::HTTP.start(uri.host, uri.port, read_timeout: 10, open_timeout: 5) do |http|
+        http.request(req)
+      end
     end
     raise DeviceError, "404: this firmware has no /sys/reboot (before 2026-11-15)" if res.code == "404"
     expect_ok(res)
+  end
+
+  # POST /app/launch and GET /app/list, for the interactive form.
+  def launch(path)
+    uri = URI("http://#{@host}/app/launch?path=#{URI.encode_www_form_component(path)}")
+    with_token do |tok|
+      req = Net::HTTP::Post.new(uri)
+      req[FmrbRdToken::HEADER] = tok if tok
+      Net::HTTP.start(uri.host, uri.port, read_timeout: 10, open_timeout: 5) { |h| h.request(req) }
+    end
+  end
+
+  def app_list
+    uri = URI("http://#{@host}/app/list")
+    with_token do |tok|
+      req = Net::HTTP::Get.new(uri)
+      req[FmrbRdToken::HEADER] = tok if tok
+      Net::HTTP.start(uri.host, uri.port, read_timeout: 10, open_timeout: 5) { |h| h.request(req) }
+    end
   end
 
   # ---- trees ----
@@ -272,14 +307,31 @@ class FmrbFs
 
   def request(klass, route, path, body: nil)
     uri = URI("http://#{@host}#{route}?path=#{URI.encode_www_form_component(path)}")
-    req = klass.new(uri)
-    if body
-      req.body = body
-      req["Content-Type"] = "application/octet-stream"
+    with_token do |tok|
+      req = klass.new(uri)
+      req[FmrbRdToken::HEADER] = tok if tok
+      if body
+        req.body = body
+        req["Content-Type"] = "application/octet-stream"
+      end
+      Net::HTTP.start(uri.host, uri.port, read_timeout: 120, open_timeout: 10) do |http|
+        http.request(req)
+      end
     end
-    Net::HTTP.start(uri.host, uri.port, read_timeout: 120, open_timeout: 10) do |http|
-      http.request(req)
+  end
+
+  # The request with this PC's token for the board (none for a development
+  # build), once more with the token found by the board's name on a 401, and
+  # a DeviceError saying what to do on the board when it still refuses.
+  def with_token
+    res = nil
+    FmrbRdToken.with_token(@host) do |tok|
+      res = yield(tok)
+      [res.code.to_i, res.body]
     end
+    res
+  rescue FmrbRdToken::Denied => e
+    raise DeviceError, e.message
   end
 
   # JSON answers carry ok:true/false; raise with the device's reason when false.
@@ -703,6 +755,21 @@ def one_shot(fs, cmd, args)
   when "reboot"
     fs.reboot
     puts "rebooting #{fs.host}"
+  when "pair"
+    code = args.shift or abort "pair needs the number shown on the board (Config > Remote control)"
+    r = FmrbRdToken.pair(fs.host, code)
+    if r[:guard] == "free"
+      puts "#{r[:host]} is a development build: it needs no pairing"
+    else
+      puts "paired with #{r[:host]} (#{r[:board] || 'board'} at #{r[:ip]}); " \
+           "the token is kept in #{FmrbRdToken.path}"
+    end
+  when "unpair"
+    if FmrbRdToken.forget(fs.host)
+      puts "forgot this PC's token for #{fs.host} (the board keeps its side until Config forgets it)"
+    else
+      puts "no token kept for #{fs.host}"
+    end
   when "df"
     path = args.shift || "/"
     d = fs.df(path) or abort "this firmware has no /fs/df (before 2026-11-16)"
@@ -738,7 +805,7 @@ def one_shot(fs, cmd, args)
            "(#{format('%.0f', dt)} s); the launcher lists it after a rescan (right click on the desktop)"
     end
   else
-    abort "unknown command #{cmd} (ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot|df|tests|extra)"
+    abort "unknown command #{cmd} (ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot|df|tests|extra|pair|unpair)"
   end
 end
 
@@ -874,10 +941,9 @@ def interactive(host, fs)
         puts fs.get(path)
       when "launch"
         path = resolve(cwd, need(args, 0, "launch <app.rb>"))
-        res = Net::HTTP.post(URI("http://#{host}/app/launch?path=#{URI.encode_www_form_component(path)}"), "")
-        puts res.body
+        puts fs.launch(path).body
       when "ps"
-        puts Net::HTTP.get(URI("http://#{host}/app/list"))
+        puts fs.app_list.body
       when "help", "?"
         puts HELP
       when "quit", "exit", "q"
@@ -885,7 +951,7 @@ def interactive(host, fs)
       else
         puts "unknown command #{cmd} (help for the list)"
       end
-    rescue FmrbFs::DeviceError, ArgumentError, Errno::ENOENT, Errno::EISDIR => e
+    rescue FmrbFs::DeviceError, FmrbRdToken::Denied, ArgumentError, Errno::ENOENT, Errno::EISDIR => e
       puts "error: #{e.message}"
     end
   end
@@ -1107,7 +1173,7 @@ end
 
 # Loaded by tools/fmrb_flash_keep.rb for the classes above; run only as a command.
 if $PROGRAM_NAME == __FILE__
-  host = ARGV.shift or abort "usage: fmrb_rd_fs.rb HOST [ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot|df|tests|extra ...]"
+  host = ARGV.shift or abort "usage: fmrb_rd_fs.rb HOST [ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot|df|tests|extra|pair|unpair ...]"
   host = FmrbBoard.resolve(host) || abort("cannot resolve #{host}")
   fs = FmrbFs.new(host)
   if ARGV.empty?
@@ -1115,7 +1181,7 @@ if $PROGRAM_NAME == __FILE__
   else
     begin
       one_shot(fs, ARGV.shift, ARGV)
-    rescue FmrbFs::DeviceError, ArgumentError => e
+    rescue FmrbFs::DeviceError, FmrbRdToken::Denied, ArgumentError => e
       warn "error: #{e.message}"
       exit 1
     rescue SystemCallError, Net::OpenTimeout, Net::ReadTimeout, SocketError => e

@@ -30,6 +30,8 @@
 #      (selftest_web.rb; the parts that need a browser are acceptance work)
 #  11. the native-program tools, against a fake CLI tool
 #      (selftest_native.rb; driving the real program is acceptance work)
+#  12. the PC's tokens for a release build's remote control
+#      (tools/fmrb_rd_token_test.rb, against a fake board on a loopback port)
 require "json"
 require "tmpdir"
 require "open3"
@@ -395,6 +397,16 @@ Dir.mktmpdir("fmrb-mcp-selftest") do |dir|
   unless status.success?
     $failures += 1
     puts "  FAIL the native selftest reported failures"
+  end
+
+  puts "12. the PC's tokens for a release build's remote control"
+  token_test = File.expand_path("../fmrb_rd_token_test.rb", __dir__)
+  out, status = Open3.capture2e("ruby", token_test)
+  puts "  " + (out.lines.grep(/runs,/).first || out.lines.last).to_s.strip
+  unless status.success?
+    puts out.chomp
+    $failures += 1
+    puts "  FAIL the token store tests reported failures"
   end
 
   puts

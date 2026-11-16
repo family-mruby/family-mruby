@@ -6,17 +6,31 @@
 #
 #   curl -X POST "http://<IP>/app/launch?path=/app/modern/mic_spectrum.app.rb"
 #
-# They are compiled in only when the firmware is built with
-# FMRB_DEV_REMOTE_CTL (doc/dev_remote_ctl/plan.md); against a build without it
-# the server answers 404, which is reported as such rather than as a crash.
+# A development build answers anyone. A release build answers a paired PC
+# only (fmruby-core doc/remote_guard): the token kept by tools/fmrb_rd_token.rb
+# goes with every request, and a 401 is reported with what to do on the board
+# and the pair command. Firmware from before 2026-11-16 left these out of a
+# release build altogether; its 404 is reported as such rather than as a crash.
 require "socket"
+require_relative "fmrb_rd_token"
 
 module FmrbRdHttp
   module_function
 
-  def request(host, method, path, timeout: 10)
+  # [status, body]. A 401 the stored token cannot answer aborts with the
+  # message (a CLI), or raises FmrbRdToken::Denied with on_denied: :raise (the
+  # MCP server, which must not exit).
+  def request(host, method, path, timeout: 10, on_denied: :abort)
+    FmrbRdToken.with_token(host) { |tok| request_once(host, method, path, timeout, tok) }
+  rescue FmrbRdToken::Denied => e
+    raise if on_denied == :raise
+    abort e.message
+  end
+
+  def request_once(host, method, path, timeout, token)
     s = TCPSocket.new(host, 80)
-    s.write("#{method} #{path} HTTP/1.1\r\nHost: #{host}\r\n" \
+    auth = token ? "#{FmrbRdToken::HEADER}: #{token}\r\n" : ""
+    s.write("#{method} #{path} HTTP/1.1\r\nHost: #{host}\r\n#{auth}" \
             "Content-Length: 0\r\nConnection: close\r\n\r\n")
 
     # Read with a real deadline. A bare readpartial blocks with no regard for
@@ -69,8 +83,8 @@ module FmrbRdHttp
   # likely cause is a firmware built without the dev endpoints.
   def check_status(status, body)
     if status == 404 && !body.include?("\"ok\"")
-      abort "404: this firmware has no development remote control " \
-            "(build with FMRB_DEV_REMOTE_CTL, see doc/dev_remote_ctl/plan.md)"
+      abort "404: this firmware has no remote control endpoints (a release build " \
+            "from before 2026-11-16; see fmruby-core doc/remote_guard/plan.md)"
     end
   end
 end

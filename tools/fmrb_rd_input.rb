@@ -3,9 +3,14 @@
 # Usage: ruby fmrb_rd_input.rb HOST cmd... where cmd is:
 #   click X Y | rclick X Y | dclick X Y | move X Y | drag X1 Y1 X2 Y2 |
 #   wheel N | key NAME | key ctrl+NAME | key alt+NAME | sleep MS
+#
+# A release build lets a paired PC in only (fmruby-core doc/remote_guard): the
+# token kept by fmrb_rd_token.rb goes with the handshake, and /auth is asked
+# first, because a refused WebSocket can only be closed, not told why.
 require "socket"
 require "securerandom"
 require "base64"
+require_relative "fmrb_rd_http"
 
 HOST = ARGV.shift or abort "usage: fmrb_rd_input.rb HOST cmds..."
 
@@ -42,11 +47,16 @@ MSG_KEY = 0x03
 MSG_MOUSE_WHEEL = 0x06
 
 def ws_connect(host)
+  # 200 (let in, or a development build), 404 (firmware from before the
+  # guard), or an abort with what to do on the board.
+  FmrbRdHttp.request(host, "GET", "/auth", timeout: 5)
+  token = FmrbRdToken.token_for(host)
+  auth = token ? "#{FmrbRdToken::HEADER}: #{token}\r\n" : ""
   s = TCPSocket.new(host, 80)
   key = Base64.strict_encode64(SecureRandom.random_bytes(16))
   s.write("GET /ws HTTP/1.1\r\nHost: #{host}\r\nUpgrade: websocket\r\n" \
           "Connection: Upgrade\r\nSec-WebSocket-Key: #{key}\r\n" \
-          "Sec-WebSocket-Version: 13\r\n\r\n")
+          "Sec-WebSocket-Version: 13\r\n#{auth}\r\n")
   line = s.readline
   abort "handshake failed: #{line}" unless line.include?("101")
   loop { break if s.readline.strip.empty? }

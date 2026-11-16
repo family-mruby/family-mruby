@@ -11,7 +11,9 @@
 #
 # The fake answers the endpoints rd_http.c answers: /status, /app/list,
 # /app/launch, /app/kill, /fs/list, /stream (one JPEG) and a /ws handshake. It
-# can also pretend to be a release firmware, which has no /app or /fs at all.
+# can also pretend to be an old release firmware, which has no /app or /fs at
+# all, or a release build with the guard (fmruby-core doc/remote_guard): 401
+# without the token /pair hands out for the number on its screen.
 require "json"
 require "tmpdir"
 require "open3"
@@ -39,11 +41,18 @@ end
 FAKE_JPEG = ("\xFF\xD8\xFF\xE0".b + ("fmrb selftest frame " * 8).b + "\xFF\xD9".b)
 
 class FakeTab5
-  attr_accessor :release_mode   # a firmware built without FMRB_DEV_REMOTE_CTL
+  attr_accessor :release_mode   # an old release firmware: no /app, /fs, /audio
+  attr_accessor :guard          # nil (development), :closed or :open (a release build)
+  attr_reader :seen_tokens
+
+  PAIR_CODE = "123456"
+  TOKEN = "00112233445566778899aabbccddeeff"
 
   def initialize(port = 80)
     @server = TCPServer.new("127.0.0.1", port)
     @release_mode = false
+    @guard = nil
+    @seen_tokens = []
     @thread = Thread.new { accept_loop }
   end
 
@@ -67,13 +76,25 @@ class FakeTab5
     line = c.gets
     return unless line
     method, target, = line.split
-    loop { break if c.gets.to_s.strip.empty? }   # drain the headers
+    headers = {}
+    loop do
+      h = c.gets.to_s
+      break if h.strip.empty?
+      k, v = h.split(":", 2)
+      headers[k.to_s.strip.downcase] = v.to_s.strip
+    end
     path, query = target.split("?", 2)
     dev = !@release_mode
+    return if @guard && guarded_refusal(c, method, path, query, headers)
 
     case [method, path]
     when %w[GET /status]
-      json(c, '{"ip":"127.0.0.1","mode":"mjpeg","streaming":false,"fps":15.0,"kbps":420}')
+      json(c, '{"ip":"127.0.0.1","mode":"mjpeg","streaming":false,"fps":15.0,"kbps":420,' \
+              '"board":"tab5","host":"fmruby-abc123"' +
+              (@guard ? %(,"guard":"#{@guard}") : "") + "}")
+    when %w[GET /auth]
+      return not_found(c) unless @guard
+      json(c, '{"ok":true,"guard":"open"}')
     when %w[GET /app/list]
       return not_found(c) unless dev
       json(c, '{"apps":[{"pid":0,"name":"kernel","state":"running"},' \
@@ -114,6 +135,32 @@ class FakeTab5
     else
       not_found(c)
     end
+  end
+
+  # The release build's guard: true when the request was answered here
+  # (/pair, or a 401). /status is open.
+  def guarded_refusal(c, method, path, query, headers)
+    return false if path == "/status"
+    if [method, path] == %w[POST /pair]
+      code = query.to_s[/code=(\d+)/, 1]
+      if @guard != :open
+        json(c, '{"ok":false,"guard":"closed","err":"remote control is off"}', "403 Forbidden")
+      elsif code == PAIR_CODE
+        json(c, %({"ok":true,"guard":"open","token":"#{TOKEN}"}))
+      else
+        json(c, '{"ok":false,"guard":"wrong","left":4,"err":"that is not the number"}', "403 Forbidden")
+      end
+      return true
+    end
+    tok = headers["x-fmrb-token"] || query.to_s[/token=(\h+)/, 1]
+    @seen_tokens << tok
+    v = if @guard != :open then "closed"
+        elsif tok.nil? then "no_token"
+        elsif tok != TOKEN then "bad_token"
+        end
+    return false unless v
+    json(c, %({"ok":false,"guard":"#{v}","err":"refused (#{v}): allow it on the board"}), "401 Unauthorized")
+    true
   end
 
   def json(c, body, status = "200 OK")
@@ -187,7 +234,9 @@ Dir.mktmpdir("fmrb-mcp-tab5") do |dir|
   # A name nothing can resolve, so the "board is gone" path fails fast instead
   # of finding the real Tab5 that may be sitting on the developer's desk.
   env = { "FMRB_MCP_STATE_DIR" => dir,
-          "FMRB_MCP_TAB5_HOST" => "fmrb-selftest-nosuch.local" }
+          "FMRB_MCP_TAB5_HOST" => "fmrb-selftest-nosuch.local",
+          # The PC's tokens (tools/fmrb_rd_token.rb), away from the real ones.
+          "FMRB_CONFIG_DIR" => File.join(dir, "config") }
   srv = Srv.new(env)
 
   puts "  -- address resolution --"
@@ -292,13 +341,61 @@ Dir.mktmpdir("fmrb-mcp-tab5") do |dir|
     [err == true && doc["message"].to_s.include?("no /audio endpoints"), doc.inspect]
   end
   doc, err = payload(srv.call("tab5_app", { action: "ps", ip: "127.0.0.1" }))
-  check("404 is diagnosed as a release build, not as a broken board") do
-    [err == true && doc["message"].to_s.include?("no development remote control"), doc.inspect]
+  check("404 is diagnosed as an old release build, not as a broken board") do
+    [err == true && doc["message"].to_s.include?("no remote control endpoints"), doc.inspect]
   end
-  check("and it names the switch that turns them on") do
-    [doc["message"].to_s.include?("FMRB_DEV_REMOTE_CTL"), doc["message"]]
+  check("and it says later release builds pair instead") do
+    [doc["message"].to_s.include?("pairing"), doc["message"]]
   end
   fake.release_mode = false
+
+  puts "  -- a release build: closed until allowed, then paired --"
+  fake.guard = :closed
+  doc, err = payload(srv.call("tab5_app", { action: "ps", ip: "127.0.0.1" }))
+  check("closed: a 401 says to turn on Config > Remote control") do
+    m = doc["message"].to_s
+    [err == true && m.include?("401") && m.include?("Config > Remote control: ON") && m.include?("pair"), m]
+  end
+  check("and no token was sent while none is kept") { [fake.seen_tokens.compact.empty?, fake.seen_tokens.inspect] }
+  doc, err = payload(srv.call("tab5_ip", { ip: "127.0.0.1", pair_code: "123456" }))
+  check("pairing while closed is refused with the reason") do
+    [err == true && doc["message"].to_s.include?("pairing refused"), doc.inspect]
+  end
+  fake.guard = :open
+  doc, err = payload(srv.call("tab5_app", { action: "ps", ip: "127.0.0.1" }))
+  check("open but not paired: the 401 gives the pair command") do
+    m = doc["message"].to_s
+    [err == true && m.include?("fmrb_rd_fs.rb 127.0.0.1 pair <number>"), m]
+  end
+  doc, err = payload(srv.call("tab5_ip", { ip: "127.0.0.1", pair_code: "999999" }))
+  check("a wrong number is refused") { [err == true && doc["message"].to_s.include?("not the number"), doc.inspect] }
+  doc, err = payload(srv.call("tab5_ip", { ip: "127.0.0.1", pair_code: "123456" }))
+  check("the right number pairs and names the board") { [!err && doc["paired"] == "fmruby-abc123", doc.inspect] }
+  tfile = File.join(dir, "config", "remote_tokens.json")
+  check("the token is kept per board, 0600 in a 0700 directory") do
+    st = File.stat(tfile) rescue nil
+    dst = File.stat(File.dirname(tfile)) rescue nil
+    ok = st && (st.mode & 0o777) == 0o600 && dst && (dst.mode & 0o777) == 0o700 &&
+         JSON.parse(File.read(tfile)).dig("boards", "fmruby-abc123", "token") == FakeTab5::TOKEN
+    [ok, st && format("%o", st.mode)]
+  end
+  doc, err = payload(srv.call("tab5_app", { action: "ps", ip: "127.0.0.1" }))
+  check("paired: ps goes through with the token") { [!err && doc["apps"].is_a?(Array), doc.inspect] }
+  doc, err = payload(srv.call("tab5_fs", { action: "ls", device_path: "/app", ip: "127.0.0.1" }))
+  check("paired: fs (fmrb_rd_fs.rb) sends it too") { [!err && doc["output"].to_s.include?("hello.app.rb"), doc.inspect] }
+  res = srv.call("tab5_screenshot", { ip: "127.0.0.1" })
+  check("paired: the screen (fmrb_rd_snap.rb) sends it too") do
+    [res.dig("result", "content").any? { |c| c["type"] == "image" }, res.inspect[0, 300]]
+  end
+  doc, err = payload(srv.call("tab5_input", { commands: "click 1 2", ip: "127.0.0.1" }))
+  check("paired: input asks /auth with it, then the websocket") { [!err, doc.inspect] }
+  fake.guard = :closed
+  doc, err = payload(srv.call("tab5_audio", { action: "get", ip: "127.0.0.1" }))
+  check("after a restart (closed again) a paired PC is told to turn it on, not to pair") do
+    m = doc["message"].to_s
+    [err == true && m.include?("A PC paired before needs nothing more"), m]
+  end
+  fake.guard = nil
 
   puts "  -- registration and stdout purity --"
   listed = srv.request("tools/list").dig("result", "tools").map { |t| t["name"] }.sort
