@@ -64,8 +64,12 @@ fmruby-core/doc/wasm/report/drive_tool.md)。
 
 sim_up で起動 (最初の 1 枚が返る) → sim_input / sim_app / sim_screenshot で
 操作と確認 → sim_down で片付け。実行前に両リポジトリのビルド
-(rake build:linux) が済んでいること (stale な esp32 ビルドは sim_up が
-起動前に拒否する)。
+(rake build:linux) が済んでいること。fmruby-core の sim は `build-linux/` に
+作る (ESP32 の `build/` とは別。実機用に作っても消えない)。**ソースより古い
+ビルドは sim_up・native_up・web_up (と dev_run_check.sh・fmrb_native.rb up・
+rake wasm:serve) が断り**、新しいファイルと作り直すコマンドを出す
+(そのまま起動するなら allow_stale: true / STALE_OK=1。仕組みは
+fmruby-core/doc/regression/usage.md 2.1)。
 
 ## かな入力の検証 (sim 特有の細部)
 
@@ -174,7 +178,7 @@ docker run --rm -u root --pid=container:fmruby_core --cap-add=SYS_PTRACE \
   -v $(pwd)/fmruby-core:/project ghcr.io/family-mruby/fmruby-esp32-build:v5.5.4 \
   bash -c "gdb -batch -ex 'set pagination off' \
     -ex 'set sysroot /proc/101/root' \
-    -ex 'file /project/build/fmruby-core.elf' -ex 'attach 101' \
+    -ex 'file /project/build-linux/fmruby-core.elf' -ex 'attach 101' \
     -ex 'thread apply all bt 14'"
 ```
 
@@ -236,11 +240,12 @@ serial_start でシリアルを開きっぱなしにし、serial_log で読む�
   できる**。S3 (Retro) は不可 (debugd が BLE のみ、remote desktop なし)。
   Retro で操作が要る検証は Linux sim で行うか、ユーザに操作を依頼して
   シリアルで結果を観測する。
-- ビルドの罠: lib/ を編集したら `rake clean`、ターゲット切替 (linux⇔esp32)
-  は `rake clean_all`。`rake build:linux` は esp32 の build/ が残っていると
-  **Xtensa のまま "Linux build complete" と表示する** (sim_up は起動前に
-  検査して拒否するが、検証と主張する前に自分でも
-  `file build/fmruby-core.elf` で確認する)。
+- ビルドの置き場: fmruby-core の sim は `build-linux/`、ESP32 は `build/`
+  (2026-11-17 から別々。linux⇔esp32 の切り替えに `rake clean_all` は要らない)。
+  `rake clean_all` は ESP32 の分だけを消す (sim は `rake clean:linux`、
+  ブラウザ版は `rake clean:web`)。lib/ を編集したら `rake clean` (全部の
+  libmruby)。graphics-audio は今も build/ を共用するので、そちらの切り替えは
+  従来どおり `rake clean_all`。
 
 ## Tab5 遠隔 (WiFi)
 
