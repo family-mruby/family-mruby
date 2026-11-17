@@ -246,6 +246,9 @@ serial_start でシリアルを開きっぱなしにし、serial_log で読む�
   ブラウザ版は `rake clean:web`)。lib/ を編集したら `rake clean` (全部の
   libmruby)。graphics-audio は今も build/ を共用するので、そちらの切り替えは
   従来どおり `rake clean_all`。
+  Spinel の生成物 (main/ruby/spinel/gen) は共有なので、`rake build:linux` の後に
+  実機へ焼くときは先に `rake build:esp32` を流す (忘れると idf.py のビルド・
+  flash が platform の食い違いで止まって案内する)。
 
 ## Tab5 遠隔 (WiFi)
 
