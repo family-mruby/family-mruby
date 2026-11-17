@@ -195,7 +195,7 @@ docker run --rm -u root --pid=container:fmruby_core --cap-add=SYS_PTRACE \
   (= 何かを保持したまま preempt された疑い)。この組が揃えば優先度逆転
   (実例と機序: fmruby-core/doc/reference/sim_log_deadlock.md)。
 - graphics-audio 側も同じ手が使える (`--pid=container:fmruby_graphics_audio`、
-  ELF は fmruby-graphics-audio/build のもの)。
+  ELF は fmruby-graphics-audio/build-linux のもの)。
 
 # 実機の検証 (S3 / Tab5)
 
@@ -240,15 +240,14 @@ serial_start でシリアルを開きっぱなしにし、serial_log で読む�
   できる**。S3 (Retro) は不可 (debugd が BLE のみ、remote desktop なし)。
   Retro で操作が要る検証は Linux sim で行うか、ユーザに操作を依頼して
   シリアルで結果を観測する。
-- ビルドの置き場: fmruby-core の sim は `build-linux/`、ESP32 は `build/`
-  (2026-11-17 から別々。linux⇔esp32 の切り替えに `rake clean_all` は要らない)。
-  `rake clean_all` は ESP32 の分だけを消す (sim は `rake clean:linux`、
-  ブラウザ版は `rake clean:web`)。lib/ を編集したら `rake clean` (全部の
-  libmruby)。graphics-audio は今も build/ を共用するので、そちらの切り替えは
-  従来どおり `rake clean_all`。
-  Spinel の生成物 (main/ruby/spinel/gen) は共有なので、`rake build:linux` の後に
-  実機へ焼くときは先に `rake build:esp32` を流す (忘れると idf.py のビルド・
-  flash が platform の食い違いで止まって案内する)。
+- ビルドの置き場: fmruby-core も graphics-audio も sim は `build-linux/`、
+  ESP32 は `build/` (2026-11-17 から別々。linux⇔esp32 の切り替えに
+  `rake clean_all` は要らない)。`rake clean_all` は ESP32 の分だけを消す
+  (sim は `rake clean:linux`、core のブラウザ版は `rake clean:web`)。lib/ を
+  編集したら `rake clean` (全部の libmruby)。
+  Spinel の生成物もビルドごとに別 (fmruby-core の main/ruby/spinel/gen/esp32・
+  linux・hosted)。切り替えで作り直しは起きない (fmruby-core
+  doc/regression/usage.md 2.1)。
 
 ## Tab5 遠隔 (WiFi)
 
