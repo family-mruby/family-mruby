@@ -33,6 +33,7 @@
 #   ruby tools/fmrb_rd_fs.rb <IP> sync    <storage_root> [--dry-run] [--conf]
 #   ruby tools/fmrb_rd_fs.rb <IP> wait    [--timeout s] [--name fmruby-xxxxxx] [--after-reboot]
 #   ruby tools/fmrb_rd_fs.rb <IP> reboot
+#   ruby tools/fmrb_rd_fs.rb <IP> rescan                 # the launcher reads /app again
 #
 # backup copies the board's /home (keys and passwords included) into dir,
 # by default ~/asterism_keys/devices/<machine>-<MAC last 3>/home_backup_<time>/
@@ -51,7 +52,9 @@
 # (/etc/system_conf.toml; --conf sends it too) alone: a missing file or a
 # different size is sent, an equal size is compared by MD5. Files the board
 # has and the build does not are listed, never deleted. This is what follows
-# an app-only flash (rake flash:app_sync).
+# an app-only flash (rake flash:app_sync). When it sent anything it then asks
+# the desktop to read /app again (POST /app/rescan), since the launcher keeps
+# the list it built at boot.
 #
 # What no storage image carries (fmruby-core config/storage_exclude_common.txt)
 # is put on a board when it is wanted (fmruby-core doc/flash_layout F0-F1):
@@ -196,6 +199,25 @@ class FmrbFs
     end
     raise DeviceError, "404: this firmware has no /sys/reboot (before 2026-11-15)" if res.code == "404"
     expect_ok(res)
+  end
+
+  # Ask the desktop to read /app again (POST /app/rescan): the launcher keeps
+  # the list it built at boot, so .app.toml files and icons sent after that
+  # do not show until it rescans -- now when the launcher is open, else when
+  # it next opens. true when asked, false when the firmware has no such
+  # route (before 2026-11-17: only a reboot shows the new list).
+  def rescan_apps
+    uri = URI("http://#{@host}/app/rescan")
+    res = with_token do |tok|
+      req = Net::HTTP::Post.new(uri)
+      req[FmrbRdToken::HEADER] = tok if tok
+      Net::HTTP.start(uri.host, uri.port, read_timeout: 10, open_timeout: 5) do |http|
+        http.request(req)
+      end
+    end
+    return false if res.code == "404"
+    expect_ok(res)
+    true
   end
 
   # POST /app/launch and GET /app/list, for the interactive form.
@@ -584,10 +606,35 @@ class FmrbStorageSync
       end
     end
     extra = board_only(local, skip)
-    { sent: sent, same: same, bytes: bytes, extra: extra, held: held }
+    { sent: sent, same: same, bytes: bytes, extra: extra, held: held,
+      rescan: (dry_run || sent.zero?) ? nil : ask_rescan }
+  end
+
+  # What the launcher was told after a sync (run's :rescan), as a line for a
+  # person: nil when nothing was sent.
+  def self.rescan_note(rescan)
+    case rescan
+    when nil then nil
+    when :asked
+      "asked the launcher to read /app again (now if it is open, else when it next opens)"
+    when :absent
+      "this firmware has no /app/rescan (before 2026-11-17): the launcher still shows " \
+        "its boot-time list until the board restarts (fmrb_rd_fs.rb <IP> reboot)"
+    else
+      "could not ask the launcher to read /app again (#{rescan}): it shows its " \
+        "boot-time list until the board restarts (fmrb_rd_fs.rb <IP> reboot)"
+    end
   end
 
   private
+
+  # :asked, :absent (no such route) or the reason it failed. A failure here
+  # does not fail the sync: the files are on the board either way.
+  def ask_rescan
+    @fs.rescan_apps ? :asked : :absent
+  rescue FmrbFs::DeviceError, SystemCallError, Net::OpenTimeout, Net::ReadTimeout, SocketError => e
+    e.message
+  end
 
   def skipped?(path, skip)
     skip.any? { |s| path == s || path.start_with?("#{s}/") }
@@ -741,6 +788,8 @@ def one_shot(fs, cmd, args)
     r[:held].each do |p|
       puts "#{p} differs and was kept: it holds the board's saved settings (--conf sends the build's)"
     end
+    note = FmrbStorageSync.rescan_note(r[:rescan])
+    puts note if note
     unless r[:extra].empty?
       puts "on the board but not in the build (left as they are):"
       r[:extra].each { |p| puts "  #{p}" }
@@ -756,6 +805,9 @@ def one_shot(fs, cmd, args)
   when "reboot"
     fs.reboot
     puts "rebooting #{fs.host}"
+  when "rescan"
+    abort "this firmware has no /app/rescan (before 2026-11-17); reboot the board instead" unless fs.rescan_apps
+    puts "asked the launcher to read /app again"
   when "pair"
     code = args.shift or abort "pair needs the number shown on the board (Config > Remote control > Pair a PC)"
     r = FmrbRdToken.pair(fs.host, code)
@@ -806,7 +858,7 @@ def one_shot(fs, cmd, args)
            "(#{format('%.0f', dt)} s); the launcher lists it after a rescan (right click on the desktop)"
     end
   else
-    abort "unknown command #{cmd} (ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot|df|tests|extra|pair|unpair)"
+    abort "unknown command #{cmd} (ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot|rescan|df|tests|extra|pair|unpair)"
   end
 end
 
@@ -1174,7 +1226,7 @@ end
 
 # Loaded by tools/fmrb_flash_keep.rb for the classes above; run only as a command.
 if $PROGRAM_NAME == __FILE__
-  host = ARGV.shift or abort "usage: fmrb_rd_fs.rb HOST [ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot|df|tests|extra|pair|unpair ...]"
+  host = ARGV.shift or abort "usage: fmrb_rd_fs.rb HOST [ls|get|put|del|mkdir|pull|push|rmr|backup|restore|sync|wait|reboot|rescan|df|tests|extra|pair|unpair ...]"
   host = FmrbBoard.resolve(host) || abort("cannot resolve #{host}")
   fs = FmrbFs.new(host)
   if ARGV.empty?

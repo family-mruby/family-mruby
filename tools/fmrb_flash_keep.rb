@@ -17,7 +17,8 @@
 #       The board's mDNS name (name=fmruby-xxxxxx), to find it again after a flash.
 #   ruby tools/fmrb_flash_keep.rb sync <host> --storage-root <dir> [--name <mDNS name>] [--conf] [--timeout s]
 #       After an app-only flash: wait for the board, then send what differs
-#       between the build's storage tree and the board (/home untouched).
+#       between the build's storage tree and the board (/home untouched), and
+#       when anything was sent ask the launcher to read /app again.
 #   ruby tools/fmrb_flash_keep.rb layout <host> --build <dir>
 #       Before an app-only flash: check that the board's partition table and
 #       font image (the ESP32-P4's font_ja partition, fmruby-core
@@ -178,6 +179,8 @@ module FmrbFlashKeep
       r = FmrbStorageSync.new(FmrbFs.new(ip), log).run(root, conf: conf)
       puts "sent #{r[:sent]} files (#{r[:bytes]} bytes), #{r[:same]} already the same"
       r[:held].each { |p| puts "#{p} differs and was kept (the board's saved settings; CONF=1 / --conf sends it)" }
+      note = FmrbStorageSync.rescan_note(r[:rescan])
+      puts note if note
       unless r[:extra].empty?
         puts "on the board but not in the build (left as they are):"
         r[:extra].each { |p| puts "  #{p}" }
