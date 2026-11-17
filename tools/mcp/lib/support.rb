@@ -128,4 +128,30 @@ module FmrbMcp
       "...(truncated #{text.bytesize - limit} bytes)...\n" + tail.sub(/\A[^\n]*\n/, "")
     end
   end
+
+  # The stale-build guard (fmruby-core/tools/build_stamp.rb): whether the
+  # build of a kind (linux, native, native-mruby, web) still matches the
+  # sources. Run as a command, so an edit to the check reaches a server that
+  # has been running for a while.
+  module Stamp
+    module_function
+
+    # nil when fresh; otherwise the refusal (which files, how to rebuild),
+    # ending with how to start it anyway.
+    def refusal(repo_root, kind)
+      tool = File.join(repo_root, "fmruby-core", "tools", "build_stamp.rb")
+      # A checkout from before the guard (or a test's stand-in) has nothing
+      # to check with.
+      return nil unless File.exist?(tool)
+      res = Sub.run({}, ["ruby", tool, "check", kind], chdir: repo_root, timeout: 60)
+      return nil if res[:ok]
+      unless res[:status] == 3
+        raise Error, "the stale-build check itself failed: #{clamp_text(res[:output])}"
+      end
+      res[:output].strip.sub(/^  or start it as it is: STALE_OK=1$/,
+                             "  or start it as it is: allow_stale: true")
+    end
+
+    def clamp_text(text) = Sub.clamp(text.to_s.strip, 3000)
+  end
 end

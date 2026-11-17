@@ -10,6 +10,11 @@
 # If the stack is already running (fmruby_core container up), it is reused
 # as-is: no recreate, no down. This keeps the script safe to run while a
 # developer has `docker compose up` open in another terminal.
+#
+# Before starting a stack, the core's build (fmruby-core/build-linux) is
+# checked against the sources it was made from (fmruby-core/tools/
+# build_stamp.rb): a stale build is refused with the files that are newer and
+# the command that rebuilds it. STALE_OK=1 starts it anyway.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -32,6 +37,16 @@ if [ "$(docker inspect -f '{{.State.Running}}' fmruby_core 2>/dev/null)" = "true
   already_running=1
   echo "fmruby_core is already running; reusing the existing stack"
 else
+  if [ "${STALE_OK:-}" != "1" ]; then
+    set +e
+    ruby fmruby-core/tools/build_stamp.rb check linux
+    rc=$?
+    set -e
+    if [ $rc -ne 0 ]; then
+      [ $rc -eq 3 ] || echo "the stale-build check failed (exit $rc)" >&2
+      exit 1
+    fi
+  fi
   if [ "$GUI" = "1" ]; then
     docker compose up -d
   else

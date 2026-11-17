@@ -679,13 +679,19 @@ SIM_UP = MCP::Tool.define(
     Bring the simulation up (headless by default) and return the first frame,
     so you can see it booted rather than assume it.
 
-    Two things it refuses to do quietly. It checks both ELFs are really x86-64
-    before starting anything, because `rake build:linux` prints "Linux build
-    complete" even when the build directory still holds an ESP32 build -- the
-    classic false green. And if the stack comes up at the wrong resolution it
-    restarts once by itself: graphics-audio remembers the frame-buffer size and
-    applies a change on the next boot, so the first run after switching
-    hardware targets is stale.
+    Three things it refuses to do quietly. It checks both ELFs are really
+    x86-64 before starting anything (the core's is fmruby-core/build-linux,
+    the sim's own build directory beside the ESP32 build/, so building for a
+    board does not take it away). It refuses a core built from older sources
+    than the tree's: `rake build:linux` stamps what it was made from
+    (fmruby-core/tools/build_stamp.rb: HEAD and the changed files of main/,
+    components/, sig/, lib/, config/ ...; flash/ is read live and does not
+    count), and the refusal names the newer files and the rebuild command
+    (`cd fmruby-core && rake build:linux`, a minute or less after a small
+    change). allow_stale: true starts it anyway. And if the stack comes up at
+    the wrong resolution it restarts once by itself: graphics-audio remembers
+    the frame-buffer size and applies a change on the next boot, so the first
+    run after switching hardware targets is stale.
 
     A stack that is already running is reused as-is, never recreated -- the
     user may have a GUI run open. When that happens you are told, and a
@@ -708,12 +714,16 @@ SIM_UP = MCP::Tool.define(
   DESC
   annotations: { destructive_hint: false, idempotent_hint: true, open_world_hint: true },
   input_schema: {
-    properties: { gui: { type: "boolean", description: "show an X11 window (default false, headless)" } },
+    properties: {
+      gui: { type: "boolean", description: "show an X11 window (default false, headless)" },
+      allow_stale: { type: "boolean",
+                     description: "start a build older than its sources anyway (default false: refused)" },
+    },
     required: [],
   },
-) do |gui: false, server_context: nil, **_extra|
+) do |gui: false, allow_stale: false, server_context: nil, **_extra|
   begin
-    r = SIM.up(gui: gui)
+    r = SIM.up(gui: gui, allow_stale: allow_stale)
     shot = File.exist?(r[:png]) ? Base64.strict_encode64(File.binread(r[:png])) : nil
     content = []
     content << { type: "image", data: shot, mimeType: "image/png" } if shot
@@ -943,6 +953,11 @@ NATIVE_UP = MCP::Tool.define(
     A program that is already running is reused as it is (the options are
     then not applied; you are told).
 
+    A program built from older sources than the tree's is refused: rake
+    native:core stamps what it was made from (fmruby-core/tools/
+    build_stamp.rb), and the refusal names the newer files and the rebuild
+    command. allow_stale: true starts it anyway.
+
     #{NATIVE_NOTE}
   DESC
   annotations: { destructive_hint: false, idempotent_hint: true, open_world_hint: true },
@@ -953,12 +968,16 @@ NATIVE_UP = MCP::Tool.define(
       set: { type: "array", items: { type: "string" }, description: "KEY=VALUE fields over the definition" },
       alsa_file: { type: "boolean", description: "sound through ALSA into a file (default false)" },
       gui: { type: "boolean", description: "open a window (default false, headless)" },
+      allow_stale: { type: "boolean",
+                     description: "start a build older than its sources anyway (default false: refused)" },
     },
     required: [],
   },
-) do |machine: nil, engine: nil, set: nil, alsa_file: false, gui: false, server_context: nil, **_extra|
+) do |machine: nil, engine: nil, set: nil, alsa_file: false, gui: false, allow_stale: false,
+      server_context: nil, **_extra|
   begin
-    r = NATIVE.up(machine: machine, engine: engine, gui: gui, set: set, alsa_file: alsa_file)
+    r = NATIVE.up(machine: machine, engine: engine, gui: gui, set: set, alsa_file: alsa_file,
+                  allow_stale: allow_stale)
     content = [{ type: "image", data: r[:data], mimeType: "image/png" },
                { type: "text", text: JSON.pretty_generate(r.reject { |k, _| k == :data }) }]
     MCP::Tool::Response.new(content)
@@ -1168,7 +1187,12 @@ WEB_UP = MCP::Tool.define(
 
     It refuses to start against a bundle that is not built, and says how to
     build one (`rake wasm:web` in fmruby-core; it reads the git index, so
-    moved files have to be staged first).
+    moved files have to be staged first). It also refuses a bundle built from
+    older sources than the tree's (rake wasm:web stamps them,
+    fmruby-core/tools/build_stamp.rb; the tracked flash/ files count here,
+    since the bundle packs them), naming the newer files; allow_stale: true
+    starts it anyway. A page that is already open is driven as it is, stale
+    or not (you are told).
 
     A server or a browser that is already running is reused and reported, not
     replaced. That is what makes this usable while the user has the page open
@@ -1187,12 +1211,14 @@ WEB_UP = MCP::Tool.define(
       headless: { type: "boolean", description: "run without a window (default true)" },
       port: { type: "integer", description: "development server port (default 8006)" },
       url_args: { type: "string", description: "extra page query, e.g. w=852&h=480" },
+      allow_stale: { type: "boolean",
+                     description: "start a bundle older than its sources anyway (default false: refused)" },
     },
     required: [],
   },
-) do |headless: true, port: nil, url_args: nil, server_context: nil, **_extra|
+) do |headless: true, port: nil, url_args: nil, allow_stale: false, server_context: nil, **_extra|
   begin
-    r = WEB.up(headless: headless, port: port, url_args: url_args)
+    r = WEB.up(headless: headless, port: port, url_args: url_args, allow_stale: allow_stale)
     MCP::Tool::Response.new([
       { type: "image", data: r[:data], mimeType: "image/png" },
       { type: "text", text: JSON.pretty_generate(r.reject { |k, _| k == :data }) },
@@ -1444,8 +1470,8 @@ server = MCP::Server.new(
 
     Linux simulation: sim_up starts the three containers and shows the first
     frame, sim_screenshot and sim_input drive it, sim_app launches apps by
-    path, sim_audio mutes it or sets its volume, sim_down tidies up. It refuses to start against a stale ESP32 build,
-    and reuses (rather than recreates) a stack that is already running, which
+    path, sim_audio mutes it or sets its volume, sim_down tidies up. It refuses to start against a build
+    that is not the sim's or is older than its sources (allow_stale: true overrides), and reuses (rather than recreates) a stack that is already running, which
     may be the user's.
 
     Browser build (wasm): web_up starts the development server, a browser and

@@ -7,7 +7,7 @@
 #   fmrb_native.rb up [--gui] [--engine mruby] [--machine NAME|PATH]
 #                     [--set KEY=VALUE]... [--alsa-file] [--scale N]
 #                     [--user-dir DIR] [--cache-dir DIR] [--timeout SEC]
-#                     [--debug-port N]
+#                     [--debug-port N] [--allow-stale]
 #                                   start it and wait for "Boot complete".
 #                                   Headless by default (SDL_VIDEODRIVER=dummy,
 #                                   SDL_AUDIODRIVER=disk into <run>/audio.raw);
@@ -18,6 +18,10 @@
 #                                   a machine this system cannot run is
 #                                   refused, and the reason is printed.
 #                                   --set changes one field of it.
+#                                   A build older than its sources (the
+#                                   stamp rake native:core writes) is
+#                                   refused, naming the files; --allow-stale
+#                                   (or STALE_OK=1) starts it anyway.
 #                                   --debug-port moves its debug server off
 #                                   5565 (a second program beside the first:
 #                                   give it a --run-dir and a --user-dir of
@@ -304,6 +308,7 @@ def cmd_up(args)
   user_dir = nil
   alsa_file = false
   port = nil
+  allow_stale = false
   until args.empty?
     a = args.shift
     case a
@@ -317,6 +322,7 @@ def cmd_up(args)
     when "--cache-dir" then extra += ["--cache-dir", File.expand_path(args.shift)]
     when "--timeout" then timeout = args.shift.to_i
     when "--debug-port" then port = Integer(args.shift)
+    when "--allow-stale" then allow_stale = true
     else abort "up: unknown option #{a}"
     end
   end
@@ -324,6 +330,14 @@ def cmd_up(args)
   bin = File.join(CORE, "native", engine == "mruby" ? "build-mruby" : "build", "fmruby-native")
   abort "#{bin} not found; run (in fmruby-core) rake native:core#{engine == 'mruby' ? ' NATIVE_ENGINE=mruby' : ''}" unless File.exist?(bin)
   abort "already running (pid #{pid}); fmrb_native.rb down first" if alive?(pid)
+  # The build against the sources it was made from (fmruby-core/tools/
+  # build_stamp.rb): refused when older, unless --allow-stale / STALE_OK=1.
+  unless allow_stale || ENV["STALE_OK"].to_s == "1"
+    require File.join(CORE, "tools", "build_stamp")
+    why = FmrbBuildStamp.refusal(CORE, engine == "mruby" ? "native-mruby" : "native",
+                                 File.dirname(bin), override: "STALE_OK=1 or --allow-stale", allow: false)
+    abort "fmrb_native: #{why}" if why
+  end
 
   FileUtils.mkdir_p(run_dir, mode: 0o700)
   log = path("core.log")

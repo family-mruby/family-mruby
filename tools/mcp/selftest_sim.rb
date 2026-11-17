@@ -83,8 +83,8 @@ Dir.mktmpdir("fmrb-mcp-sim") do |dir|
     [err.is_a?(FmrbMcp::Error) && err.message.include?("RISC-V") &&
        err.message.include?("not x86-64"), err.message]
   end
-  check("the reason the log cannot be trusted is spelled out") do
-    [err.message.include?("Linux build complete"), err.message]
+  check("and where the sim's own build lives") do
+    [err.message.include?("build-linux"), err.message]
   end
 
   File.write(core, "#!/bin/sh\necho not an elf\n")
@@ -95,6 +95,30 @@ Dir.mktmpdir("fmrb-mcp-sim") do |dir|
 
   write_elf(core, 0x3E)
   write_elf(ga, 0x3E)
+
+  puts "  -- the stale-build guard --"
+  stamp_tool = File.join(repo, "fmruby-core", "tools", "build_stamp.rb")
+  File.write(stamp_tool, <<~RB)
+    warn "stale build: the Linux sim build is older than 1 source file(s)"
+    warn "  newer than the build: main/kernel.c"
+    warn "  rebuild: cd core && rake build:linux"
+    warn "  or start it as it is: STALE_OK=1"
+    exit 3
+  RB
+  err = (sim.up rescue $!)
+  check("a build older than its sources is refused before anything starts") do
+    [err.is_a?(FmrbMcp::Error) && err.message.include?("main/kernel.c") &&
+       err.message.include?("rake build:linux"), err.inspect]
+  end
+  check("and the refusal names the MCP way to start it anyway") do
+    [err.message.include?("allow_stale: true") && !err.message.include?("STALE_OK"), err.message]
+  end
+  File.write(stamp_tool, "raise 'broken'\n")
+  err = (sim.up rescue $!)
+  check("a check that breaks is not mistaken for a stale build") do
+    [err.is_a?(FmrbMcp::Error) && err.message.include?("check itself failed"), err.inspect]
+  end
+  File.unlink(stamp_tool)
 
   puts "  -- input: quoting survives --"
   r = sim.input('click 30 55 sleep 120 text "hello world" key enter')

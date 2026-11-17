@@ -80,7 +80,9 @@ services:
     depends_on:
       fmruby-graphics-audio:
         condition: service_healthy
-    command: sh -c "./build/fmruby-core.elf"
+    # The sim's own build directory (rake build:linux), beside the ESP32
+    # build/; tools/dev_run_check.sh and sim_up check its stamp first.
+    command: sh -c "./build-linux/fmruby-core.elf"
 
   # Zenoh router for the Zenoh client gem (fmruby-core/doc/ruby_asterism).
   # Apps in the sim reach it by name: tcp/zenohd:7447. Pinned to the same

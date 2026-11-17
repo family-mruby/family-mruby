@@ -48,11 +48,12 @@ module FmrbMcp
 
     # --- tools ---------------------------------------------------------------
 
-    def up(headless: true, port: nil, url_args: nil)
+    def up(headless: true, port: nil, url_args: nil, allow_stale: false)
       check_bundle!
       port = (port || read_state&.dig("port") || DEFAULT_PORT).to_i
       notes = []
       lock.hold("the browser build", hint: "wait for the other session's web operation to finish") do
+        check_stale!(port, allow_stale, notes)
         server_ours = ensure_server(port, notes)
         browser_ours = ensure_browser(port, headless, url_args, notes)
         save_state(port: port, server_ours: server_ours, browser_ours: browser_ours,
@@ -309,9 +310,27 @@ module FmrbMcp
       raise Error, "the browser bundle is not built (#{missing.map { |f| File.basename(f) }.join(', ')} " \
                    "missing under fmruby-core/wasm/build/).\n" \
                    "  cd fmruby-core && rake wasm:web\n" \
-                   "It reads the git index, so file moves have to be staged first, and " \
-                   "`rake clean_all` takes the wasm libmruby with it (rake wasm:mruby " \
-                   "rebuilds that)."
+                   "It reads the git index, so file moves have to be staged first. The " \
+                   "wasm libmruby is rake wasm:mruby (rake clean and rake clean:web " \
+                   "remove it; rake clean_all no longer does)."
+    end
+
+    # The bundle's build stamp against the sources (fmruby-core/tools/
+    # build_stamp.rb). A page that is already open is the user's and is
+    # driven as it is, so then a stale bundle is only reported.
+    def check_stale!(port, allow_stale, notes)
+      @allow_stale = false
+      why = Stamp.refusal(@repo_root, "web")
+      return unless why
+      if allow_stale
+        notes << "started a stale bundle (allow_stale): #{why.lines.first.strip}"
+        @allow_stale = true
+      elsif server_answers?(port) && page_answers?(port)
+        notes << "the open page was reused, but the bundle is stale: #{why.lines.first.strip}"
+        @allow_stale = true
+      else
+        raise Error, why
+      end
     end
 
     # --- the development server ----------------------------------------------
@@ -325,7 +344,9 @@ module FmrbMcp
       end
       out = File.open(serve_log, "w")
       pid = begin
-        Process.spawn({}, "rake", "wasm:serve", "PORT=#{port}",
+        # rake wasm:serve refuses a stale bundle itself; check_stale! has
+        # decided already.
+        Process.spawn(@allow_stale ? { "STALE_OK" => "1" } : {}, "rake", "wasm:serve", "PORT=#{port}",
                       chdir: @core, in: File::NULL, out: out, err: out, pgroup: true)
       rescue SystemCallError => e
         raise Error, "cannot start the development server: #{e.message}"

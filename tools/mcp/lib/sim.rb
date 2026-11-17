@@ -6,10 +6,13 @@
 # traps that a person only avoids by remembering them. This file remembers
 # them instead:
 #
-#   1. `rake build:linux` prints "Linux build complete" even when the build
-#      directory still holds an ESP32 build, so the sim can be started against
-#      a firmware that was never built for it. Every start checks the two ELFs
-#      are really x86-64 first.
+#   1. A start must not run a firmware that was never built for the sim, or
+#      one built from older sources. The sim's build has its own directory
+#      (fmruby-core/build-linux, beside the ESP32 build/), and every start
+#      checks the two ELFs are really x86-64 and that the core's build stamp
+#      (fmruby-core/tools/build_stamp.rb) matches the sources; a stale build
+#      is refused with the files that are newer and the command that
+#      rebuilds it, unless the caller allows it.
 #   2. Restarting one container kills the frame buffer. There is no
 #      single-container restart here, only the whole stack.
 #   3. graphics-audio remembers the frame-buffer size and applies a change on
@@ -55,7 +58,7 @@ module FmrbMcp
 
     def core_elf
       ENV["FMRB_MCP_SIM_CORE_ELF"] ||
-        File.join(@repo_root, "fmruby-core", "build", "fmruby-core.elf")
+        File.join(@repo_root, "fmruby-core", "build-linux", "fmruby-core.elf")
     end
 
     def graphics_elf
@@ -78,9 +81,10 @@ module FmrbMcp
 
     # --- tools ---------------------------------------------------------------
 
-    def up(gui: false)
+    def up(gui: false, allow_stale: false)
       check_builds!
       notes = []
+      check_stale!(allow_stale, notes)
       check_display_image!(notes)
       lock.hold("the Linux sim", hint: "wait for the other session's sim operation to finish") do
         result = start_once(gui, notes)
@@ -281,11 +285,25 @@ module FmrbMcp
       return if bad.empty?
 
       raise Error, "the Linux build is not there: #{bad.join('; ')}.\n" \
-                   "`rake build:linux` prints \"Linux build complete\" even when the " \
-                   "build directory still holds an ESP32 build, so this is checked " \
-                   "before anything is started. In each repository:\n" \
-                   "  rake clean_all && rake build:linux\n" \
-                   "(clean_all, not clean: switching targets needs the full clean.)"
+                   "fmruby-core builds the sim in build-linux/ (beside the ESP32 build/); " \
+                   "graphics-audio still shares build/ between its targets. Build them:\n" \
+                   "  cd fmruby-core && rake build:linux\n" \
+                   "  cd fmruby-graphics-audio && rake clean_all && rake build:linux"
+    end
+
+    # The core's build stamp against the sources (fmruby-core/tools/
+    # build_stamp.rb). A stack that is already running is reused whatever it
+    # was built from (it may be the user's), so then it is only reported.
+    def check_stale!(allow_stale, notes)
+      why = Stamp.refusal(@repo_root, "linux")
+      return unless why
+      if allow_stale
+        notes << "started a stale build (allow_stale): #{why.lines.first.strip}"
+      elsif core_running?
+        notes << "the running stack was reused, but its build is stale: #{why.lines.first.strip}"
+      else
+        raise Error, why
+      end
     end
 
     # The files sdl2-display/Dockerfile copies into the image (paths from the
@@ -348,8 +366,9 @@ module FmrbMcp
       cmd << "--gui" if gui
       cmd << boot_png
       # Always --keep: bringing the stack down is sim_down's decision, made
-      # with the knowledge of whose stack it is.
-      res = Sub.run({}, cmd, chdir: @repo_root, timeout: UP_TIMEOUT)
+      # with the knowledge of whose stack it is. STALE_OK: the stamp was
+      # checked (or allowed) above, once.
+      res = Sub.run({ "STALE_OK" => "1" }, cmd, chdir: @repo_root, timeout: UP_TIMEOUT)
       unless res[:ok] && File.exist?(boot_png)
         raise Error, "the sim did not come up: #{Sub.clamp(res[:output].strip, 6000)}\n" \
                      "If a container is up but wedged, attach gdb before restarting it " \

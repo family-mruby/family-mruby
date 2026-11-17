@@ -43,7 +43,7 @@ module FmrbMcp
 
     # --- tools ---------------------------------------------------------------
 
-    def up(machine: nil, engine: nil, gui: false, set: nil, alsa_file: false)
+    def up(machine: nil, engine: nil, gui: false, set: nil, alsa_file: false, allow_stale: false)
       notes = []
       lock.hold("the native program", hint: "wait for the other session's native operation to finish") do
         st = status_line
@@ -53,13 +53,23 @@ module FmrbMcp
                    "first to start it another way"
           save_state(started_by_us: false, machine: st[:machine])
         else
+          # The build stamp against the sources (fmruby-core/tools/
+          # build_stamp.rb): a stale program is refused with the files and the
+          # rebuild command, unless allowed.
+          why = Stamp.refusal(@repo_root, engine == "mruby" ? "native-mruby" : "native")
+          if why && !allow_stale
+            raise Error, why
+          elsif why
+            notes << "started a stale build (allow_stale): #{why.lines.first.strip}"
+          end
           args = ["up"]
           args += ["--machine", machine] if machine && !machine.empty?
           args += ["--engine", engine] if engine && !engine.empty?
           args << "--gui" if gui
           args << "--alsa-file" if alsa_file
           Array(set).each { |kv| args += ["--set", kv.to_s] }
-          res = run(args, timeout: UP_TIMEOUT)
+          # STALE_OK: checked (or allowed) above, once
+          res = run(args, timeout: UP_TIMEOUT, env: { "STALE_OK" => "1" })
           unless res[:ok]
             raise Error, "the native program did not start: #{Sub.clamp(res[:output].strip, 6000)}"
           end
@@ -175,8 +185,8 @@ module FmrbMcp
       @lock ||= Lock.new(@state_dir, LOCK_NAME)
     end
 
-    def run(args, timeout:)
-      Sub.run({}, ["ruby", tool, *args], chdir: @repo_root, timeout: timeout)
+    def run(args, timeout:, env: {})
+      Sub.run(env, ["ruby", tool, *args], chdir: @repo_root, timeout: timeout)
     end
 
     def status_line

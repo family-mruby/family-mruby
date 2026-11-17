@@ -99,9 +99,13 @@ docker の 3 コンテナを起動・撮影・操作する。手順書でしか�
 | `sim_app(action, path?, pid?)` | debugd 経由の `spawn` / `ps` / `kill` |
 | `sim_audio(action, level?)` | debugd 経由の `get` / `mute` / `unmute` / `volume` (0-10)。効き目は `tools/fmrb_audio_probe.rb` で数値で見る |
 
-- **偽グリーンの遮断**: `rake build:linux` は esp32 の build/ が残っていても
-  「Linux build complete」と言う。起動前に**両 ELF が本当に x86-64 か**を
-  ヘッダで確かめ、違えば起動せずに `rake clean_all && rake build:linux` を案内する。
+- **偽グリーンの遮断**: 起動前に**両 ELF が本当に x86-64 か**をヘッダで確かめ
+  (core は sim 専用の `fmruby-core/build-linux/`)、違えば起動せずに
+  `rake build:linux` を案内する。
+- **古いビルドの遮断**: core のビルドの印 (`fmruby-core/tools/build_stamp.rb`) を
+  今のソースと比べ、古ければ新しいファイルと作り直すコマンドを出して起動しない
+  (`allow_stale: true` で起動する。動いている stack を使い回すときは notes に書くだけ)。
+  native_up・web_up も同じ (fmruby-core/doc/regression/usage.md 2.1)。
 - **解像度の持ち越しの自己修復**: graphics-audio は画面サイズを覚えていて
   変更は次回起動から効く。期待値 (.env の FMRB_HW_TARGET) と食い違ったら
   **1 回だけ down→up をやり直す**。2 回目も違えば、持ち越しと
@@ -246,7 +250,8 @@ ruby tools/mcp/selftest.rb
   ものなので、サーバも rd_* CLI も**無改造のまま**通る。
   ユーザ名前空間が使えない環境では、この節は SKIPPED になる。
 - sim 側 (`selftest_sim.rb`): docker 無しで通る分。偽の ELF (RISC-V /
-  Xtensa / ELF ですらないもの) で**偽グリーンの遮断**、argv を印字する
+  Xtensa / ELF ですらないもの) で**偽グリーンの遮断**、偽の build_stamp.rb で
+  **古いビルドの遮断** (と、印の道具自体が落ちたときに古いと取り違えないこと)、argv を印字する
   偽 CLI で `text "hello world"` が 1 引数のまま渡ること、debugd への
   `path=` `pid=` の渡し方、`started_by_us: false` の down 拒否、
   解像度の期待値と PNG からのサイズ読み取り。
