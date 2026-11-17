@@ -61,7 +61,7 @@
 #                                               # one the IME lets through
 #
 # Commands chain left to right, like fmrb_input.rb:
-#   fmrb_web.rb click 30 8 sleep 500 key enter sleep 1000 screenshot out.png
+#   fmrb_web.rb click 6 8 sleep 500 key enter sleep 1000 screenshot out.png
 #
 # Options: --port N (default 8006), --host H (default localhost),
 #          --layout us|jp (default: keyboard_layout from system_conf_wasm.toml),

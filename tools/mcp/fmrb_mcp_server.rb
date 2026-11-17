@@ -465,7 +465,7 @@ TAB5_INPUT = MCP::Tool.define(
       drag X1 Y1 X2 Y2 | wheel N | key NAME | key ctrl+NAME | keydown NAME
       keyup NAME | sleep MS
 
-    e.g. "click 20 5 sleep 500 click 15 17" or "key ctrl+tab".
+    e.g. "click 6 5 sleep 500 click 15 17" or "key ctrl+tab".
 
     `wheel N` turns the mouse wheel N notches, positive away from the user
     (which scrolls a view towards its start). It has no coordinates of its
@@ -500,7 +500,7 @@ TAB5_INPUT = MCP::Tool.define(
   annotations: { destructive_hint: false, idempotent_hint: false, open_world_hint: true },
   input_schema: {
     properties: {
-      commands: { type: "string", description: "e.g. \"click 20 5 sleep 300 key enter\"" },
+      commands: { type: "string", description: "e.g. \"click 6 5 sleep 300 key enter\"" },
       ip: { type: "string", description: "use this address instead of resolving" },
     },
     required: ["commands"],
@@ -1061,7 +1061,7 @@ NATIVE_INPUT = MCP::Tool.define(
   DESC
   annotations: { destructive_hint: false, idempotent_hint: false, open_world_hint: true },
   input_schema: {
-    properties: { commands: { type: "string", description: "e.g. \"click 30 5 sleep 600 click 30 31\"" } },
+    properties: { commands: { type: "string", description: "e.g. \"click 6 5 sleep 600 click 30 31\"" } },
     required: ["commands"],
   },
 ) do |commands:, server_context: nil, **_extra|
@@ -1322,7 +1322,7 @@ WEB_INPUT = MCP::Tool.define(
   DESC
   annotations: { destructive_hint: false, idempotent_hint: false },
   input_schema: {
-    properties: { commands: { type: "string", description: 'e.g. click 30 8 sleep 700 key enter' } },
+    properties: { commands: { type: "string", description: 'e.g. click 6 8 sleep 700 key enter' } },
     required: ["commands"],
   },
 ) do |commands:, server_context: nil, **_extra|
