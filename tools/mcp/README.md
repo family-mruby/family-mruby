@@ -100,9 +100,9 @@ docker の 3 コンテナを起動・撮影・操作する。手順書でしか�
 | `sim_audio(action, level?)` | debugd 経由の `get` / `mute` / `unmute` / `volume` (0-10)。効き目は `tools/fmrb_audio_probe.rb` で数値で見る |
 
 - **偽グリーンの遮断**: 起動前に**両 ELF が本当に x86-64 か**をヘッダで確かめ
-  (core は sim 専用の `fmruby-core/build-linux/`)、違えば起動せずに
+  (core も graphics-audio も sim 専用の `build-linux/`)、違えば起動せずに
   `rake build:linux` を案内する。
-- **古いビルドの遮断**: core のビルドの印 (`fmruby-core/tools/build_stamp.rb`) を
+- **古いビルドの遮断**: core と graphics-audio のビルドの印 (`fmruby-core/tools/build_stamp.rb`、種類 linux と ga-linux) を
   今のソースと比べ、古ければ新しいファイルと作り直すコマンドを出して起動しない
   (`allow_stale: true` で起動する。動いている stack を使い回すときは notes に書くだけ)。
   native_up・web_up も同じ (fmruby-core/doc/regression/usage.md 2.1)。

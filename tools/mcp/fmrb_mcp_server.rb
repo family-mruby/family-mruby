@@ -680,15 +680,16 @@ SIM_UP = MCP::Tool.define(
     so you can see it booted rather than assume it.
 
     Three things it refuses to do quietly. It checks both ELFs are really
-    x86-64 before starting anything (the core's is fmruby-core/build-linux,
-    the sim's own build directory beside the ESP32 build/, so building for a
-    board does not take it away). It refuses a core built from older sources
-    than the tree's: `rake build:linux` stamps what it was made from
-    (fmruby-core/tools/build_stamp.rb: HEAD and the changed files of main/,
-    components/, sig/, lib/, config/ ...; flash/ is read live and does not
-    count), and the refusal names the newer files and the rebuild command
-    (`cd fmruby-core && rake build:linux`, a minute or less after a small
-    change). allow_stale: true starts it anyway. And if the stack comes up at
+    x86-64 before starting anything (both repositories build the sim in
+    build-linux/, its own build directory beside the ESP32 build/, so
+    building for a board does not take it away). It refuses a core or a
+    graphics-audio built from older sources than the tree's: `rake
+    build:linux` in each stamps what it was made from
+    (fmruby-core/tools/build_stamp.rb, kinds linux and ga-linux: HEAD and the
+    changed files of main/, components/, sig/, lib/, config/ ...; flash/ is
+    read live and does not count), and the refusal names the newer files and
+    the rebuild command (`cd fmruby-core && rake build:linux`, a minute or
+    less after a small change). allow_stale: true starts it anyway. And if the stack comes up at
     the wrong resolution it restarts once by itself: graphics-audio remembers
     the frame-buffer size and applies a change on the next boot, so the first
     run after switching hardware targets is stale.

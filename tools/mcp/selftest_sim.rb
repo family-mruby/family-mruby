@@ -73,7 +73,7 @@ Dir.mktmpdir("fmrb-mcp-sim") do |dir|
     [err.is_a?(FmrbMcp::Error) && err.message.include?("is missing"), err.inspect]
   end
   check("and it says which rake task fixes it") do
-    [err.message.include?("clean_all") && err.message.include?("build:linux"), err.message]
+    [err.message.include?("build:linux") && !err.message.include?("clean_all"), err.message]
   end
 
   write_elf(core, 0xF3)           # RISC-V: an ESP32-P4 build

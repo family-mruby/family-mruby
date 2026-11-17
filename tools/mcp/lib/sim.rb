@@ -63,7 +63,7 @@ module FmrbMcp
 
     def graphics_elf
       ENV["FMRB_MCP_SIM_GA_ELF"] ||
-        File.join(@repo_root, "fmruby-graphics-audio", "build",
+        File.join(@repo_root, "fmruby-graphics-audio", "build-linux",
                   "fmruby-graphics-audio.elf")
     end
 
@@ -285,18 +285,19 @@ module FmrbMcp
       return if bad.empty?
 
       raise Error, "the Linux build is not there: #{bad.join('; ')}.\n" \
-                   "fmruby-core builds the sim in build-linux/ (beside the ESP32 build/); " \
-                   "graphics-audio still shares build/ between its targets. Build them:\n" \
+                   "Both repositories build the sim in build-linux/ (beside the ESP32 build/). " \
+                   "Build them:\n" \
                    "  cd fmruby-core && rake build:linux\n" \
-                   "  cd fmruby-graphics-audio && rake clean_all && rake build:linux"
+                   "  cd fmruby-graphics-audio && rake build:linux"
     end
 
-    # The core's build stamp against the sources (fmruby-core/tools/
-    # build_stamp.rb). A stack that is already running is reused whatever it
-    # was built from (it may be the user's), so then it is only reported.
+    # The two sim builds' stamps against their sources (fmruby-core/tools/
+    # build_stamp.rb: the core's "linux", graphics-audio's "ga-linux"). A
+    # stack that is already running is reused whatever it was built from (it
+    # may be the user's), so then it is only reported.
     def check_stale!(allow_stale, notes)
-      why = Stamp.refusal(@repo_root, "linux")
-      return unless why
+      why = %w[linux ga-linux].filter_map { |kind| Stamp.refusal(@repo_root, kind) }.join("\n")
+      return if why.empty?
       if allow_stale
         notes << "started a stale build (allow_stale): #{why.lines.first.strip}"
       elsif core_running?

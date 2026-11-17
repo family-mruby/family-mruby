@@ -52,7 +52,9 @@ services:
     depends_on:
       sdl2-display:
         condition: service_healthy
-    command: sh -c "./build/fmruby-graphics-audio.elf"
+    # The sim's own build directory (rake build:linux there), beside its
+    # ESP32 build/; tools/dev_run_check.sh and sim_up check its stamp first.
+    command: sh -c "./build-linux/fmruby-graphics-audio.elf"
     healthcheck:
       test: ["CMD-SHELL", "test -S /var/run/fmrb/fmrb_socket && test -S /var/run/fmrb/fmrb_input_socket"]
       interval: 1s
