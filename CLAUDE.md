@@ -141,6 +141,13 @@ ruby tools/fmrb_midi_monitor.rb [--hex] [--log out.jsonl] [--duration 秒]
   Modern 426x240 で、Modern は高解像度の全画面アプリ (エディタの全画面、
   `fullscreen_hires = true` のアプリ) が上にいる間だけ 640x360 になる
   (sim_screenshot の大きさも sim_input の座標も同じ)。
+  実機の P4-Nano は既定が 640x360 の画面 (Tab5 は 426x240。端末の
+  /etc/system_conf.toml が残るので、焼き直しても前の設定のまま)。sim の Modern は
+  426x240 のままで、640x360 は `fmruby-core/flash/etc/system_conf.toml` の
+  display_width/height を書き換えて選べる (rake build:linux で既定に戻る。sim_up が設定の値で照合し、
+  graphics-audio の持ち越しは自分で起こし直す)。640x360 の画面では、宣言
+  (`fullscreen_hires`・`fullscreen_any_size`) の無い全画面のアプリの間だけ
+  426x240 に切り替わる (fmruby-core/doc/reference/fullscreen_hires.md)。
 - 入力: sdl2-display が Unix DGRAM ソケット /var/run/fmrb/fmrb_inject を bind し、
   受信したパケット ([type][len16][payload]、fmrb_hid_event.h) を通常の入力ストリームへ
   転送する。実 SDL イベントと注入イベントは同一経路で直列化される。

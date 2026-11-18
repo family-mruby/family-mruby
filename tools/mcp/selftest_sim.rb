@@ -176,6 +176,18 @@ Dir.mktmpdir("fmrb-mcp-sim") do |dir|
   check("a Retro target expects 320x240") do
     [retro.send(:expected_size_s) == "320x240", retro.send(:expected_size_s)]
   end
+  conf_dir = File.join(repo, "fmruby-core", "flash", "etc")
+  FileUtils.mkdir_p(conf_dir)
+  conf = File.join(conf_dir, "system_conf.toml")
+  File.write(conf, "system_name = \"x\"\ndisplay_width = 640 # chosen in Config\ndisplay_height = 360\n[theme]\n")
+  check("a Modern target expects the resolution its system_conf asks for") do
+    [sim.send(:expected_size_s) == "640x360", sim.send(:expected_size_s)]
+  end
+  File.write(conf, "display_width = 800\ndisplay_height = 480\n")
+  check("and 426x240 for a size Modern does not have, as the kernel does") do
+    [sim.send(:expected_size_s) == "426x240", sim.send(:expected_size_s)]
+  end
+  FileUtils.rm_f(conf)
   png = File.join(dir, "shot.png")
   write_png(png, 426, 240)
   check("the size is read from the PNG, not from what the script printed") do
