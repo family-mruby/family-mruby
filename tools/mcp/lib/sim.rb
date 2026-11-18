@@ -45,7 +45,10 @@ module FmrbMcp
     INPUT_TIMEOUT = 180
     APP_TIMEOUT = 60
     MODERN_TARGETS = %w[TAB5 NARYAv4].freeze
-    MODERN_SIZE = [426, 240].freeze
+    # Modern's two resolutions (fmruby-core doc/modern_resolution): the sim
+    # comes up at the one its system_conf asks for, 426x240 unless 640x360
+    # was chosen in Config; the kernel boots any other value as 426x240.
+    MODERN_SIZES = [[426, 240], [640, 360]].freeze
     RETRO_SIZE = [320, 240].freeze
     ELF_X86_64 = 0x3E             # e_machine
     MAX_TEXT_BYTES = 60 * 1024
@@ -416,7 +419,24 @@ module FmrbMcp
     end
 
     def expected_size
-      MODERN_TARGETS.include?(hw_target) ? MODERN_SIZE : RETRO_SIZE
+      MODERN_TARGETS.include?(hw_target) ? modern_size : RETRO_SIZE
+    end
+
+    # display_width / display_height of the file the sim boots from
+    # (fmruby-core/flash/etc/system_conf.toml, made by rake build:linux from
+    # config/, written by Config afterwards).
+    def modern_size
+      path = File.join(@repo_root, "fmruby-core", "flash", "etc", "system_conf.toml")
+      w = h = nil
+      if File.exist?(path)
+        File.foreach(path) do |line|
+          break if line.lstrip.start_with?("[")
+          k, v = line.split("#", 2).first.split("=", 2).map { |x| x.to_s.strip }
+          w = v.to_i if k == "display_width"
+          h = v.to_i if k == "display_height"
+        end
+      end
+      MODERN_SIZES.include?([w, h]) ? [w, h] : MODERN_SIZES.first
     end
 
     def expected_size_s
