@@ -120,6 +120,23 @@ FMRB_WEB_DEST=<host>:<dir>/ rake wasm:deploy  # 副次の nginx (置き先はこ
   gitignore、develop のものは `docs/console-dev/`)。fmruby-core の main をリリースに
   進めたあと、サイトを 1 回公開すれば揃う (Studio の push がそれを兼ねる)。
 
+### クラスリファレンス (sig から作るページ)
+
+サイトの「Class Reference」(`docs/api/reference/`) は fmruby-core の `sig/*.rbs` から道具で作る。手で直さない。
+sig を直したとき (リリースに限らず、develop に入れて公開したいとき) に作り直す。
+
+```
+cd fmruby-core
+rake ti:site FMRB_SITE_DIR=<family-mruby.github.io の checkout>
+# サイトのリポジトリで ./build.sh と ruby scripts/check_links.rb を通し、
+# docs/api/reference・mkdocs.yml・docs/api/*.md (印の行の間) をコミットして push
+```
+
+- ページの足元に、作った元の版 (`develop@<ハッシュ>`) が出る。sig が同じでも版が変わると全ページが変わるので、
+  作り直しは sig を直したまとまりごとに 1 回でよい。
+- サイトに出さないクラスは fmruby-core の `tools/ti/site_exclude.yml`、領域の分け方と話題のページとの対応は
+  `tools/ti/gen_site.rb` (`AREAS`・`GUIDES`)。書き方は fmruby-core の doc/reference/sig_writing_and_coverage.md。
+
 ## 4. 確かめる
 
 - installer: 公開のページ (GitHub Pages の組み立てが終わってから) で、新しい版の
