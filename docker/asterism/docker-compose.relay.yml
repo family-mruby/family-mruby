@@ -68,7 +68,7 @@ services:
       - zenohd-cloud
 
   zenohd-cloud:
-    image: eclipse/zenoh:1.10.1
+    image: eclipse/zenoh:1.10.2
     container_name: fmruby_zenohd_cloud
     init: true
     stop_grace_period: 2s

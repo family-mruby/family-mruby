@@ -97,7 +97,7 @@ services:
   # authentication, so it is not opened to the LAN until a board has to reach
   # it (Asterism Z2).
   zenohd:
-    image: eclipse/zenoh:1.10.1
+    image: eclipse/zenoh:1.10.2
     container_name: fmruby_zenohd
     init: true
     stop_grace_period: 2s
