@@ -269,11 +269,12 @@ class FmrbStorageSyncLeftoverTest < Minitest::Test
     users_and_boards_own
     r = sync
     left = r[:leftover]
-    assert_equal ["/app/demo/removed.app.rb", "/bin/x", "/cache/launcher", "/etc/old.toml", "/help/Old.txt",
+    # /etc is never among them (the board's settings live there).
+    assert_equal ["/app/demo/removed.app.rb", "/bin/x", "/cache/launcher", "/help/Old.txt",
                   "/usr/share/doc/old.md", "/usr/share/gone"], left[:paths]
     assert_equal ["/cache/launcher", "/usr/share/gone"], left[:dirs]
-    assert_equal 8, left[:files]
-    assert_equal 5 + 10 + 2 + 3 + 4 + 1 + 2 + 1, left[:bytes]
+    assert_equal 7, left[:files]
+    assert_equal 5 + 10 + 2 + 3 + 4 + 1 + 2, left[:bytes]
     assert_equal 0, left[:deleted]
     # Not deleted without prune.
     assert @board.files.key?("/usr/share/gone/one.png")
@@ -298,17 +299,41 @@ class FmrbStorageSyncLeftoverTest < Minitest::Test
     old_image
     users_and_boards_own
     r = sync(prune: true)
-    assert_equal 8, r[:leftover][:deleted]
+    assert_equal 7, r[:leftover][:deleted]
     gone = %w[/usr/share/doc/old.md /usr/share/gone/one.png /usr/share/gone/two.png /help/Old.txt
-              /app/demo/removed.app.rb /bin/x /cache/launcher/icon.bmp /etc/old.toml]
+              /app/demo/removed.app.rb /bin/x /cache/launcher/icon.bmp]
     gone.each { |p| refute @board.files.key?(p), p }
     refute_includes @board.dirs, "/usr/share/gone"
     BUILD.each { |b| assert @board.files.key?("/#{b}"), b }
-    %w[/home/notes.txt /app/usr/mine.app.rb /app/test/t.app.rb /data/x /app/other/thing.app.rb].each do |p|
+    %w[/home/notes.txt /app/usr/mine.app.rb /app/test/t.app.rb /data/x /app/other/thing.app.rb
+       /etc/old.toml].each do |p|
       assert @board.files.key?(p), p
     end
     # Synced again: nothing left over.
     assert_equal [], sync(prune: true)[:leftover][:paths]
+  end
+
+  # What the build leaves out of its images (config/storage_exclude_*.txt
+  # next to build/storage_root) was put over WiFi later: never a leftover.
+  def test_what_the_images_leave_out_is_kept
+    base = Dir.mktmpdir("fmrb-sync-core")
+    root = File.join(base, "build", "storage_root")
+    FileUtils.mkdir_p(root)
+    FileUtils.cp_r(Dir.glob(File.join(@root, "*")), root)
+    FileUtils.mkdir_p(File.join(base, "config"))
+    File.write(File.join(base, "config", "storage_exclude_common.txt"),
+               "# a comment\napp/demo/walk.app.rb   # put later\nusr/share/sprites/walk\n")
+    @board.add("/app/demo/walk.app.rb", "1")
+    @board.add("/usr/share/sprites/walk/a.png", "12")
+    @board.add("/usr/share/doc/old.md", "12345")
+    r = FmrbStorageSync.new(@board, ->(l) { @log << l }).run(root, prune: true)
+    assert_equal ["/usr/share/doc/old.md"], r[:leftover][:paths]
+    assert @board.files.key?("/app/demo/walk.app.rb")
+    assert @board.files.key?("/usr/share/sprites/walk/a.png")
+    assert_equal ["/app/demo/walk.app.rb", "/usr/share/sprites/walk"],
+                 FmrbStorageSync.excluded_paths(root)
+  ensure
+    FileUtils.rm_rf(base) if base
   end
 
   def test_a_dry_run_deletes_nothing
@@ -322,12 +347,12 @@ class FmrbStorageSyncLeftoverTest < Minitest::Test
     old_image
     r = sync
     lines = FmrbStorageSync.leftover_lines(r[:leftover], prune: false)
-    assert_match(/8 files, 28 bytes/, lines[0])
+    assert_match(/7 files, 27 bytes/, lines[0])
     assert_includes lines, "  /usr/share/gone/"
     assert_equal "left as they are (PRUNE=1 deletes them)", lines.last
-    assert_equal 1 + 7 + 1, lines.size
+    assert_equal 1 + 6 + 1, lines.size
     r = sync(prune: true)
-    assert_equal "deleted 8 files", FmrbStorageSync.leftover_lines(r[:leftover], prune: true).last
+    assert_equal "deleted 7 files", FmrbStorageSync.leftover_lines(r[:leftover], prune: true).last
     assert_equal [], FmrbStorageSync.leftover_lines(sync[:leftover], prune: false)
   end
 

@@ -52,10 +52,11 @@
 # (/etc/system_conf.toml; --conf sends it too) alone: a missing file or a
 # different size is sent, an equal size is compared by MD5. Files the board
 # has and the build does not are listed: in the system's part (/usr, /help,
-# /etc, /lib, /boot, /bin, /cache and the /app folders the build has) as left
+# /lib, /boot, /bin, /cache and the /app folders the build has) as left
 # over from an older image, with their count and size, deleted only with
 # --prune; elsewhere as they are, never deleted. /home, /app/usr, /app/test,
-# /mnt, /tmp and /var are not looked at. This is what follows
+# /mnt, /tmp, /var, /etc and what fmruby-core/config/storage_exclude_*.txt
+# leaves out of the images (apps put over WiFi later) are not looked at. This is what follows
 # an app-only flash (rake flash:app_sync). When it sent anything it then asks
 # the desktop to read /app again (POST /app/rescan), since the launcher keeps
 # the list it built at boot.
@@ -568,10 +569,14 @@ class FmrbStorageSync
   # have is left over from an older image. It is listed after the sync and
   # deleted only when asked (prune; PRUNE=1 for rake flash:app_sync). The
   # folders under /app the build has count too (prune_area?).
-  PRUNE_AREAS = ["/usr", "/help", "/etc", "/lib", "/boot", "/bin", "/cache"].freeze
+  PRUNE_AREAS = ["/usr", "/help", "/lib", "/boot", "/bin", "/cache"].freeze
   # Neither listed nor deleted: the user's files and apps, the test apps sent
-  # over WiFi, the card, RAM and the board's own state.
-  KEEP = ["/home", "/app/usr", "/app/test", "/mnt", "/tmp", "/var"].freeze
+  # over WiFi, the card, RAM, the board's own state and its settings (/etc:
+  # system_conf.toml, a development build's wifi.toml and the like, which an
+  # image of another build may not have). Whatever the build leaves out of
+  # every storage image (fmruby-core/config/storage_exclude_*.txt: apps put
+  # over WiFi later, such as walk_scroller) is kept too (excluded_paths).
+  KEEP = ["/home", "/app/usr", "/app/test", "/mnt", "/tmp", "/var", "/etc"].freeze
   # How many of the left-over paths a summary names.
   LIST_HEAD = 8
 
@@ -586,6 +591,7 @@ class FmrbStorageSync
   def run(local_root, dry_run: false, conf: false, prune: false)
     raise ArgumentError, "#{local_root} is not a directory" unless File.directory?(local_root)
     skip = conf ? SKIP : SKIP + [CONF]
+    extra = self.class.excluded_paths(local_root)
     sent = same = bytes = 0
     held = []
     local = {}
@@ -621,15 +627,26 @@ class FmrbStorageSync
         held << CONF
       end
     end
-    entries = @fs.walk("/", skip: ->(p) { skipped?(p, skip) || self.class.kept?(p) })
-    left = self.class.leftovers(local, entries.reject { |e| skipped?(e["path"], skip) })
+    entries = @fs.walk("/", skip: ->(p) { skipped?(p, skip) || self.class.kept?(p, extra) })
+    left = self.class.leftovers(local, entries.reject { |e| skipped?(e["path"], skip) }, extra)
     left[:deleted] = prune && !dry_run ? delete_leftovers(left) : 0
     { sent: sent, same: same, bytes: bytes, extra: left[:other], held: held, leftover: left,
       rescan: (dry_run || sent.zero?) ? nil : ask_rescan }
   end
 
-  def self.kept?(path)
-    KEEP.any? { |k| path == k || path.start_with?("#{k}/") }
+  def self.kept?(path, extra = [])
+    (KEEP + extra).any? { |k| path == k || path.start_with?("#{k}/") }
+  end
+
+  # What the build leaves out of the storage images, as board paths: the
+  # lines of every config/storage_exclude_*.txt next to the storage tree
+  # (<fmruby-core>/build/storage_root -> <fmruby-core>/config). None when
+  # the tree is somewhere else.
+  def self.excluded_paths(local_root)
+    dir = File.expand_path("../../config", local_root)
+    Dir.glob(File.join(dir, "storage_exclude_*.txt")).sort.flat_map do |f|
+      File.readlines(f).map { |l| l.sub(/#.*/, "").strip }.reject(&:empty?).map { |l| "/#{l.chomp('/')}" }
+    end.uniq
   end
 
   # The system's part (PRUNE_AREAS, and /app/<folder> when the build has that
@@ -646,8 +663,12 @@ class FmrbStorageSync
   # named once rather than each file inside (to delete); :files and :bytes
   # count every file among them; :other is the rest, left as it is. The
   # board's saved settings (CONF) and KEEP are never among them.
-  def self.leftovers(local, entries)
-    gone = entries.reject { |e| local[e["path"]] || kept?(e["path"]) || e["path"] == CONF }
+  def self.leftovers(local, entries, extra = [])
+    gone = entries.reject { |e| local[e["path"]] || kept?(e["path"], extra) || e["path"] == CONF }
+    # A folder that holds something kept is not left over (deleting it
+    # would take what is kept with it).
+    holds = (KEEP + extra).map { |k| k.split("/")[0..-2].join("/") }
+    gone.reject! { |e| e["dir"] && holds.any? { |h| h == e["path"] || h.start_with?("#{e['path']}/") } }
     sys, other = gone.partition { |e| prune_area?(e["path"], local) }
     files = sys.reject { |e| e["dir"] }
     { paths: collapse(sys), files: files.size, bytes: files.sum { |e| e["size"].to_i },

@@ -222,11 +222,12 @@ FLASH = MCP::Tool.define(
     (fmruby-core/build/storage_root) and the board is sent over WiFi (size,
     then MD5). /home and the board's saved settings (/etc/system_conf.toml)
     are not touched. Files the board has and the build does not are listed:
-    those in the system's part (/usr, /help, /etc, /lib, /boot, /bin, /cache
+    those in the system's part (/usr, /help, /lib, /boot, /bin, /cache
     and the /app folders the build has) as left over from an older image,
     with their count, total size and the first few paths, and deleted only
     with prune: true; the rest are listed and never deleted. /home, /app/usr,
-    /app/test, /mnt, /tmp and /var are not looked at. Build first: the tree
+    /app/test, /mnt, /tmp, /var, /etc and what config/storage_exclude_*.txt
+    leaves out of the images (apps put later) are not looked at. Build first: the tree
     is what the last build left. On the
     ESP32-P4 it first checks the board's partition table and font image
     (the font_ja partition) against the build's and flashes nothing when
@@ -275,7 +276,8 @@ FLASH = MCP::Tool.define(
       ip: { type: "string", description: "the board's address for keep_home / app_sync (default: resolved)" },
       prune: { type: "boolean",
                description: "with app_sync: delete the system's files the build no longer has (left over " \
-                            "from an older image; /home, /app/usr, /app/test are never touched). Run once " \
+                            "from an older image; /home, /app/usr, /app/test, /etc and what the images leave out are " \
+                            "never touched). Run once " \
                             "without it to see the list (default false)" },
     },
     required: [],

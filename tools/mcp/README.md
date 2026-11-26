@@ -45,9 +45,10 @@ USB 再列挙で ROM バナーを失う (`reset: false` ならバナーから採
 焼く → WiFi に戻ったら /home を書き戻して再起動。`app_sync: true` は app 区画だけ
 焼き、`build/storage_root` と端末の差 (大きさ、同じなら MD5) を WiFi で送る
 (/home と /etc/system_conf.toml には触らない。一番速い)。最後に、本体の領域
-(/usr・/help・/etc・/lib・/boot・/bin・/cache と、像にある /app のフォルダ) のうち
+(/usr・/help・/lib・/boot・/bin・/cache と、像にある /app のフォルダ) のうち
 像に無くなったファイルを数・大きさの合計・先頭の数行で出し、`prune: true` のとき
-だけ消す (/home・/app/usr・/app/test・/mnt・/tmp・/var は見ない)。どちらも開発のビルド
+だけ消す (/home・/app/usr・/app/test・/mnt・/tmp・/var・/etc と、
+fmruby-core/config/storage_exclude_*.txt が像から外す物 (後から WiFi で入れるアプリ) は見ない)。どちらも開発のビルド
 (`FMRB_DEV_REMOTE_CTL`) の端末が WiFi にいることが前提で、WiFi の半分は
 `tools/fmrb_flash_keep.rb` (rake の flash:keep_home・flash:app_sync と共有)。
 
