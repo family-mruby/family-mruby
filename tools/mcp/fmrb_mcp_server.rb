@@ -221,8 +221,13 @@ FLASH = MCP::Tool.define(
     app partition only, then whatever differs between the build's storage tree
     (fmruby-core/build/storage_root) and the board is sent over WiFi (size,
     then MD5). /home and the board's saved settings (/etc/system_conf.toml)
-    are not touched; files the board has and the build does not are listed,
-    never deleted. Build first: the tree is what the last build left. On the
+    are not touched. Files the board has and the build does not are listed:
+    those in the system's part (/usr, /help, /etc, /lib, /boot, /bin, /cache
+    and the /app folders the build has) as left over from an older image,
+    with their count, total size and the first few paths, and deleted only
+    with prune: true; the rest are listed and never deleted. /home, /app/usr,
+    /app/test, /mnt, /tmp and /var are not looked at. Build first: the tree
+    is what the last build left. On the
     ESP32-P4 it first checks the board's partition table and font image
     (the font_ja partition) against the build's and flashes nothing when
     they differ: an app-only flash writes neither, so use keep_home once.
@@ -268,13 +273,17 @@ FLASH = MCP::Tool.define(
       app_sync: { type: "boolean",
                   description: "app partition, then the storage files that differ over WiFi; /home untouched (default false)" },
       ip: { type: "string", description: "the board's address for keep_home / app_sync (default: resolved)" },
+      prune: { type: "boolean",
+               description: "with app_sync: delete the system's files the build no longer has (left over " \
+                            "from an older image; /home, /app/usr, /app/test are never touched). Run once " \
+                            "without it to see the list (default false)" },
     },
     required: [],
   },
-) do |app_only: false, keep_home: false, app_sync: false, ip: nil, server_context: nil, **_extra|
+) do |app_only: false, keep_home: false, app_sync: false, ip: nil, prune: false, server_context: nil, **_extra|
   respond do
     if keep_home || app_sync
-      flash_keeping_home(keep_home: keep_home, app_sync: app_sync, app_only: app_only, ip: ip)
+      flash_keeping_home(keep_home: keep_home, app_sync: app_sync, app_only: app_only, ip: ip, prune: prune)
     else
       MANAGER.flash(app_only: app_only)
     end
@@ -287,8 +296,9 @@ end
 FLASH_KEEP_TOOL = File.join(REPO_ROOT, "tools", "fmrb_flash_keep.rb")
 FLASH_KEEP_TIMEOUT = 1200
 
-def flash_keeping_home(keep_home:, app_sync:, app_only:, ip:)
+def flash_keeping_home(keep_home:, app_sync:, app_only:, ip:, prune: false)
   raise FmrbMcp::Error, "keep_home and app_sync are two different flashes; pick one" if keep_home && app_sync
+  raise FmrbMcp::Error, "prune goes with app_sync only" if prune && !app_sync
   raise FmrbMcp::Error, "keep_home is a full flash; it does not combine with app_only" if keep_home && app_only
   root = File.join(MANAGER.core_dir, "build", "storage_root")
   raise FmrbMcp::Error, "no ESP32 build (#{root}): run rake build:esp32 in fmruby-core first" unless File.directory?(root)
@@ -325,7 +335,8 @@ def flash_keeping_home(keep_home:, app_sync:, app_only:, ip:)
     name = keep.call("name", host)[:output][/^name=(.+)$/, 1]
     result = MANAGER.flash(app_only: true)
     return result unless result[:ok]
-    sync = keep.call("sync", host, "--storage-root", root, *(name ? ["--name", name] : []))
+    sync = keep.call("sync", host, "--storage-root", root, *(name ? ["--name", name] : []),
+                     *(prune ? ["--prune"] : []))
     result[:app_sync] = { ok: sync[:ok], output: FmrbMcp::Sub.clamp(sync[:output].strip, 8000) }
     result[:ok] &&= sync[:ok]
   end

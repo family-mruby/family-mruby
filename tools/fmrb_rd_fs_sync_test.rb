@@ -4,6 +4,9 @@
 # again (POST /app/rescan, fmruby-core main/drivers/devctl/devctl_http.c),
 # since the launcher keeps the list it built at boot. Older firmware without
 # the route, or a board that does not answer, gets a note and no failure.
+# Then the files of the system's part that the build no longer has (left
+# over from an older image): which are chosen, how they are summed up, and
+# that only prune deletes them.
 # The sync runs against an in-memory board; FmrbFs#rescan_apps against a small
 # fake HTTP board on a loopback port. Nothing touches ~/.config/fmrb or a
 # real board.
@@ -53,8 +56,31 @@ class MemBoard
     @dirs << path unless @dirs.include?(path)
   end
 
+  # Files with their folders, as the board's would be.
+  def add(path, data = "x")
+    @files[path] = data
+    d = File.dirname(path)
+    until d == "/"
+      mkdir(d)
+      d = File.dirname(d)
+    end
+  end
+
+  def dirs = @dirs
+
   def walk(_path, skip: nil)
-    (@files.keys + @dirs - ["/"]).map { |p| { "path" => p } }.reject { |e| skip&.call(e["path"]) }
+    (@files.keys + @dirs - ["/"]).sort.map do |p|
+      { "path" => p, "dir" => @dirs.include?(p), "size" => (@files[p] || "").bytesize }
+    end.reject { |e| skip&.call(e["path"]) }
+  end
+
+  def del(path)
+    @files.delete(path) || @dirs.delete(path)
+  end
+
+  def rm_tree(path)
+    (@files.keys + @dirs).select { |p| p.start_with?("#{path}/") }.each { |p| del(p) }
+    del(path)
   end
 
   def rescan_apps
@@ -186,5 +212,129 @@ class FmrbFsRescanTest < Minitest::Test
     @board.answer = [503, '{"ok":false,"err":"kernel busy"}']
     e = assert_raises(FmrbFs::DeviceError) { @fs.rescan_apps }
     assert_match(/kernel busy/, e.message)
+  end
+end
+
+# What app_sync lists (and with prune deletes) after it sent the build's
+# files: the system's part the build no longer has.
+class FmrbStorageSyncLeftoverTest < Minitest::Test
+  BUILD = %w[app/demo/hello.app.rb usr/share/doc/a.md help/index.txt etc/hid_devices.toml
+             lib/templates/t.rb cache/.keep boot/boot.png bin/sh].freeze
+
+  def setup
+    @root = Dir.mktmpdir("fmrb-sync-root")
+    BUILD.each do |r|
+      FileUtils.mkdir_p(File.join(@root, File.dirname(r)))
+      File.write(File.join(@root, r), "x")
+    end
+    @board = MemBoard.new
+    BUILD.each { |r| @board.add("/#{r}", "x") }
+    @log = []
+  end
+
+  def teardown
+    FileUtils.rm_rf(@root)
+  end
+
+  def sync(**opts)
+    FmrbStorageSync.new(@board, ->(l) { @log << l }).run(@root, **opts)
+  end
+
+  def old_image
+    @board.add("/usr/share/doc/old.md", "12345")
+    @board.add("/usr/share/gone/one.png", "1234567890")
+    @board.add("/usr/share/gone/two.png", "12")
+    @board.add("/help/Old.txt", "123")
+    @board.add("/app/demo/removed.app.rb", "1234")
+    @board.add("/bin/x", "1")
+    @board.add("/cache/launcher/icon.bmp", "12")
+    @board.add("/etc/old.toml", "1")
+  end
+
+  def users_and_boards_own
+    @board.add("/home/notes.txt")
+    @board.add("/app/usr/mine.app.rb")
+    @board.add("/app/test/t.app.rb")
+    @board.add("/mnt/sd/x")
+    @board.add("/tmp/x")
+    @board.add("/var/log/x")
+    @board.add("/var/cache/launcher_index")
+    @board.add("/etc/system_conf.toml", "the board's settings")
+    @board.add("/app/other/thing.app.rb") # a folder the image does not have
+    @board.add("/data/x")
+  end
+
+  def test_the_system_part_is_chosen_and_counted
+    old_image
+    users_and_boards_own
+    r = sync
+    left = r[:leftover]
+    assert_equal ["/app/demo/removed.app.rb", "/bin/x", "/cache/launcher", "/etc/old.toml", "/help/Old.txt",
+                  "/usr/share/doc/old.md", "/usr/share/gone"], left[:paths]
+    assert_equal ["/cache/launcher", "/usr/share/gone"], left[:dirs]
+    assert_equal 8, left[:files]
+    assert_equal 5 + 10 + 2 + 3 + 4 + 1 + 2 + 1, left[:bytes]
+    assert_equal 0, left[:deleted]
+    # Not deleted without prune.
+    assert @board.files.key?("/usr/share/gone/one.png")
+    # The rest is listed as it was, but never what is kept.
+    assert_equal ["/app/other", "/data"], r[:extra]
+  end
+
+  def test_kept_parts_are_never_listed
+    users_and_boards_own
+    r = sync(prune: true)
+    assert_equal [], r[:leftover][:paths]
+    all = r[:leftover][:paths] + r[:extra]
+    %w[/home /app/usr /app/test /mnt /tmp /var /etc/system_conf.toml].each do |k|
+      refute(all.any? { |p| p == k || p.start_with?("#{k}/") }, k)
+    end
+    assert_equal "the board's settings", @board.files["/etc/system_conf.toml"]
+    assert @board.files.key?("/app/usr/mine.app.rb")
+    assert @board.files.key?("/home/notes.txt")
+  end
+
+  def test_prune_deletes_them_and_nothing_else
+    old_image
+    users_and_boards_own
+    r = sync(prune: true)
+    assert_equal 8, r[:leftover][:deleted]
+    gone = %w[/usr/share/doc/old.md /usr/share/gone/one.png /usr/share/gone/two.png /help/Old.txt
+              /app/demo/removed.app.rb /bin/x /cache/launcher/icon.bmp /etc/old.toml]
+    gone.each { |p| refute @board.files.key?(p), p }
+    refute_includes @board.dirs, "/usr/share/gone"
+    BUILD.each { |b| assert @board.files.key?("/#{b}"), b }
+    %w[/home/notes.txt /app/usr/mine.app.rb /app/test/t.app.rb /data/x /app/other/thing.app.rb].each do |p|
+      assert @board.files.key?(p), p
+    end
+    # Synced again: nothing left over.
+    assert_equal [], sync(prune: true)[:leftover][:paths]
+  end
+
+  def test_a_dry_run_deletes_nothing
+    old_image
+    r = sync(prune: true, dry_run: true)
+    assert_equal 0, r[:leftover][:deleted]
+    assert @board.files.key?("/bin/x")
+  end
+
+  def test_the_summary_lines
+    old_image
+    r = sync
+    lines = FmrbStorageSync.leftover_lines(r[:leftover], prune: false)
+    assert_match(/8 files, 28 bytes/, lines[0])
+    assert_includes lines, "  /usr/share/gone/"
+    assert_equal "left as they are (PRUNE=1 deletes them)", lines.last
+    assert_equal 1 + 7 + 1, lines.size
+    r = sync(prune: true)
+    assert_equal "deleted 8 files", FmrbStorageSync.leftover_lines(r[:leftover], prune: true).last
+    assert_equal [], FmrbStorageSync.leftover_lines(sync[:leftover], prune: false)
+  end
+
+  def test_a_long_list_is_cut
+    12.times { |i| @board.add("/usr/share/old#{i}.txt") }
+    lines = FmrbStorageSync.leftover_lines(sync[:leftover], prune: false)
+    assert_equal "  ... and 4 more", lines[-2]
+    assert_equal 1 + FmrbStorageSync::LIST_HEAD + 2, lines.size
   end
 end

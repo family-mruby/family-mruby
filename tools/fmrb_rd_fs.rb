@@ -30,7 +30,7 @@
 #
 #   ruby tools/fmrb_rd_fs.rb <IP> backup  [dir] [--machine m] [--mac xxxxxx]
 #   ruby tools/fmrb_rd_fs.rb <IP> restore <dir> [--force]
-#   ruby tools/fmrb_rd_fs.rb <IP> sync    <storage_root> [--dry-run] [--conf]
+#   ruby tools/fmrb_rd_fs.rb <IP> sync    <storage_root> [--dry-run] [--conf] [--prune]
 #   ruby tools/fmrb_rd_fs.rb <IP> wait    [--timeout s] [--name fmruby-xxxxxx] [--after-reboot]
 #   ruby tools/fmrb_rd_fs.rb <IP> reboot
 #   ruby tools/fmrb_rd_fs.rb <IP> rescan                 # the launcher reads /app again
@@ -51,7 +51,11 @@
 # and the board, leaving /home, /tmp, /mnt, /var/cache and the saved settings
 # (/etc/system_conf.toml; --conf sends it too) alone: a missing file or a
 # different size is sent, an equal size is compared by MD5. Files the board
-# has and the build does not are listed, never deleted. This is what follows
+# has and the build does not are listed: in the system's part (/usr, /help,
+# /etc, /lib, /boot, /bin, /cache and the /app folders the build has) as left
+# over from an older image, with their count and size, deleted only with
+# --prune; elsewhere as they are, never deleted. /home, /app/usr, /app/test,
+# /mnt, /tmp and /var are not looked at. This is what follows
 # an app-only flash (rake flash:app_sync). When it sent anything it then asks
 # the desktop to read /app again (POST /app/rescan), since the launcher keeps
 # the list it built at boot.
@@ -560,6 +564,16 @@ class FmrbStorageSync
   # The board's own: the user's files, RAM, the card, caches, the settings it saves.
   SKIP = ["/home", "/tmp", "/mnt", "/var/cache"].freeze
   CONF = "/etc/system_conf.toml"
+  # The system's part of the storage: a file here that the build does not
+  # have is left over from an older image. It is listed after the sync and
+  # deleted only when asked (prune; PRUNE=1 for rake flash:app_sync). The
+  # folders under /app the build has count too (prune_area?).
+  PRUNE_AREAS = ["/usr", "/help", "/etc", "/lib", "/boot", "/bin", "/cache"].freeze
+  # Neither listed nor deleted: the user's files and apps, the test apps sent
+  # over WiFi, the card, RAM and the board's own state.
+  KEEP = ["/home", "/app/usr", "/app/test", "/mnt", "/tmp", "/var"].freeze
+  # How many of the left-over paths a summary names.
+  LIST_HEAD = 8
 
   def initialize(fs, log)
     @fs = fs
@@ -567,7 +581,9 @@ class FmrbStorageSync
     @lists = {}
   end
 
-  def run(local_root, dry_run: false, conf: false)
+  # prune: delete what is left over from an older image (leftovers); with
+  # dry_run it is only counted.
+  def run(local_root, dry_run: false, conf: false, prune: false)
     raise ArgumentError, "#{local_root} is not a directory" unless File.directory?(local_root)
     skip = conf ? SKIP : SKIP + [CONF]
     sent = same = bytes = 0
@@ -578,7 +594,7 @@ class FmrbStorageSync
       path = "/#{r}"
       next if skipped?(path, skip)
       full = File.join(local_root, r)
-      local[path] = true
+      local[path] = File.directory?(full) ? :dir : :file
       if File.directory?(full)
         @fs.mkdir(path) unless dry_run || board_entry(path)&.fetch("dir")
         next
@@ -605,9 +621,64 @@ class FmrbStorageSync
         held << CONF
       end
     end
-    extra = board_only(local, skip)
-    { sent: sent, same: same, bytes: bytes, extra: extra, held: held,
+    entries = @fs.walk("/", skip: ->(p) { skipped?(p, skip) || self.class.kept?(p) })
+    left = self.class.leftovers(local, entries.reject { |e| skipped?(e["path"], skip) })
+    left[:deleted] = prune && !dry_run ? delete_leftovers(left) : 0
+    { sent: sent, same: same, bytes: bytes, extra: left[:other], held: held, leftover: left,
       rescan: (dry_run || sent.zero?) ? nil : ask_rescan }
+  end
+
+  def self.kept?(path)
+    KEEP.any? { |k| path == k || path.start_with?("#{k}/") }
+  end
+
+  # The system's part (PRUNE_AREAS, and /app/<folder> when the build has that
+  # folder). local: the build's paths (=> :dir or :file).
+  def self.prune_area?(path, local)
+    return true if PRUNE_AREAS.any? { |a| path == a || path.start_with?("#{a}/") }
+    return false unless path.start_with?("/app/")
+    top = "/app/#{path.split('/')[2]}"
+    local[top] == :dir
+  end
+
+  # What the board has and the build does not, from the board's walk
+  # (entries: "path", "dir", "size"). :paths are the system's part, a folder
+  # named once rather than each file inside (to delete); :files and :bytes
+  # count every file among them; :other is the rest, left as it is. The
+  # board's saved settings (CONF) and KEEP are never among them.
+  def self.leftovers(local, entries)
+    gone = entries.reject { |e| local[e["path"]] || kept?(e["path"]) || e["path"] == CONF }
+    sys, other = gone.partition { |e| prune_area?(e["path"], local) }
+    files = sys.reject { |e| e["dir"] }
+    { paths: collapse(sys), files: files.size, bytes: files.sum { |e| e["size"].to_i },
+      dirs: collapse(sys).select { |p| sys.any? { |e| e["path"] == p && e["dir"] } },
+      other: collapse(other) }
+  end
+
+  def self.collapse(entries)
+    paths = entries.map { |e| e["path"] }
+    paths.reject { |p| paths.any? { |q| q != p && p.start_with?("#{q}/") } }
+  end
+
+  # The run's leftovers as lines for a person: how many, how big, the first
+  # few, and what was done with them. Empty when there are none.
+  def self.leftover_lines(left, prune:, dry_run: false, hint: "PRUNE=1")
+    return [] if left[:paths].empty?
+    head = "left over from an older image (in the system's part, not in the build): " \
+           "#{left[:files]} files, #{left[:bytes]} bytes"
+    lines = [head]
+    left[:paths].first(LIST_HEAD).each do |p|
+      lines << "  #{p}#{left[:dirs].include?(p) ? '/' : ''}"
+    end
+    lines << "  ... and #{left[:paths].size - LIST_HEAD} more" if left[:paths].size > LIST_HEAD
+    lines << if !prune
+               "left as they are (#{hint} deletes them)"
+             elsif dry_run
+               "would delete them (#{left[:files]} files)"
+             else
+               "deleted #{left[:deleted]} files"
+             end
+    lines
   end
 
   # What the launcher was told after a sync (run's :rescan), as a line for a
@@ -652,16 +723,18 @@ class FmrbStorageSync
     board_list(File.dirname(path))[File.basename(path)]
   end
 
-  # Files and directories on the board under the synced part that the build
-  # does not have: listed for a person to decide, never deleted.
-  def board_only(local, skip)
-    out = []
-    @fs.walk("/", skip: ->(p) { skipped?(p, skip) }).each do |e|
-      next if skipped?(e["path"], skip)
-      out << e["path"] unless local[e["path"]]
+  # The left-over files, a folder at a time. Returns how many files went (a
+  # failed delete raises, as every other call to the board does).
+  def delete_leftovers(left)
+    left[:paths].each do |p|
+      if left[:dirs].include?(p)
+        @fs.rm_tree(p)
+      else
+        @fs.del(p)
+      end
+      @log.call("  deleted #{p}#{left[:dirs].include?(p) ? '/' : ''}")
     end
-    # A directory the build lacks: list it, not each file inside.
-    out.reject { |p| out.any? { |q| q != p && p.start_with?("#{q}/") } }
+    left[:files]
   end
 end
 
@@ -782,7 +855,8 @@ def one_shot(fs, cmd, args)
     root = args.shift or abort "sync needs the storage tree (fmruby-core/build/storage_root)"
     dry = args.delete("--dry-run")
     conf = args.delete("--conf")
-    r, dt = timed { FmrbStorageSync.new(fs, ->(s) { puts s }).run(root, dry_run: dry, conf: conf) }
+    prune = args.delete("--prune")
+    r, dt = timed { FmrbStorageSync.new(fs, ->(s) { puts s }).run(root, dry_run: dry, conf: conf, prune: prune) }
     puts "#{dry ? 'would send' : 'sent'} #{r[:sent]} files (#{r[:bytes]} bytes), " \
          "#{r[:same]} already the same (#{format('%.0f', dt)} s)"
     r[:held].each do |p|
@@ -790,6 +864,7 @@ def one_shot(fs, cmd, args)
     end
     note = FmrbStorageSync.rescan_note(r[:rescan])
     puts note if note
+    FmrbStorageSync.leftover_lines(r[:leftover], prune: prune, dry_run: dry, hint: "--prune").each { |l| puts l }
     unless r[:extra].empty?
       puts "on the board but not in the build (left as they are):"
       r[:extra].each { |p| puts "  #{p}" }
