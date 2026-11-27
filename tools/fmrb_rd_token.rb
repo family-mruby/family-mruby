@@ -79,8 +79,13 @@ module FmrbRdToken
   # The token for an address or a name, from what is stored; nil when none.
   def token_for(addr)
     boards = load["boards"]
-    entry = boards[bare(addr)] || boards.values.find { |e| e["ip"] == addr }
-    entry && entry["token"]
+    entry = boards[bare(addr)]
+    return entry["token"] if entry
+    # An address two boards were seen at (DHCP gave one's old address to the
+    # other): ask the board at it who it is rather than take the first.
+    at = boards.values.select { |e| e["ip"] == addr }
+    return at.first["token"] if at.size == 1
+    at.empty? ? nil : learn(addr)
   end
 
   # Ask the board who it is and look its name up; remember the address it
@@ -93,8 +98,11 @@ module FmrbRdToken
     doc = load
     entry = doc["boards"][host]
     return nil unless entry
-    if entry["ip"] != status["ip"]
-      entry["ip"] = status["ip"] || addr
+    ip = status["ip"] || addr
+    stale = doc["boards"].any? { |name, e| name != host && e["ip"] == ip }
+    if entry["ip"] != ip || stale
+      entry["ip"] = ip
+      doc["boards"].each { |name, e| e.delete("ip") if name != host && e["ip"] == ip }
       save(doc)
     end
     entry["token"]
@@ -134,6 +142,8 @@ module FmrbRdToken
       return { host: host, board: status["board"], ip: status["ip"] || addr, guard: "free" }
     end
     store = load
+    # Another board last seen at this address is not there any more.
+    store["boards"].each { |name, e| e.delete("ip") if name != host && e["ip"] == (status["ip"] || addr) }
     store["boards"][host] = {
       "token" => doc["token"], "ip" => status["ip"] || addr, "board" => status["board"],
       "paired_at" => Time.now.utc.iso8601

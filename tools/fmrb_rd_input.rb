@@ -54,7 +54,11 @@ def ws_connect(host)
   auth = token ? "#{FmrbRdToken::HEADER}: #{token}\r\n" : ""
   s = TCPSocket.new(host, 80)
   key = Base64.strict_encode64(SecureRandom.random_bytes(16))
-  s.write("GET /ws HTTP/1.1\r\nHost: #{host}\r\nUpgrade: websocket\r\n" \
+  # The token goes in the query too, as the page sends it: the firmware's
+  # WebSocket handler runs after the handshake, when the request's headers
+  # can no longer be read (rd_http.c ws_handler -> devctl_guard_verdict).
+  path = token ? "/ws?token=#{token}" : "/ws"
+  s.write("GET #{path} HTTP/1.1\r\nHost: #{host}\r\nUpgrade: websocket\r\n" \
           "Connection: Upgrade\r\nSec-WebSocket-Key: #{key}\r\n" \
           "Sec-WebSocket-Version: 13\r\n#{auth}\r\n")
   line = s.readline
